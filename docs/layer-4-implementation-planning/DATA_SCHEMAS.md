@@ -256,6 +256,31 @@ fatigue_state_versions (
 - Manual learning updates запрещены — все обновления fatigue должны быть связаны с Outcome
 - Learning происходит только через Learning Loop Service на основе Outcome
 
+### 8.3 Migration SQL (для существующих таблиц)
+
+Если таблицы `idea_confidence_versions` или `fatigue_state_versions` уже созданы с nullable `source_outcome_id`, выполните следующую миграцию:
+
+```sql
+-- 1) Make source_outcome_id mandatory
+ALTER TABLE idea_confidence_versions
+ALTER COLUMN source_outcome_id SET NOT NULL;
+
+ALTER TABLE fatigue_state_versions
+ALTER COLUMN source_outcome_id SET NOT NULL;
+
+-- 2) (Recommended) Index to trace learning provenance
+CREATE INDEX IF NOT EXISTS idx_idea_confidence_versions_source_outcome
+ON idea_confidence_versions(source_outcome_id);
+
+CREATE INDEX IF NOT EXISTS idx_fatigue_state_versions_source_outcome
+ON fatigue_state_versions(source_outcome_id);
+```
+
+**Примечания:**
+- Если в таблицах уже есть записи с `source_outcome_id IS NULL`, миграция не пройдёт — сначала нужно удалить такие записи или связать их с существующими Outcome
+- Индексы создаются для быстрого поиска learning records по source Outcome (provenance tracking)
+- Это обеспечивает enforce правила: learning только от aggregated system outcome
+
 ## 9. Hypotheses & Delivery
 
 ### 9.1 hypotheses
@@ -303,6 +328,8 @@ deliveries (
 - outcome_aggregates (creative_id, window_start, window_end)
 - outcome_aggregates (decision_id) WHERE origin_type = 'system' (частичный индекс для быстрого поиска system outcomes по Decision)
 - idea_confidence_versions (idea_id, version desc)
+- idea_confidence_versions (source_outcome_id) (для provenance tracking — поиск learning records по source Outcome)
+- fatigue_state_versions (source_outcome_id) (для provenance tracking — поиск learning records по source Outcome)
 
 ## 12. Final Rule
 
