@@ -41,8 +41,8 @@
 
 | Entity | Назначение |
 |--------|------------|
-| Creative | Сырой входной артефакт (транскрипт видео) |
-| DecomposedCreative | Структурированное представление |
+| Creative | Raw transcript (immutable) — сырой транскрипт видео |
+| DecomposedCreative | Schema-structured representation — структурированное представление по Canonical Schema |
 | Idea | Каноническая смысловая единица |
 | Hypothesis | Исполнение разрешённой идеи |
 | Decision | Факт решения системы |
@@ -53,6 +53,11 @@
 ---
 
 ## 4. Creative
+
+**Критическое правило терминологии:**
+- **Creative = raw transcript (immutable)** — сырой транскрипт видео
+- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+- **Никогда не называть DecomposedCreative просто "Creative"**
 
 ### 4.1 Creation
 
@@ -77,10 +82,15 @@
 
 ## 5. DecomposedCreative
 
+**Критическое правило терминологии:**
+- **Creative = raw transcript (immutable)** — сырой транскрипт видео
+- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+- **Никогда не называть DecomposedCreative просто "Creative"**
+
 ### 5.1 Creation
 
 - Создаётся только **Decomposition Layer** (LLM-assisted)
-- Основан строго на одном Creative
+- Основан строго на одном Creative (raw transcript)
 - **Критическое ограничение:** LLM обрабатывает только транскрипт, не визуалы/primary/description
 
 ### 5.2 Mutability

@@ -72,7 +72,7 @@ Memory Stores
 Приём внешних данных в систему.
 
 **Отвечает за:**
-- приём Creative (транскрипт видео) и Outcome,
+- приём Creative (raw transcript — сырой транскрипт видео) и Outcome,
 - первичную маркировку источника (source_type),
 - передачу данных в Validation.
 
@@ -126,7 +126,12 @@ Memory Stores
 - результат обязан строго соответствовать Canonical Schema.
 
 **Выход:**  
-DecomposedCreative (структурированное представление)
+DecomposedCreative (schema-structured representation — структурированное представление по Canonical Schema)
+
+**Критическое правило терминологии:**
+- **Creative = raw transcript (immutable)** — сырой транскрипт видео
+- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+- **Никогда не называть DecomposedCreative просто "Creative"**
 
 ---
 

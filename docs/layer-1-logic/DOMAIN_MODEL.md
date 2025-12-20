@@ -90,7 +90,12 @@ Hypothesis — это **конкретная реализация Idea**, под
 ### 3.3 Creative (Креатив)
 
 **Определение:**  
-Creative — это **физический носитель Hypothesis**, используемый в рекламной платформе.
+Creative — это **raw transcript (immutable)** — сырой транскрипт видео, полученный из внешнего источника.
+
+**Критическое правило терминологии:**
+- **Creative = raw transcript (immutable)** — сырой транскрипт видео
+- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+- **Никогда не называть DecomposedCreative просто "Creative"**
 
 **Критическое ограничение:**  
 GenomAI работает **ТОЛЬКО с транскриптом видео** (аудиочасть креатива).  
@@ -105,8 +110,8 @@ GenomAI работает **ТОЛЬКО с транскриптом видео**
 - единственный источник данных для системы.
 
 **Важно:**
-- Creative не анализируется напрямую Decision Engine.
-- Creative — уровень исполнения.
+- Creative (raw transcript) не анализируется напрямую Decision Engine.
+- Creative является входным артефактом для Decomposition Layer.
 - Система получает только транскрипт, не сам креатив.
 
 **НЕ является Creative:**

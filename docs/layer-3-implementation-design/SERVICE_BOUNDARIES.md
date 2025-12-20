@@ -119,7 +119,12 @@
 **Отвечает за:**
 - извлечение переменных Canonical Schema
 - нормализацию значений enum
-- формирование DecomposedCreative
+- формирование DecomposedCreative (schema-structured representation)
+
+**Критическое правило терминологии:**
+- **Creative = raw transcript (immutable)** — сырой транскрипт видео
+- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+- **Никогда не называть DecomposedCreative просто "Creative"**
 
 **Ограничения:**
 - работает **только с текстом** (транскрипт видео),

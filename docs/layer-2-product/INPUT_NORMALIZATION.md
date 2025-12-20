@@ -80,9 +80,14 @@
 
 ## 4. Creative Registration Semantics
 
+**Критическое правило терминологии:**
+- **Creative = raw transcript (immutable)** — сырой транскрипт видео
+- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+- **Никогда не называть DecomposedCreative просто "Creative"**
+
 ### 4.1 What Is Considered a Creative
 
-**Creative считается зарегистрированным, если:**
+**Creative (raw transcript) считается зарегистрированным, если:**
 - получен `video_url`,
 - получен `tracker_id`,
 - ссылка доступна для обработки.

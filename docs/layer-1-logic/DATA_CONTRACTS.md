@@ -120,9 +120,14 @@ Performance data:
 
 ## 5. Contract: Internal Creative Input
 
+**Критическое правило терминологии:**
+- **Creative = raw transcript (immutable)** — сырой транскрипт видео
+- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+- **Никогда не называть DecomposedCreative просто "Creative"**
+
 ### 5.1 Description
 
-Internal creatives originate from:
+Internal creatives (raw transcripts) originate from:
 - in-house production
 - approved hypothesis factory output
 
