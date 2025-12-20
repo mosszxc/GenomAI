@@ -102,6 +102,31 @@
 - данные могут быть перезаписаны
 - никаких downstream эффектов
 
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ РЕАЛИЗАЦИИ:**
+
+**RawMetricsObserved events must never trigger downstream aggregation or learning directly.**
+
+**Only DailyMetricsSnapshotCreated may advance the pipeline.**
+
+**Детали:**
+- RawMetricsObserved события **не должны** триггерить:
+  - создание DailyMetricsSnapshot
+  - создание OutcomeAggregate
+  - запуск Learning Loop
+- Только событие **DailyMetricsSnapshotCreated** может продвигать pipeline дальше
+- Raw metrics остаются в изолированном слое L1 до создания snapshot
+
+**⚠️ Имплементационная ловушка:**
+В n8n разработчик **НЕ должен**:
+- ❌ связывать RawMetricsObserved → DailyMetricsSnapshotCreated напрямую
+- ❌ связывать RawMetricsObserved → OutcomeAggregation
+- ❌ связывать RawMetricsObserved → Learning Loop
+
+**Правильный подход:**
+- ✅ RawMetricsObserved → только запись в raw_metrics_current (mutable)
+- ✅ Daily Scan (scheduled) → чтение raw_metrics_current → создание DailyMetricsSnapshotCreated
+- ✅ DailyMetricsSnapshotCreated → может триггерить OutcomeAggregation (если окно закрыто)
+
 **Retry:**  
 ✅ **Да**
 
