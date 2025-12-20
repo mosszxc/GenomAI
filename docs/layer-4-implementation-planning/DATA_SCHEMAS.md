@@ -161,10 +161,25 @@ outcome_aggregates (
   volatility        numeric,
   environment_ctx   jsonb,
   origin_type       text check (origin_type in ('system','user')),
+  decision_id       uuid,
   created_at        timestamp not null,
-  UNIQUE (creative_id, window_start, window_end)
+  UNIQUE (creative_id, window_start, window_end),
+  CHECK (
+    (origin_type = 'system' AND decision_id IS NOT NULL)
+    OR
+    (origin_type = 'user')
+  )
 )
 ```
+
+**❗ Критическое правило зависимости:**
+- `origin_type = system` → требует `decision_id` (NOT NULL)
+- `origin_type = user` → `decision_id` nullable (может быть NULL)
+
+**Правила:**
+- `decision_id` immutable (не изменяется после создания)
+- FK логический (через `decision_id`), без каскадных delete
+- CHECK constraint гарантирует causal chain: system outcome всегда связан с Decision
 
 ## 8. Learning Memory (Versioned State)
 
@@ -228,9 +243,10 @@ deliveries (
 **Запрещено:**
 - UPDATE event_log
 - UPDATE daily_metrics_snapshot
-- UPDATE outcome_aggregates
+- UPDATE outcome_aggregates (включая изменение decision_id)
 - UPDATE learning tables без новой версии
 - learning без origin_type = system
+- создание outcome_aggregates с origin_type = system без decision_id (CHECK constraint предотвращает)
 
 ## 11. Indexing Guidance (non-exhaustive)
 
@@ -238,6 +254,7 @@ deliveries (
 - event_log (event_type, occurred_at)
 - daily_metrics_snapshot (creative_id, snapshot_date)
 - outcome_aggregates (creative_id, window_start, window_end)
+- outcome_aggregates (decision_id) WHERE origin_type = 'system' (для быстрого поиска system outcomes по Decision)
 - idea_confidence_versions (idea_id, version desc)
 
 ## 12. Final Rule
