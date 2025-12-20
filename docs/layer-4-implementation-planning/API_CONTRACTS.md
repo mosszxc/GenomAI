@@ -174,6 +174,12 @@ Scope: MVP
 ```json
 {
   "creative_id": "uuid",
+  "window_id": "D1_D3",
+  "window_definition": {
+    "start": "2025-01-01",
+    "end": "2025-01-03",
+    "type": "D1-D3"
+  },
   "window_start": "2025-01-01",
   "window_end": "2025-01-03",
   "impressions": 3000,
@@ -187,13 +193,51 @@ Scope: MVP
     "platform_state": "normal"
   },
   "origin_type": "system",
+  "idempotency_key": "creative:uuid:window:D1_D3",
   "created_at": "2025-01-04T00:00:00Z"
 }
 ```
 
+**Обязательные поля:**
+- creative_id
+- window_id (предпочтительно) или window_definition
+- window_start, window_end (для обратной совместимости)
+- origin_type
+- idempotency_key
+
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ РЕАЛИЗАЦИИ:**
+
+**Idempotency Key Rule:**
+
+**idempotency_key = creative_id + window_definition**
+
+**Детали:**
+- window_id — строковый идентификатор окна (например, "D1_D3", "D1_D7", "D1_D14")
+- window_definition — объект с полями:
+  - start: дата начала окна (ISO 8601)
+  - end: дата конца окна (ISO 8601)
+  - type: тип окна (например, "D1-D3", "D1-D7", "D1-D14")
+- window_id и window_definition должны быть согласованы (window_id должен соответствовать window_definition)
+- idempotency_key формируется как: `creative_id:window_id` или `creative_id:window_definition.type`
+
+**⚠️ Имплементационная ловушка:**
+В n8n разработчик **НЕ должен**:
+- ❌ создавать Outcome Aggregate без window_id или window_definition
+- ❌ использовать только window_start/window_end без window_id
+- ❌ генерировать idempotency_key без учёта window_definition
+- ❌ допускать несоответствие между window_id и window_definition
+
+**Правильный подход:**
+- ✅ Всегда включать window_id (предпочтительно) или window_definition в контракт
+- ✅ Формировать idempotency_key как: `creative_id:window_id`
+- ✅ Гарантировать, что window_id соответствует window_definition
+- ✅ Использовать window_id для быстрого поиска и дедупликации
+
 **Правила:**
 - immutable
 - используется только для learning
+- idempotency_key обязателен для предотвращения дубликатов
+- window_id обязателен (или window_definition) — окно является сущностью в Event Model и Storage Model
 
 ## 9. Learning Contract
 
