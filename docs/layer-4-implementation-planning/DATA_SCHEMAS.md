@@ -151,6 +151,7 @@ daily_metrics_snapshot (
 outcome_aggregates (
   id                uuid PK,
   creative_id       uuid not null,
+  window_id         text,
   window_start      date not null,
   window_end        date not null,
   impressions       int,
@@ -171,6 +172,15 @@ outcome_aggregates (
   )
 )
 ```
+
+**Примечание о window_id:**
+- `window_id` — опциональное поле для удобства эксплуатации (например, "D1_D3", "D1_D7", "D1_D14")
+- На MVP не обязателен (nullable), но рекомендован для:
+  - упрощения построения idempotency keys в event_log
+  - упрощения фильтрации окон по типам
+  - более читаемых запросов и логов
+- Заполняется при создании записи (в n8n) или через computed logic вне БД
+- Уникальность окна по-прежнему обеспечивается через `(creative_id, window_start, window_end)`
 
 **❗ Критическое правило зависимости:**
 - `origin_type = system` → требует `decision_id` (NOT NULL)
@@ -213,6 +223,26 @@ ALTER COLUMN origin_type SET NOT NULL;
 - FK можно оставить "soft" (логический), без FOREIGN KEY constraint'ов и каскадов
 - Индекс создаётся только для `origin_type = 'system'` (частичный индекс) для оптимизации
 - Если в таблице уже есть записи с `origin_type = 'system'` без `decision_id`, миграция не пройдёт — сначала нужно исправить данные
+
+### 7.3 Migration SQL (опционально — для window_id)
+
+Если требуется добавить `window_id` для удобства эксплуатации:
+
+```sql
+-- 1. Add window_id column (optional, nullable on MVP)
+ALTER TABLE outcome_aggregates
+ADD COLUMN window_id text;
+
+-- 2. (Recommended) Index for filtering by window type
+CREATE INDEX IF NOT EXISTS idx_outcome_aggregates_window_id
+ON outcome_aggregates(window_id);
+```
+
+**Примечания:**
+- `window_id` опционален на MVP (nullable)
+- Заполняется при создании записи в n8n или через computed logic
+- Индекс полезен для фильтрации окон по типам (например, все D1_D3 outcomes)
+- В будущем можно сделать NOT NULL и добавить в UNIQUE constraint, если потребуется
 
 ## 8. Learning Memory (Versioned State)
 
@@ -327,6 +357,7 @@ deliveries (
 - daily_metrics_snapshot (creative_id, snapshot_date)
 - outcome_aggregates (creative_id, window_start, window_end)
 - outcome_aggregates (decision_id) WHERE origin_type = 'system' (частичный индекс для быстрого поиска system outcomes по Decision)
+- outcome_aggregates (window_id) (опционально, для фильтрации окон по типам)
 - idea_confidence_versions (idea_id, version desc)
 - idea_confidence_versions (source_outcome_id) (для provenance tracking — поиск learning records по source Outcome)
 - fatigue_state_versions (source_outcome_id) (для provenance tracking — поиск learning records по source Outcome)
