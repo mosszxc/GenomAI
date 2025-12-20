@@ -126,6 +126,9 @@ TECH_DECISIONS v1.2, DATA_SCHEMAS, API_CONTRACTS
 
 ❗ **Строго один раз**
 
+❌ **Manual re-run of learning steps is forbidden.**  
+**Learning is event-driven only.**
+
 ## 13. Error Handling
 - [ ] Abort при нарушении правил
 - [ ] Нет retry learning
@@ -153,7 +156,8 @@ TECH_DECISIONS v1.2, DATA_SCHEMAS, API_CONTRACTS
 ❌ **Decision через LLM**  
 ❌ **UPDATE immutable таблиц**  
 ❌ **Snapshot ≠ outcome**  
-❌ **Outcome ≠ learning**
+❌ **Outcome ≠ learning**  
+❌ **Manual re-run of learning steps** — Learning is event-driven only
 
 ## 17. MVP Done Criteria
 
