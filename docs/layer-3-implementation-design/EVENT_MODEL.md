@@ -125,6 +125,11 @@
 - динамические признаки (trend, volatility, saturation)
 - environment_context
 - origin_type (system | user)
+- decision_id (nullable, обязателен для `origin_type = system`)
+
+**Критическое правило:**
+- `origin_type = system` → требует Decision (decision_id обязателен)
+- `origin_type = user` → допускается без Decision (decision_id может быть NULL)
 
 👉 **Это единственный допустимый Outcome в системе.**
 

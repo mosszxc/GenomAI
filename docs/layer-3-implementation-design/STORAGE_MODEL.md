@@ -135,12 +135,16 @@
 - saturation signal
 - `environment_context` (account_state, platform_state)
 - `origin_type` (system | user)
+- `decision_id` (nullable, обязателен для `origin_type = system`)
 
 **Правила:**
 - immutable
 - создаётся только после закрытия окна
 - не пересчитывается
 - может существовать несколько окон на один creative
+- **Критическое правило зависимости:**
+  - `origin_type = system` → требует `decision_id` (не nullable)
+  - `origin_type = user` → `decision_id` nullable (может быть NULL)
 
 ### 6.4 Outcome Semantics
 
@@ -174,10 +178,16 @@
 
 **Learning Memory может обновляться ТОЛЬКО на основе OutcomeAggregate с `origin_type = system`.**
 
-**Observational outcomes:**
+**System outcomes (`origin_type = system`):**
+- требуют `decision_id` (не nullable)
+- используются для causal updates (confidence, fatigue, death memory)
+- обновляют Learning Memory
+
+**User outcomes (`origin_type = user`):**
+- `decision_id` nullable (может быть NULL)
 - хранятся отдельно
-- используются только для discovery
-- **НЕ обновляют** Learning Memory
+- используются только для observational memory (discovery, similarity signals)
+- **НЕ обновляют** Learning Memory (confidence, fatigue, death memory, cluster priors)
 
 ---
 
