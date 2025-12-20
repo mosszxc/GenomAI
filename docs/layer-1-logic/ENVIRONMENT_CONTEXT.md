@@ -91,10 +91,46 @@
   - ✅ повышает confidence сильнее обычного
 - **Это не нормализация, это мягкое весовое смещение**
 
-**Критическое ограничение верхней границы:**
-- Environment weighting ограничено фиксированным коэффициентом (например ±30%) и не может полностью обнулить или переоценить Outcome
-- **Запрещено:** `degraded → почти не учитываем outcome` (это скрытый bypass рынка, запрещённый Doctrine)
-- Environment не может полностью игнорировать реакцию рынка
+**❗ КРИТИЧЕСКОЕ ОГРАНИЧЕНИЕ ВЕРХНЕЙ ГРАНИЦЫ — ОБЯЗАТЕЛЬНО ДЛЯ РЕАЛИЗАЦИИ:**
+
+**Environment weighting is bounded.**
+
+- Environment context may adjust Outcome impact only within a fixed range (e.g. ±20–30%).
+- Environment context cannot:
+  - nullify an Outcome (полностью обнулить результат)
+  - fully compensate a negative result (полностью компенсировать отрицательный результат)
+  - override causal learning (переопределить причинное обучение)
+
+**Запрещённые паттерны (архитектурные нарушения):**
+- ❌ `degraded → почти не учитываем outcome` (это скрытый bypass рынка, запрещённый Doctrine)
+- ❌ `stable → переоцениваем outcome` (это переоценка, нарушающая causal learning)
+- ❌ Environment weighting > ±30% (превышение верхней границы)
+- ❌ Environment полностью игнорирует реакцию рынка
+
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО CAUSAL CHAIN:**
+
+**Environment context never breaks the causal chain:**
+**Decision → Outcome → Learning**
+
+- Environment context может только **корректировать интерпретацию** Outcome в Learning Loop
+- Environment context **не может**:
+  - разорвать связь Decision → Outcome
+  - разорвать связь Outcome → Learning
+  - заменить Outcome как источник обучения
+  - стать альтернативным источником истины
+
+**Почему это критично:**
+
+- Без верхней границы environment может стать скрытым bypass рынка:
+  - Пример нарушения: `account_state=degraded` → outcome почти не учитывается → система не учится на реальных результатах
+  - Это прямо нарушает Architecture Lock: "Market is the only ground truth"
+  - Это нарушает causal chain: Decision → Outcome → Learning
+
+- Causal chain — это фундамент системы:
+  - Decision Engine принимает решение
+  - Market реагирует (Outcome)
+  - Learning Loop учится на Outcome
+  - Environment может только корректировать интерпретацию, но не разрывать цепочку
 
 ---
 
