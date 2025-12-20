@@ -192,10 +192,16 @@ idea_confidence_versions (
   confidence_value  numeric not null,
   version           int not null,
   updated_at        timestamp not null,
-  source_outcome_id uuid,
-  UNIQUE (idea_id, version)
+  source_outcome_id uuid not null,
+  UNIQUE (idea_id, version),
+  CHECK (source_outcome_id IS NOT NULL)
 )
 ```
+
+**❗ Критическое правило:**
+- `source_outcome_id` обязателен (NOT NULL)
+- Manual learning updates запрещены — все обновления confidence должны быть связаны с Outcome
+- Learning происходит только через Learning Loop Service на основе Outcome
 
 ### 8.2 fatigue_state_versions
 
@@ -206,10 +212,16 @@ fatigue_state_versions (
   fatigue_value     numeric not null,
   version           int not null,
   updated_at        timestamp not null,
-  source_outcome_id uuid,
-  UNIQUE (idea_id, version)
+  source_outcome_id uuid not null,
+  UNIQUE (idea_id, version),
+  CHECK (source_outcome_id IS NOT NULL)
 )
 ```
+
+**❗ Критическое правило:**
+- `source_outcome_id` обязателен (NOT NULL)
+- Manual learning updates запрещены — все обновления fatigue должны быть связаны с Outcome
+- Learning происходит только через Learning Loop Service на основе Outcome
 
 ## 9. Hypotheses & Delivery
 
@@ -247,6 +259,8 @@ deliveries (
 - UPDATE learning tables без новой версии
 - learning без origin_type = system
 - создание outcome_aggregates с origin_type = system без decision_id (CHECK constraint предотвращает)
+- **manual learning updates** — создание записей в `idea_confidence_versions` или `fatigue_state_versions` без `source_outcome_id` (CHECK constraint предотвращает)
+- создание learning records с `source_outcome_id IS NULL` (CHECK constraint предотвращает)
 
 ## 11. Indexing Guidance (non-exhaustive)
 
