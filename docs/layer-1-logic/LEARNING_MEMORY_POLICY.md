@@ -186,6 +186,31 @@ Death Memory **не подвержена time decay автоматически**
 
 ---
 
+### 3.6 Memory Priority (приоритет памяти)
+
+**Критическое правило приоритета:**
+
+**Death Memory > Fatigue Memory > Confidence Memory**
+
+**Детали:**
+- **Death Memory всегда имеет приоритет над Fatigue Memory**
+- **Fatigue никогда не может "оживить" идею**
+- Если идея помечена как `dead` (любой уровень: SOFT_DEAD, HARD_DEAD, PERMANENT_DEAD), она **запрещена к использованию**, независимо от уровня fatigue
+- Fatigue влияет на допустимость только для **живых** идей
+- Decision Engine должен сначала проверять Death Memory, затем Fatigue Memory, затем Confidence
+
+**Почему это важно:**
+- Без явного приоритета Decision Engine может получить конфликт (например: `fatigue=angle` и `death=soft_dead`) и вести себя нестабильно
+- Death Memory — это окончательный запрет, который не может быть переопределён fatigue или confidence
+- Fatigue — это временное ограничение для живых идей, а не механизм resurrection
+
+**Примеры:**
+- Идея с `death=SOFT_DEAD` и `fatigue=angle` → **REJECT** (death имеет приоритет)
+- Идея с `fatigue=exhausted` и `death=null` → **DEFER** (fatigue влияет, но не запрещает окончательно)
+- Идея с `confidence=low` и `death=null` и `fatigue=low` → может быть **APPROVE** с ограничениями
+
+---
+
 ## 4. Горизонты обучения
 
 ### 4.1 T1 — Ранний отклик
