@@ -163,6 +163,41 @@
 **Ключевое правило:**  
 **Единственный сервис, принимающий решения.**
 
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ РЕАЛИЗАЦИИ:**
+
+**Decision Engine is stateless across invocations.**
+
+**It does not cache memory or decisions.**
+
+**All required state is loaded per execution.**
+
+**Детали:**
+- Decision Engine читает:
+  - Learning Memory (Confidence, Fatigue, Death)
+  - Risk Budget / Fatigue
+- Но **НЕ кеширует** эти данные между вызовами
+- Но **НЕ хранит состояние** между вызовами
+- Все требуемое состояние загружается **при каждом выполнении** (per execution)
+- Каждый вызов Decision Engine начинается с "чистого листа"
+
+**⚠️ Имплементационная ловушка:**
+В n8n разработчик **НЕ должен**:
+- ❌ кешировать результаты чтения Memory между вызовами Decision Engine
+- ❌ хранить состояние Decision Engine между вызовами
+- ❌ использовать глобальные переменные или shared state для Decision Engine
+- ❌ полагаться на предыдущие результаты Decision Engine в текущем вызове
+
+**Правильный подход:**
+- ✅ При каждом вызове Decision Engine:
+  - загрузить актуальное состояние Memory из Memory Store
+  - загрузить актуальный Risk Budget / Fatigue
+  - выполнить decision logic на основе загруженных данных
+  - вернуть Decision без сохранения состояния
+- ✅ Каждый вызов Decision Engine независим от предыдущих
+
+**Защита от state drift:**
+Это правило защищает от неявного state drift в n8n, когда кешированные данные могут стать устаревшими между вызовами.
+
 **Не имеет права:**
 - читать environment напрямую,
 - видеть user-origin outcome,
