@@ -419,15 +419,15 @@ Decision Engine
 ## ❓ Нужна помощь?
 
 Если что-то непонятно:
-1. Начните с [Concept Document](./docs/layer-0/CONCEPT.md) — общее понимание системы
-2. Изучите [Architecture Lock](./docs/layer-0/ARCHITECTURE_LOCK.md) — это основа всех решений
-3. Изучите [Domain Model](./docs/layer-0/DOMAIN_MODEL.md) — единый язык системы
-4. Ознакомьтесь с [Canonical Schema](./docs/layer-1/CANONICAL_SCHEMA.md) — структура данных
-5. Изучите [Data Contracts](./docs/layer-1/DATA_CONTRACTS.md) — контракты входных данных
-6. Прочитайте [LLM Usage Policy](./docs/layer-0/LLM_USAGE_POLICY.md) — правила использования LLM
-7. Изучите [Learning & Memory Policy](./docs/layer-0/LEARNING_MEMORY_POLICY.md) — обучение и память системы
-8. Прочитайте [Decision Engine Specification](./docs/layer-1/DECISION_ENGINE.md) — ядро системы
-9. Изучите [Usage & Interaction Doctrine](./docs/layer-0/USAGE_DOCTRINE.md) — как медиабайер взаимодействует с системой
+1. Начните с [Concept Document](./docs/layer-0-doctrine/CONCEPT.md) — общее понимание системы
+2. Изучите [Architecture Lock](./docs/layer-0-doctrine/ARCHITECTURE_LOCK.md) — это основа всех решений
+3. Изучите [Domain Model](./docs/layer-1-logic/DOMAIN_MODEL.md) — единый язык системы
+4. Ознакомьтесь с [Canonical Schema](./docs/layer-1-logic/CANONICAL_SCHEMA.md) — структура данных
+5. Изучите [Data Contracts](./docs/layer-1-logic/DATA_CONTRACTS.md) — контракты входных данных
+6. Прочитайте [LLM Usage Policy](./docs/layer-1-logic/LLM_USAGE_POLICY.md) — правила использования LLM
+7. Изучите [Learning & Memory Policy](./docs/layer-1-logic/LEARNING_MEMORY_POLICY.md) — обучение и память системы
+8. Прочитайте [Decision Engine Specification](./docs/layer-1-logic/DECISION_ENGINE.md) — ядро системы
+9. Изучите [Usage & Interaction Doctrine](./docs/layer-0-doctrine/USAGE_DOCTRINE.md) — как медиабайер взаимодействует с системой
 10. Следуйте [Development Order](./docs/DEVELOPMENT_ORDER.md) для разработки
 11. Спросите у меня (AI помощника) - я помогу!
 
