@@ -74,6 +74,10 @@
 **Критическое правило:**  
 Decision Engine работает **ТОЛЬКО с bucket-значениями**, не с raw float.
 
+**⚠️ Важное уточнение для реализации:**
+В MVP используется только **HARD_DEAD без resurrection**.  
+SOFT_DEAD и уровни death используются только в full system.
+
 ### 3.4 Hypothesis Generation
 
 **В MVP:**
