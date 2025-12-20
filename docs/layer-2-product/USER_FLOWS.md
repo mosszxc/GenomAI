@@ -47,9 +47,10 @@
 - `tracker_id` — идентификатор из системы трекинга (Keitaro)
 
 **Важно:**  
-- Это **user-generated creative** (внешний креатив медиабайера)
+- В данном флоу рассматривается только **user-generated creative** (внешний креатив медиабайера)
 - Не связан с Hypothesis системы
 - Используется для расширения пространства идей (observational learning)
+- System-generated creatives описаны отдельно в Flow 3
 
 ### 3.3 Последовательность
 
