@@ -109,14 +109,15 @@ Input
 
 ## 5. Decomposition Layer (LLM-Assisted)
 
-**Критическое правило терминологии:**
-- **Creative = raw transcript (immutable)** — сырой транскрипт видео
-- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+**Критическое правило терминологии (явное закрепление):**
+- **Creative = raw video transcript (immutable input)** — сырой транскрипт видео, полученный из внешнего источника
+- **DecomposedCreative = schema-structured representation (LLM output)** — структурированное представление по Canonical Schema, результат работы Decomposition Layer
 - **Никогда не называть DecomposedCreative просто "Creative"**
+- Creative — это входной артефакт, а не результат decomposition
 
 ### 5.1 Purpose
 
-Decomposition преобразует Creative (сырой транскрипт) в DecomposedCreative (структурированное представление), соответствующее Canonical Schema.
+Decomposition преобразует Creative (raw video transcript — входной артефакт) в DecomposedCreative (schema-structured representation — результат LLM output), соответствующее Canonical Schema.
 
 **Критическое ограничение:**  
 LLM обрабатывает **ТОЛЬКО транскрипт видео** — текст того, что говорит лицо в ролике.  

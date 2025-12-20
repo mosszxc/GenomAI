@@ -54,10 +54,11 @@
 
 ## 4. Creative
 
-**Критическое правило терминологии:**
-- **Creative = raw transcript (immutable)** — сырой транскрипт видео
-- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+**Критическое правило терминологии (явное закрепление):**
+- **Creative = raw video transcript (immutable input)** — сырой транскрипт видео, полученный из внешнего источника
+- **DecomposedCreative = schema-structured representation (LLM output)** — структурированное представление по Canonical Schema, результат работы Decomposition Layer
 - **Никогда не называть DecomposedCreative просто "Creative"**
+- Creative — это входной артефакт, а не результат decomposition
 
 ### 4.1 Creation
 
@@ -82,10 +83,11 @@
 
 ## 5. DecomposedCreative
 
-**Критическое правило терминологии:**
-- **Creative = raw transcript (immutable)** — сырой транскрипт видео
-- **DecomposedCreative = schema-structured representation** — структурированное представление по Canonical Schema
+**Критическое правило терминологии (явное закрепление):**
+- **Creative = raw video transcript (immutable input)** — сырой транскрипт видео, полученный из внешнего источника
+- **DecomposedCreative = schema-structured representation (LLM output)** — структурированное представление по Canonical Schema, результат работы Decomposition Layer
 - **Никогда не называть DecomposedCreative просто "Creative"**
+- DecomposedCreative — это результат decomposition, а не входной артефакт
 
 ### 5.1 Creation
 
