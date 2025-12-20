@@ -39,12 +39,16 @@ LLMs are allowed **only** in the following roles.
 ### 3.1 Decomposition & Classification
 
 **Purpose:**  
-Transform unstructured input (creative, transcript, text) into structured data.
+Transform video transcript (speech text) into structured data.
+
+**Критическое ограничение:**  
+LLM обрабатывает **ТОЛЬКО транскрипт видео** — текст того, что говорит лицо в ролике.  
+**НЕ обрабатываются:** визуалы, изображения, primary/description в Facebook Ads, любые другие элементы креатива.
 
 **Allowed actions:**
-- classify content strictly into canonical schema fields
-- extract values for predefined enums
-- normalize raw text into schema-compliant representation
+- classify video transcript strictly into canonical schema fields
+- extract values for predefined enums from transcript text only
+- normalize transcript text into schema-compliant representation
 
 **Requirements:**
 - output must conform exactly to Canonical Schema

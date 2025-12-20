@@ -1,7 +1,7 @@
-# Layer 3 — Implementation & Infra
+# Layer 3 — Implementation Design
 
-**Статус:** В разработке  
-**Приоритет:** Низкий (технические детали)
+**Статус:** CANONICAL  
+**Приоритет:** Критический
 
 ---
 
@@ -21,7 +21,13 @@ Layer 3 содержит **спецификации реализации и ин
 
 ## Документы Layer 3
 
-*Документы будут добавлены по мере разработки*
+📦 **[Service Boundaries](./SERVICE_BOUNDARIES.md)** — Границы сервисов и ответственность (v1.0)
+
+💾 **[Storage Model](./STORAGE_MODEL.md)** — Каноническая модель хранения данных (v1.0)
+
+📅 **[Event Model](./EVENT_MODEL.md)** — Каноническая модель событий (v1.1)
+
+⚠️ **[Error Handling](./ERROR_HANDLING.md)** — Семантика обработки ошибок и сбоев (v1.0)
 
 ---
 
@@ -37,6 +43,6 @@ Layer 3 содержит **спецификации реализации и ин
 ## Связь с другими слоями
 
 - **Основан на:** Layer 0 (Doctrine), Layer 1 (System Design), Layer 2 (Product & Integration)
-- **Реализует:** все вышестоящие слои
+- **Реализуется:** Layer 4 (Implementation Planning)
 
 **Layer 3 — это реализация всех вышестоящих слоев.**

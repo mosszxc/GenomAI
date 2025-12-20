@@ -154,10 +154,11 @@ Prevent audience burnout.
 If `fatigue_level ≥ angle` AND `novelty_bucket = low` → REJECT.
 
 **Notes:**
-- Skin fatigue may allow message mutation.
+- Skin fatigue may allow message mutation (форма подачи, тон, стиль речи в транскрипте).
 - Angle fatigue forbids all variants within cluster.
 - Fatigue levels: skin, message, angle, transition, tension, context, exhausted
 - Tension fatigue ≠ idea death (tension can mutate without killing idea)
+- **Система работает только с транскриптом видео** — визуалы, изображения, primary/description не учитываются.
 
 ---
 

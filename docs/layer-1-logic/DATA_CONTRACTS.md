@@ -23,6 +23,20 @@ Silent correction, guessing, or coercion is forbidden.
 
 ---
 
+## 1.1 Critical Constraint: Video Transcript Only
+
+**GenomAI works ONLY with video transcripts** (speech text from video creatives).
+
+**System processes:**
+- ✅ Video transcript — text of what the person says in the video
+- ❌ Visual elements (images, video frames, avatars)
+- ❌ Primary text and description in Facebook Ads
+- ❌ Any other creative elements except transcript
+
+**All creative inputs must contain only transcript text.**
+
+---
+
 ## 2. Core Principles
 
 1. No implicit data assumptions
@@ -112,6 +126,11 @@ Internal creatives originate from:
 - in-house production
 - approved hypothesis factory output
 
+**Критическое ограничение:**  
+Система работает **ТОЛЬКО с транскриптом видео** (аудиочасть креатива).  
+`raw_content` содержит **только транскрипт** — текст того, что говорит лицо в видео-ролике.  
+**НЕ передаются:** визуалы, изображения, primary/description в Facebook Ads.
+
 ### 5.2 Required Fields
 
 ```json
@@ -119,8 +138,8 @@ Internal creatives originate from:
   "creative_id": "uuid",
   "hypothesis_id": "uuid",
 
-  "raw_content": "string",
-  "format": "enum",
+  "raw_content": "string",  // ТОЛЬКО транскрипт видео (текст речи)
+  "format": "enum",         // "video_transcript"
 
   "created_at": "timestamp"
 }
@@ -129,9 +148,10 @@ Internal creatives originate from:
 ### 5.3 Validation Rules
 
 - `hypothesis_id` must be approved by Decision Engine
-- `raw_content` must be non-empty
-- `format` must be declared
+- `raw_content` must be non-empty and contain only transcript text
+- `format` must be "video_transcript"
 - orphan creatives are forbidden
+- visual elements, images, primary/description are not accepted
 
 ---
 
@@ -146,12 +166,17 @@ This data:
 - may be misleading
 - must never be treated as truth
 
+**Критическое ограничение:**  
+Система работает **ТОЛЬКО с транскриптом видео**.  
+`raw_content` содержит **только транскрипт** — текст того, что говорит лицо в видео-ролике.  
+**НЕ передаются:** визуалы, изображения, primary/description в Facebook Ads.
+
 ### 6.2 Required Fields
 
 ```json
 {
   "external_id": "string",
-  "raw_content": "string",
+  "raw_content": "string",  // ТОЛЬКО транскрипт видео (текст речи)
 
   "geo": "string",
   "placement": "string",
@@ -164,6 +189,8 @@ This data:
 
 - No inferred performance allowed
 - No assumed success
+- `raw_content` must contain only video transcript (speech text)
+- Visual elements, images, primary/description are not accepted
 - No missing `raw_content`
 - Context fields mandatory
 
