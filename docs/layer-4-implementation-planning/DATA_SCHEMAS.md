@@ -160,7 +160,7 @@ outcome_aggregates (
   trend             text,
   volatility        numeric,
   environment_ctx   jsonb,
-  origin_type       text check (origin_type in ('system','user')),
+  origin_type       text not null check (origin_type in ('system','user')),
   decision_id       uuid,
   created_at        timestamp not null,
   UNIQUE (creative_id, window_start, window_end),
@@ -180,6 +180,39 @@ outcome_aggregates (
 - `decision_id` immutable (не изменяется после создания)
 - FK логический (через `decision_id`), без каскадных delete
 - CHECK constraint гарантирует causal chain: system outcome всегда связан с Decision
+
+### 7.2 Migration SQL (для существующих таблиц)
+
+Если таблица `outcome_aggregates` уже создана без `decision_id`, выполните следующую миграцию:
+
+```sql
+-- 1. Add decision_id column
+ALTER TABLE outcome_aggregates
+ADD COLUMN decision_id uuid;
+
+-- 2. Enforce constraint: system outcomes must have decision_id
+ALTER TABLE outcome_aggregates
+ADD CONSTRAINT outcome_aggregates_decision_id_required_for_system
+CHECK (
+  (origin_type = 'system' AND decision_id IS NOT NULL)
+  OR
+  (origin_type = 'user')
+);
+
+-- 3. (Recommended) Index for joins / lookups
+CREATE INDEX IF NOT EXISTS idx_outcome_aggregates_decision_id
+ON outcome_aggregates(decision_id)
+WHERE origin_type = 'system';
+
+-- 4. (Optional but clean) Ensure origin_type is not null
+ALTER TABLE outcome_aggregates
+ALTER COLUMN origin_type SET NOT NULL;
+```
+
+**Примечания:**
+- FK можно оставить "soft" (логический), без FOREIGN KEY constraint'ов и каскадов
+- Индекс создаётся только для `origin_type = 'system'` (частичный индекс) для оптимизации
+- Если в таблице уже есть записи с `origin_type = 'system'` без `decision_id`, миграция не пройдёт — сначала нужно исправить данные
 
 ## 8. Learning Memory (Versioned State)
 
@@ -268,7 +301,7 @@ deliveries (
 - event_log (event_type, occurred_at)
 - daily_metrics_snapshot (creative_id, snapshot_date)
 - outcome_aggregates (creative_id, window_start, window_end)
-- outcome_aggregates (decision_id) WHERE origin_type = 'system' (для быстрого поиска system outcomes по Decision)
+- outcome_aggregates (decision_id) WHERE origin_type = 'system' (частичный индекс для быстрого поиска system outcomes по Decision)
 - idea_confidence_versions (idea_id, version desc)
 
 ## 12. Final Rule
