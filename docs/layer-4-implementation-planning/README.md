@@ -1,7 +1,41 @@
 # Layer 4 — Implementation Planning
 
-**Статус:** PLANNING  
-**Приоритет:** Средний
+**Статус:** IMPLEMENTATION / EXECUTION  
+**Приоритет:** Высокий
+
+## ✅ Статус реализации
+
+**STEP 01 — Ingestion + Validation:** ✅ **COMPLETED & TESTED**
+- Epic: #1 - закрыт
+- Workflow: `creative_ingestion_webhook` (ID: `dvZvUUmhtPzYOK7X`) - активен
+- Таблицы: `genomai.creatives`, `genomai.event_log` - созданы и протестированы
+- Все Issues (#2, #3, #4, #5, #6, #7, #8, #9) - закрыты
+- Gate Check: STEP 01 → STEP 02 - ✅ PASSED
+
+**STEP 02 — Decomposition (LLM):** ✅ **COMPLETED**
+- Epic: #2 - закрыт
+- Workflow: `creative_decomposition_llm` (ID: `mv6diVtqnuwr7qev`) - активен
+- Все Issues (#11, #12, #13, #14, #15, #16) - закрыты
+- Gate Check: STEP 02 → STEP 03 - ✅ PASSED
+
+**STEP 03 — Idea Registry:** ✅ **COMPLETED**
+- Epic: #3 - закрыт
+- Workflow: `idea_registry_register` - активен
+- Таблицы: `genomai.ideas`, `genomai.decomposed_creatives` - созданы и протестированы
+- Все Issues (#19, #20, #21, #22) - закрыты
+- Gate Check: STEP 03 → STEP 04 - ✅ PASSED
+
+**STEP 04 — Decision Engine:** ✅ **COMPLETED**
+- Epic: #23 - закрыт
+- Workflow: `decision_engine_mvp` (ID: `YT2d7z5h9bPy1R4v`) - активен
+- Таблицы: `genomai.decisions`, `genomai.decision_traces` - созданы и протестированы
+- Все Issues (#24, #25, #26, #27) - закрыты
+- IF node исправлен: правильная обработка данных от Supabase (объект/массив)
+- Gate Check: STEP 04 → STEP 05 - ✅ PASSED
+
+**STEP 05 — Hypothesis Factory:** 🟡 **IN PROGRESS**
+- Epic: #29 - открыт
+- Issues: #35 ✅, #30 🟡, #31 🟡, #32 🟡
 
 ---
 

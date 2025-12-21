@@ -2,10 +2,30 @@
 
 **STEP 01 — Ingestion + Validation (MVP)**
 
-**Статус:** IMPLEMENTATION PLAYBOOK  
+**Статус:** ✅ **COMPLETED & TESTED**  
 **Scope:** MVP  
 **Зависимости:** отсутствуют  
 **Следующий шаг:** 02_decomposition_playbook.md
+
+## ✅ Статус выполнения
+
+**Epic:** #1 - закрыт  
+**Все Issues:** #2, #3, #4, #5, #6, #7, #8, #9 - закрыты  
+**Gate Check:** STEP 01 → STEP 02 - ✅ PASSED
+
+**Реализовано:**
+- ✅ Workflow: `creative_ingestion_webhook` (ID: `dvZvUUmhtPzYOK7X`) - активен
+- ✅ Таблица: `genomai.creatives` - создана и протестирована
+- ✅ Таблица: `genomai.event_log` - создана и протестирована
+- ✅ Все события реализованы и протестированы
+- ✅ Все проверки из playbook пройдены
+
+**Тестирование:**
+- ✅ Happy path - пройден
+- ✅ Idempotency - пройден (UNIQUE constraint работает)
+- ✅ Invalid input - пройден (NOT NULL и CHECK constraints работают)
+- ✅ Garbage input - пройден (CreativeIngestionRejected создаётся)
+- ✅ Запрещённые сущности - не создаются (ideas, decisions, learning state)
 
 ## 0. Назначение шага
 

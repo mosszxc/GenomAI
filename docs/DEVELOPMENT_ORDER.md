@@ -144,7 +144,7 @@
 
 ---
 
-## PHASE 6 — Input & Ingestion Layer
+## PHASE 6 — Input & Ingestion Layer ✅ COMPLETED
 
 ### Цель
 Аккуратно завести внешний мир.
@@ -167,6 +167,29 @@
 ### Артефакты
 - `ingestion_flows/`
 - `data_quality_rules.md`
+
+### ✅ Статус выполнения (STEP 01 MVP)
+
+**Реализовано:**
+- ✅ Webhook для приёма creative (video_url + tracker_id + source_type)
+- ✅ Валидация payload (Schema Validation)
+- ✅ Idempotency check (UNIQUE constraint на video_url + tracker_id)
+- ✅ Creative storage в `genomai.creatives`
+- ✅ Event logging в `genomai.event_log`
+- ✅ Workflow: `creative_ingestion_webhook` (ID: `dvZvUUmhtPzYOK7X`) - активен
+
+**События:**
+- ✅ `CreativeReferenceReceived` - после валидации
+- ✅ `CreativeRegistered` - после insert или при idempotent case
+- ✅ `CreativeIngestionRejected` - при невалидном payload
+
+**Тестирование:**
+- ✅ Happy path - пройден
+- ✅ Idempotency - пройден
+- ✅ Invalid input - пройден
+- ✅ Garbage input - пройден
+
+**Epic:** #1 - закрыт
 
 ---
 

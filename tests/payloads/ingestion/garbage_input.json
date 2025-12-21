@@ -1,0 +1,12 @@
+{
+  "this": "is",
+  "not": "a",
+  "valid": "payload",
+  "for": "ingestion",
+  "random": "data": 12345,
+  "nested": {
+    "object": "with",
+    "unexpected": "structure"
+  }
+}
+

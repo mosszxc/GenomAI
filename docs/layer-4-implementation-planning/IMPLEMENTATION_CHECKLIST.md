@@ -34,30 +34,42 @@ TECH_DECISIONS v1.2, DATA_SCHEMAS, API_CONTRACTS
 - [ ] LLM API key
 - [ ] Transcription provider access
 
-## 2. Event Infrastructure
+## 2. Event Infrastructure ✅ COMPLETED
 
-### 2.1 Event Log
-- [ ] Создать таблицу event_log
-- [ ] Реализовать idempotency guard
-- [ ] Запретить UPDATE / DELETE
+### 2.1 Event Log ✅
+- [x] Создать таблицу event_log
+- [x] Реализовать idempotency guard
+- [x] Запретить UPDATE / DELETE
 
-### 2.2 Event Emission
-- [ ] Функция emit_event(event_type, entity, payload)
-- [ ] Проверка idempotency_key
-- [ ] Логирование ошибок
+### 2.2 Event Emission ✅
+- [x] Функция emit_event(event_type, entity, payload)
+- [x] Проверка idempotency_key
+- [x] Логирование ошибок
 
-## 3. Ingestion & Creative Registration
+**Статус:** ✅ **Event Infrastructure готова**
+- Таблица: `genomai.event_log` - создана с индексами
+- Append-only защита: триггеры работают
+- Idempotency: индекс на `idempotency_key` создан
 
-### 3.1 Telegram → n8n
-- [ ] Webhook для приёма video_url + tracker_id
-- [ ] Валидация payload
-- [ ] Генерация creative_id
-- [ ] Emit CreativeReferenceReceived
+## 3. Ingestion & Creative Registration ✅ COMPLETED
 
-### 3.2 Creative Storage
-- [ ] Insert в creatives
-- [ ] Проверка идемпотентности
-- [ ] Статус registered
+### 3.1 Telegram → n8n ✅
+- [x] Webhook для приёма video_url + tracker_id
+- [x] Валидация payload
+- [x] Генерация creative_id
+- [x] Emit CreativeReferenceReceived
+
+### 3.2 Creative Storage ✅
+- [x] Insert в creatives
+- [x] Проверка идемпотентности
+- [x] Статус registered
+
+**Статус:** ✅ **STEP 01 завершён и протестирован**
+- Workflow: `creative_ingestion_webhook` (ID: `dvZvUUmhtPzYOK7X`) - активен
+- Таблица: `genomai.creatives` - создана и протестирована
+- События: `CreativeReferenceReceived`, `CreativeRegistered`, `CreativeIngestionRejected` - реализованы
+- Тестирование: все проверки из playbook пройдены
+- Epic: #1 - закрыт
 
 ## 4. Transcription Pipeline
 - [ ] Триггер транскрипции
@@ -156,7 +168,7 @@ TECH_DECISIONS v1.2, DATA_SCHEMAS, API_CONTRACTS
 ❌ **Decision через LLM**  
 ❌ **UPDATE immutable таблиц**  
 ❌ **Snapshot ≠ outcome**  
-❌ **Outcome ≠ learning**  
+❌ **Outcome ≠ learning**
 ❌ **Manual re-run of learning steps** — Learning is event-driven only
 
 ## 17. MVP Done Criteria

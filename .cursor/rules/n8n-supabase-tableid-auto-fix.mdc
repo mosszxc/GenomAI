@@ -1,0 +1,230 @@
+---
+description: АВТОМАТИЧЕСКОЕ исправление проблемы с tableId в Supabase узлах n8n - ВСЕГДА проверять и исправлять
+globs: **/*
+alwaysApply: true
+priority: 1
+---
+
+# Автоматическое исправление tableId в Supabase узлах
+
+## 🚨 СИСТЕМНАЯ ПРОБЛЕМА
+
+**Проблема:** n8n автоматически меняет формат `tableId` с выражения на объект при сохранении workflow, что вызывает ошибку `Could not find the table 'genomai.[object Object]'`.
+
+## ✅ ОБЯЗАТЕЛЬНОЕ ПРАВИЛО
+
+**ПЕРЕД ЛЮБОЙ работой с n8n workflow, содержащим Supabase узлы:**
+
+1. **ВСЕГДА** читать workflow через `n8n_get_workflow` с `mode: "full"`
+2. **ВСЕГДА** проверять все Supabase узлы на формат `tableId`
+3. **ВСЕГДА** исправлять объектный формат на выражение
+4. **ВСЕГДА** применять исправление ко ВСЕМ Supabase узлам
+
+## 🔧 Алгоритм автоматического исправления
+
+### Шаг 1: Проверка всех Supabase узлов
+
+```javascript
+// Для каждого узла типа "n8n-nodes-base.supabase":
+if (node.type === "n8n-nodes-base.supabase") {
+  const tableId = node.parameters.tableId;
+  
+  // Проверяем, является ли tableId объектом
+  if (tableId && typeof tableId === "object" && tableId.__rl === true) {
+    // НУЖНО ИСПРАВИТЬ!
+    const tableName = tableId.value;
+    const fixedTableId = `={{ "${tableName}" }}`;
+    
+    // Применить исправление
+    node.parameters.tableId = fixedTableId;
+  }
+}
+```
+
+### Шаг 2: Применение исправления
+
+Использовать `n8n_update_partial_workflow` для каждого узла:
+
+```javascript
+{
+  "type": "updateNode",
+  "nodeId": "node-id",
+  "updates": {
+    "parameters": {
+      "tableId": "={{ \"table_name\" }}"
+    }
+  }
+}
+```
+
+## 📋 Чеклист перед обновлением workflow
+
+- [ ] Прочитан workflow через `n8n_get_workflow` с `mode: "full"`
+- [ ] Проверены ВСЕ Supabase узлы на формат `tableId`
+- [ ] Найдены все узлы с объектным форматом `{"__rl": true, ...}`
+- [ ] Исправлены ВСЕ найденные узлы на выражение `={{ "table_name" }}`
+- [ ] Применены исправления через `n8n_update_partial_workflow`
+
+## 🎯 Правило для всех операций
+
+**ВСЕГДА использовать выражение для `tableId`:**
+
+```json
+// ✅ ПРАВИЛЬНО (для ВСЕХ операций):
+{
+  "useCustomSchema": true,
+  "schema": "genomai",
+  "tableId": "={{ \"table_name\" }}"
+}
+
+// ❌ НЕПРАВИЛЬНО (вызывает ошибку):
+{
+  "tableId": {
+    "__rl": true,
+    "value": "table_name",
+    "mode": "name"
+  }
+}
+```
+
+## 🗄️ КРИТИЧЕСКИ ВАЖНО: Кастомная схема genomai
+
+**При работе с Supabase ВСЕГДА использовать кастомную схему `genomai`:**
+
+```json
+// ✅ ПРАВИЛЬНО:
+{
+  "useCustomSchema": true,
+  "schema": "genomai",
+  "tableId": "={{ \"table_name\" }}"
+}
+
+// ❌ НЕПРАВИЛЬНО (без кастомной схемы):
+{
+  "useCustomSchema": false,
+  "tableId": "={{ \"table_name\" }}"
+}
+```
+
+**Правило:**
+1. **ВСЕГДА** устанавливать `useCustomSchema: true`
+2. **ВСЕГДА** указывать `schema: "genomai"`
+3. **ТОЛЬКО ПОСЛЕ** этого указывать `tableId` с именем таблицы
+
+**Это применяется ко ВСЕМ Supabase узлам в проекте!**
+
+## ⚠️ КРИТИЧЕСКИ ВАЖНО
+
+- Это **системная проблема n8n** - формат меняется автоматически
+- Нужно исправлять **каждый раз** при работе с workflow
+- **НЕ** полагаться на то, что формат останется правильным
+- **ВСЕГДА** проверять и исправлять перед сохранением
+
+## 🔄 Автоматизация
+
+**ОБЯЗАТЕЛЬНО выполнять при каждом обновлении workflow:**
+
+1. **ВСЕГДА** читать workflow через `n8n_get_workflow` с `mode: "full"`
+2. **ВСЕГДА** найти все Supabase узлы (тип `"n8n-nodes-base.supabase"`)
+3. **ВСЕГДА** проверить формат `tableId` в каждом узле
+4. **ВСЕГДА** исправить все найденные проблемы (объект → выражение)
+5. **ВСЕГДА** применить исправления через `n8n_update_partial_workflow`
+
+**Функция автоматического исправления:**
+
+```javascript
+// Псевдокод для автоматического исправления
+function autoFixSupabaseTableId(workflow) {
+  const operations = [];
+  
+  workflow.nodes.forEach(node => {
+    if (node.type === "n8n-nodes-base.supabase") {
+      const tableId = node.parameters?.tableId;
+      
+      // Проверяем, является ли tableId объектом
+      if (tableId && typeof tableId === "object" && tableId.__rl === true) {
+        const tableName = tableId.value;
+        const fixedTableId = `={{ "${tableName}" }}`;
+        
+        operations.push({
+          type: "updateNode",
+          nodeId: node.id,
+          updates: {
+            parameters: {
+              ...node.parameters,
+              tableId: fixedTableId
+            }
+          }
+        });
+      }
+    }
+  });
+  
+  // Применить все исправления
+  if (operations.length > 0) {
+    n8n_update_partial_workflow({
+      id: workflow.id,
+      operations: operations
+    });
+  }
+}
+```
+
+**Это должно быть автоматическим процессом, не требующим напоминаний!**
+
+## 🎯 КРИТИЧЕСКОЕ ПРАВИЛО - АВТОМАТИЧЕСКОЕ ИСПРАВЛЕНИЕ
+
+**ОБЯЗАТЕЛЬНО выполнять ПЕРЕД ЛЮБЫМ обновлением n8n workflow:**
+
+1. **ВСЕГДА** читать workflow через `n8n_get_workflow` с `mode: "full"`
+2. **ВСЕГДА** найти все Supabase узлы (тип `"n8n-nodes-base.supabase"`)
+3. **ВСЕГДА** проверить формат `tableId` в каждом узле
+4. **ВСЕГДА** исправить все найденные проблемы (объект `{"__rl": true, ...}` → выражение `={{ "table_name" }}`)
+5. **ВСЕГДА** применить исправления через `n8n_update_partial_workflow` **ДО** любых других изменений
+
+**Алгоритм автоматического исправления:**
+
+```javascript
+// 1. Прочитать workflow
+const workflow = await n8n_get_workflow({id: workflowId, mode: "full"});
+
+// 2. Найти все Supabase узлы с проблемой
+const operations = [];
+workflow.nodes.forEach(node => {
+  if (node.type === "n8n-nodes-base.supabase") {
+    const tableId = node.parameters?.tableId;
+    
+    // Проверяем, является ли tableId объектом
+    if (tableId && typeof tableId === "object" && tableId.__rl === true) {
+      const tableName = tableId.value;
+      const fixedTableId = `={{ "${tableName}" }}`;
+      
+      operations.push({
+        type: "updateNode",
+        nodeId: node.id,
+        updates: {
+          parameters: {
+            ...node.parameters,
+            tableId: fixedTableId
+          }
+        }
+      });
+    }
+  }
+});
+
+// 3. Применить все исправления ОДНИМ запросом
+if (operations.length > 0) {
+  await n8n_update_partial_workflow({
+    id: workflowId,
+    operations: operations
+  });
+}
+```
+
+**⚠️ КРИТИЧЕСКИ ВАЖНО:**
+- **НЕ** ждать напоминаний от пользователя
+- **НЕ** пропускать эту проверку
+- **НЕ** полагаться на то, что формат останется правильным
+- **ВСЕГДА** проверять и исправлять автоматически
+- Это системная проблема n8n - формат меняется автоматически при сохранении

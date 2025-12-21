@@ -1,0 +1,569 @@
+---
+description: Правила создания n8n workflows - избегать типичных ошибок
+globs: **/*
+alwaysApply: true
+---
+
+# n8n Workflow Creation Rules
+
+## 🚫 Типичные ошибки, которые нужно избегать
+
+### 1. Node Connections - использовать NAMES, не IDs
+
+**Проблема:**  
+n8n требует использовать node **names** в connections, а не node **IDs**.
+
+**Решение:**  
+Всегда использовать `name` поля узлов в `connections` объекте.
+
+```json
+// ❌ НЕПРАВИЛЬНО:
+"connections": {
+  "webhook-trigger": {
+    "main": [[{"node": "schema-validation", "type": "main", "index": 0}]]
+  }
+}
+
+// ✅ ПРАВИЛЬНО:
+"connections": {
+  "Webhook Trigger": {
+    "main": [[{"node": "Schema Validation", "type": "main", "index": 0}]]
+  }
+}
+```
+
+### 2. IF Nodes - правильный typeVersion, combinator и обработка данных от Supabase
+
+**Проблема:**  
+IF nodes требуют `typeVersion: 2.3` и `combinator: "and"` в conditions. Также Supabase nodes могут возвращать объект (когда найдена одна запись) или массив (когда найдено несколько), что нужно учитывать в условиях IF node.
+
+**Решение:**  
+Всегда использовать правильную структуру для IF nodes и проверять формат данных от Supabase nodes.
+
+```json
+// ✅ ПРАВИЛЬНО (базовая структура):
+{
+  "type": "n8n-nodes-base.if",
+  "typeVersion": 2.3,
+  "parameters": {
+    "conditions": {
+      "combinator": "and",
+      "conditions": [
+        {
+          "id": "condition-1",
+          "leftValue": "={{ $json.valid }}",
+          "rightValue": true,
+          "operator": {
+            "type": "boolean",
+            "operation": "equals"
+          }
+        }
+      ],
+      "options": {
+        "version": 3,
+        "caseSensitive": true,
+        "typeValidation": "strict"
+      }
+    }
+  }
+}
+```
+
+**КРИТИЧЕСКИ ВАЖНО: Обработка данных от Supabase nodes**
+
+Supabase node с операцией `getAll` может возвращать:
+- **Объект** `{id: "...", ...}` — когда найдена одна запись
+- **Массив** `[{id: "...", ...}]` — когда найдено несколько записей
+- **Пустой массив** `[]` — когда ничего не найдено
+
+**Правильное условие для проверки наличия записи:**
+
+```json
+// ✅ ПРАВИЛЬНО (универсальная проверка):
+{
+  "leftValue": "={{ $json.id || (Array.isArray($json) && $json.length > 0 && $json[0].id) || '' }}",
+  "rightValue": "",
+  "operator": {
+    "type": "string",
+    "operation": "isNotEmpty",
+    "singleValue": true
+  }
+}
+```
+
+**Логика:**
+- Если `$json` — объект с `id` → возвращает `id` → TRUE
+- Если `$json` — массив с элементами, у которых есть `id` → возвращает `id` → TRUE
+- Если `$json` — пустой массив или объект без `id` → возвращает пустую строку → FALSE
+
+**Пример использования (проверка существования idea):**
+
+```json
+// IF node "Idea Found?"
+{
+  "conditions": {
+    "combinator": "and",
+    "conditions": [
+      {
+        "id": "found-check",
+        "leftValue": "={{ $json.id || (Array.isArray($json) && $json.length > 0 && $json[0].id) || '' }}",
+        "rightValue": "",
+        "operator": {
+          "type": "string",
+          "operation": "isNotEmpty",
+          "singleValue": true
+        }
+      }
+    ],
+    "options": {
+      "version": 3,
+      "caseSensitive": true,
+      "typeValidation": "strict"
+    }
+  }
+}
+```
+
+**❌ НЕПРАВИЛЬНО:**
+```json
+// Не работает, если Supabase вернул объект:
+{
+  "leftValue": "={{ $json.id }}",  // Работает только для объекта
+  "operator": {"type": "string", "operation": "isNotEmpty"}
+}
+
+// Не работает, если Supabase вернул объект:
+{
+  "leftValue": "={{ Array.isArray($json) ? $json.length : 0 }}",  // Не работает для объекта
+  "rightValue": "0",
+  "operator": {"type": "number", "operation": "gt"}
+}
+```
+
+### 3. Supabase Nodes - всегда использовать genomai schema и expression для tableId
+
+**Проблема:**  
+Таблицы находятся в схеме `genomai`, а не `public`. Также нужно правильно настроить формат `tableId`, поля для create операций и фильтры для getAll. При создании workflow через MCP n8n может не загрузить список таблиц автоматически, и `tableId` остается пустым.
+
+**Решение:**  
+Всегда указывать `useCustomSchema: true`, `schema: "genomai"` и **использовать expression для `tableId`**, чтобы гарантировать, что значение будет установлено.
+
+**КРИТИЧЕСКИ ВАЖНО:** 
+1. **ВСЕГДА** сначала устанавливать `useCustomSchema: true`
+2. **ВСЕГДА** затем указывать `schema: "genomai"`
+3. **ТОЛЬКО ПОСЛЕ** этого указывать `tableId` с именем таблицы
+4. Всегда использовать expression `={{ "table_name" }}` для `tableId` в операциях `create`, чтобы избежать ошибки "table name or ID is not filled".
+
+**Порядок настройки Supabase узла:**
+```json
+{
+  "useCustomSchema": true,    // ← ШАГ 1: Включить кастомную схему
+  "schema": "genomai",         // ← ШАГ 2: Указать схему genomai
+  "tableId": "={{ \"table_name\" }}"  // ← ШАГ 3: Только после этого указать table name
+}
+```
+
+```json
+// ✅ ПРАВИЛЬНО (getAll - объект или expression):
+{
+  "type": "n8n-nodes-base.supabase",
+  "parameters": {
+    "resource": "row",
+    "operation": "getAll",
+    "useCustomSchema": true,
+    "schema": "genomai",
+    "tableId": {
+      "__rl": true,
+      "value": "creatives",
+      "mode": "name"
+    },
+    // ИЛИ использовать expression:
+    // "tableId": "={{ \"creatives\" }}",
+    "filters": {
+      "conditions": [
+        {
+          "keyName": "video_url",
+          "condition": "eq",
+          "keyValue": "={{ $json.video_url }}"
+        }
+      ]
+    }
+  }
+}
+
+// ✅ ПРАВИЛЬНО (create - ВСЕГДА использовать expression):
+{
+  "type": "n8n-nodes-base.supabase",
+  "parameters": {
+    "useCustomSchema": true,
+    "schema": "genomai",
+    "tableId": "={{ \"creatives\" }}",  // ← ВСЕГДА expression для create!
+    "fieldsUi": {
+      "fieldValues": [
+        {
+          "fieldId": "video_url",
+          "fieldValue": "={{ $json.video_url }}"
+        },
+        {
+          "fieldId": "tracker_id",
+          "fieldValue": "={{ $json.tracker_id }}"
+        },
+        {
+          "fieldId": "source_type",
+          "fieldValue": "={{ $json.source_type }}"
+        }
+      ]
+    }
+  }
+}
+
+// ✅ ПРАВИЛЬНО (create event_log - ВСЕГДА expression):
+{
+  "type": "n8n-nodes-base.supabase",
+  "parameters": {
+    "useCustomSchema": true,
+    "schema": "genomai",
+    "tableId": "={{ \"event_log\" }}",  // ← ВСЕГДА expression!
+    "fieldsUi": {
+      "fieldValues": [
+        {
+          "fieldId": "event_type",
+          "fieldValue": "CreativeRegistered"
+        },
+        {
+          "fieldId": "entity_type",
+          "fieldValue": "creative"
+        },
+        {
+          "fieldId": "entity_id",
+          "fieldValue": "={{ $json.id }}"
+        },
+        {
+          "fieldId": "payload",
+          "fieldValue": "={{ JSON.stringify($json) }}"
+        },
+        {
+          "fieldId": "occurred_at",
+          "fieldValue": "={{ $now }}"
+        },
+        {
+          "fieldId": "idempotency_key",
+          "fieldValue": "={{ \"registered:\" + $json.video_url + \":\" + $json.tracker_id }}"
+        }
+      ]
+    }
+  }
+}
+
+// ❌ НЕПРАВИЛЬНО (строка без expression - может быть пустой):
+{
+  "parameters": {
+    "useCustomSchema": true,
+    "schema": "genomai",
+    "tableId": "creatives"  // Может быть пустым при создании через MCP!
+  }
+}
+
+// ❌ НЕПРАВИЛЬНО (объект для create - может не работать):
+{
+  "parameters": {
+    "useCustomSchema": true,
+    "schema": "genomai",
+    "tableId": {
+      "__rl": true,
+      "value": "creatives",
+      "mode": "name"
+    }  // Для create лучше использовать expression
+  }
+}
+```
+
+### 4. Webhook Trigger - onError handling
+
+**Проблема:**  
+Webhook может падать при ошибках.
+
+**Решение:**  
+Всегда добавлять `onError: "continueRegularOutput"` к Webhook Trigger.
+
+```json
+// ✅ ПРАВИЛЬНО:
+{
+  "type": "n8n-nodes-base.webhook",
+  "parameters": {
+    "onError": "continueRegularOutput"
+  }
+}
+```
+
+### 5. Supabase tableId - СИСТЕМНАЯ ПРОБЛЕМА: автоматическое исправление
+
+**Проблема:**  
+n8n автоматически меняет формат `tableId` с выражения `={{ "table_name" }}` на объект `{"__rl": true, "value": "table_name", "mode": "name"}` при сохранении workflow. Это приводит к ошибке `Could not find the table 'genomai.[object Object]'`.
+
+**РЕШЕНИЕ - АВТОМАТИЧЕСКОЕ ИСПРАВЛЕНИЕ:**
+
+**КРИТИЧЕСКИ ВАЖНО:** При ЛЮБОЙ работе с Supabase узлами:
+1. **ВСЕГДА** проверять формат `tableId` во всех Supabase узлах
+2. **ВСЕГДА** исправлять объектный формат на выражение: `tableId: '={{ "table_name" }}'`
+3. **ВСЕГДА** применять это исправление для ВСЕХ операций (getAll, create, update, delete)
+
+**Правило исправления:**
+```javascript
+// ❌ НЕПРАВИЛЬНО (объект - вызывает ошибку):
+{
+  "tableId": {
+    "__rl": true,
+    "value": "ideas",
+    "mode": "name"
+  }
+}
+
+// ✅ ПРАВИЛЬНО (выражение - ВСЕГДА работает):
+{
+  "tableId": "={{ \"ideas\" }}"
+}
+```
+
+**Алгоритм автоматического исправления:**
+1. При чтении workflow через `n8n_get_workflow` - проверить все Supabase узлы
+2. Если `tableId` - объект с `__rl: true` - заменить на выражение
+3. Извлечь `value` из объекта и создать выражение: `'={{ "' + value + '" }}'`
+4. Применить исправление ко ВСЕМ Supabase узлам в workflow
+
+**Пример исправления:**
+```javascript
+// До исправления:
+{
+  "tableId": {"__rl": true, "value": "ideas", "mode": "name"}
+}
+
+// После исправления:
+{
+  "tableId": "={{ \"ideas\" }}"
+}
+```
+
+**⚠️ КРИТИЧЕСКИ ВАЖНО:**
+- **ВСЕГДА** использовать выражение `={{ "table_name" }}` для `tableId` во ВСЕХ Supabase узлах
+- **НЕ** использовать объектный формат `{"__rl": true, ...}` - он вызывает ошибки
+- **АВТОМАТИЧЕСКИ** исправлять эту проблему при каждом обновлении workflow
+- Это системная проблема n8n - формат меняется автоматически, нужно исправлять каждый раз
+
+### 6. Supabase create operations - обязательные fieldsUi и tableId expression
+
+**Проблема:**  
+При операции `create` нужно указывать `fieldsUi` с полями для создания записи. Также `tableId` может быть пустым при создании workflow через MCP.
+
+**Решение:**  
+Всегда указывать `fieldsUi.fieldValues` с массивом объектов `{fieldId, fieldValue}`. **ВСЕГДА использовать expression для `tableId`** в create операциях.
+
+```json
+// ✅ ПРАВИЛЬНО:
+{
+  "useCustomSchema": true,
+  "schema": "genomai",
+  "tableId": "={{ \"table_name\" }}",  // ← ВСЕГДА expression для create!
+  "fieldsUi": {
+    "fieldValues": [
+      {
+        "fieldId": "video_url",
+        "fieldValue": "={{ $json.video_url }}"
+      },
+      {
+        "fieldId": "tracker_id",
+        "fieldValue": "={{ $json.tracker_id }}"
+      }
+    ]
+  }
+}
+```
+
+**КРИТИЧЕСКИ ВАЖНО:** 
+- Для операций `create` **ВСЕГДА** использовать `tableId: '={{ "table_name" }}'`
+- Это гарантирует, что значение будет установлено даже при создании workflow через MCP
+- Избегает ошибки "table name or ID is not filled"
+
+### 7. Supabase getAll operations - фильтры для поиска
+
+**Проблема:**  
+При операции `getAll` с условиями поиска нужно указывать `filters`.
+
+**Решение:**  
+Всегда указывать `filters.conditions` для поиска по полям.
+
+```json
+// ✅ ПРАВИЛЬНО:
+{
+  "operation": "getAll",
+  "filters": {
+    "conditions": [
+      {
+        "keyName": "video_url",
+        "condition": "eq",
+        "keyValue": "={{ $json.video_url }}"
+      },
+      {
+        "keyName": "tracker_id",
+        "condition": "eq",
+        "keyValue": "={{ $json.tracker_id }}"
+      }
+    ]
+  }
+}
+```
+
+**ВАЖНО:** В JSON конфигурации используется PostgREST оператор `"eq"`, а не `"equals"` или `"Equals"`. В UI отображается "Equals", но в JSON должно быть `"eq"`.
+
+### 8. Event Log nodes - обязательные поля
+
+**Проблема:**  
+При создании записей в `event_log` нужно указывать все обязательные поля.
+
+**Решение:**  
+Всегда указывать все поля: `event_type`, `entity_type`, `entity_id`, `payload`, `occurred_at`, `idempotency_key`.
+
+```json
+// ✅ ПРАВИЛЬНО:
+{
+  "tableId": {"__rl": true, "value": "event_log", "mode": "name"},
+  "fieldsUi": {
+    "fieldValues": [
+      {"fieldId": "event_type", "fieldValue": "CreativeRegistered"},
+      {"fieldId": "entity_type", "fieldValue": "creative"},
+      {"fieldId": "entity_id", "fieldValue": "={{ $json.id }}"},
+      {"fieldId": "payload", "fieldValue": "={{ JSON.stringify($json) }}"},
+      {"fieldId": "occurred_at", "fieldValue": "={{ $now }}"},
+      {"fieldId": "idempotency_key", "fieldValue": "={{ \"key:\" + $json.id }}"}
+    ]
+  }
+}
+```
+
+### 9. Выражения - string concatenation вместо template literals
+
+**Проблема:**  
+Template literals `${}` не работают в n8n expressions. Нужно использовать string concatenation.
+
+**Решение:**  
+Всегда использовать `+` для конкатенации строк вместо template literals.
+
+```json
+// ✅ ПРАВИЛЬНО:
+"fieldValue": "={{ \"registered:\" + $json.video_url + \":\" + $json.tracker_id }}"
+
+// ❌ НЕПРАВИЛЬНО:
+"fieldValue": "={{ `registered:${$json.video_url}:${$json.tracker_id}` }}"
+```
+
+### 10. Выражения с mixed literal/expression - нужен = prefix
+
+**Проблема:**  
+Если выражение содержит смешанный текст и expression, нужен `=` prefix.
+
+**Решение:**  
+Всегда добавлять `=` перед выражением, если есть смешанный текст.
+
+```json
+// ✅ ПРАВИЛЬНО:
+"value": "=Supabase connection successful! Read {{ $json.length }} records."
+
+// ❌ НЕПРАВИЛЬНО:
+"value": "Supabase connection successful! Read {{ $json.length }} records."
+```
+
+## ✅ Чеклист перед созданием нового workflow
+
+- [ ] Все node names уникальны и описательны
+- [ ] Connections используют node **names**, не IDs
+- [ ] IF nodes имеют `typeVersion: 2.3` и `combinator: "and"`
+- [ ] Все Supabase nodes имеют `useCustomSchema: true` и `schema: "genomai"`
+- [ ] Все `tableId` используют правильный формат (объект для getAll, строка или объект для create - проверить существующие workflows)
+- [ ] Все create operations имеют `fieldsUi.fieldValues` с полями
+- [ ] Все getAll operations с фильтрами имеют `filters.conditions`
+- [ ] Все event_log nodes имеют все обязательные поля: `event_type`, `entity_type`, `entity_id`, `payload`, `occurred_at`, `idempotency_key`
+- [ ] Все выражения используют string concatenation (`+`), не template literals
+- [ ] Все mixed literal/expression имеют `=` prefix
+- [ ] Webhook Trigger имеет `onError: "continueRegularOutput"`
+- [ ] Все tableId используют правильные имена (без `_step01` суффиксов)
+
+## ✅ Чеклист перед изменением существующего workflow
+
+- [ ] Прочитан актуальный workflow через `n8n_get_workflow` с `mode: "full"`
+- [ ] **АВТОМАТИЧЕСКИ проверены ВСЕ Supabase узлы на формат `tableId`**
+- [ ] **АВТОМАТИЧЕСКИ исправлены все найденные проблемы (объект → выражение)**
+- [ ] Проверены последние executions - workflow работает
+- [ ] Понятен актуальный формат `tableId` (строка или объект?)
+- [ ] Понятно, какие параметры указаны, а какие нет
+- [ ] **НЕ МЕНЯЮ формат, если workflow работает**
+- [ ] **НЕ ДОБАВЛЯЮ параметры "на всякий случай"**
+- [ ] Изменения делаются только при ошибках или явном запросе пользователя
+
+**⚠️ КРИТИЧЕСКИ ВАЖНО:** Автоматическая проверка и исправление `tableId` должна выполняться **ПЕРЕД** любыми другими изменениями workflow!
+
+## 🔍 Процесс создания workflow
+
+### Перед созданием:
+
+1. **Проверь существующие правильные workflows:**
+   - Используй `n8n_get_workflow` с `mode: "full"` для проверки правильной структуры
+   - Смотри на уже работающие workflows как на примеры
+   - Проверяй формат `tableId`, `fieldsUi`, `filters` в существующих workflows
+
+2. **Используй полную структуру:**
+   - Не создавай "минимальные" workflows - сразу указывай все необходимые поля
+   - Для Supabase nodes всегда указывай: `useCustomSchema`, `schema`, `tableId` (формат зависит от операции), `fieldsUi` (для create), `filters` (для getAll)
+   - Для event_log всегда указывай все 6 обязательных полей
+
+3. **Проверь выражения:**
+   - Используй string concatenation (`+`), не template literals
+   - Добавляй `=` prefix для mixed literal/expression
+   - Проверяй формат через `n8n_validate_workflow` после создания
+
+4. **Валидация после создания:**
+   - Всегда вызывай `n8n_validate_workflow` после создания
+   - Исправляй все errors сразу
+   - Проверяй warnings (не критично, но рекомендуется исправить)
+
+## 🚫 КРИТИЧЕСКИ ВАЖНО: НЕ МЕНЯТЬ РАБОЧИЙ WORKFLOW
+
+### Перед ЛЮБЫМИ изменениями существующего workflow:
+
+1. **Прочитать актуальный workflow:**
+   ```javascript
+   n8n_get_workflow({id: "workflow-id", mode: "full"})
+   ```
+
+2. **Проверить последние executions:**
+   - Проверить статус последних executions
+   - Убедиться, что workflow работает
+
+3. **Понять актуальный формат:**
+   - Какой формат `tableId` используется? (строка или объект?)
+   - Какие параметры указаны? (`resource`, `operation`, `dataToSend`?)
+   - Какие параметры НЕ указаны, но workflow работает?
+
+4. **НЕ МЕНЯТЬ то, что работает:**
+   - Если `tableId` - строка и workflow работает - НЕ МЕНЯТЬ на объект
+   - Если `tableId` - объект и workflow работает - НЕ МЕНЯТЬ на строку
+   - Если параметры не указаны, но workflow работает - НЕ ДОБАВЛЯТЬ их
+
+5. **Менять только при ошибках:**
+   - Если workflow НЕ работает - тогда исправлять
+   - Если есть ошибки в executions - тогда исправлять
+   - Если пользователь явно просит изменить - тогда менять
+
+### ❌ ЧТО НЕ ДЕЛАТЬ:
+
+- ❌ Не пытаться "исправить" рабочий workflow
+- ❌ Не добавлять параметры "на всякий случай"
+- ❌ Не менять формат без необходимости
+- ❌ Не опираться только на правила - проверять актуальный формат
+
+## 🎯 Ключевые правила
+
+### Для создания нового workflow:
+> **Проверяй структуру workflow перед созданием. Используй правильные имена, версии и схемы с самого начала. Всегда проверяй существующие правильные workflows как примеры. Указывай все необходимые поля сразу, не создавай "минимальные" версии.**
+
+### Для изменения существующего workflow:
+> **ПЕРЕД ЛЮБЫМИ ИЗМЕНЕНИЯМИ: прочитать актуальный workflow, проверить последние executions, понять актуальный формат. НЕ МЕНЯТЬ то, что уже работает. Менять только при ошибках или явном запросе пользователя.**

@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Idea Schema v1",
+  "description": "Canonical Schema for Idea entity - single source of truth for LLM decomposition",
+  "type": "object",
+  "required": [
+    "angle_type",
+    "core_belief",
+    "promise_type",
+    "emotion_primary",
+    "emotion_intensity",
+    "message_structure",
+    "opening_type",
+    "state_before",
+    "state_after",
+    "context_frame",
+    "source_type",
+    "risk_level",
+    "horizon",
+    "schema_version"
+  ],
+  "properties": {
+    "idea_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the idea"
+    },
+    "active_cluster_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Current cluster assignment (may change over time)"
+    },
+    "angle_type": {
+      "type": "string",
+      "enum": ["pain", "fear", "hope", "curiosity", "authority", "social_proof", "urgency", "identity"],
+      "description": "Primary angle of the message"
+    },
+    "core_belief": {
+      "type": "string",
+      "enum": [
+        "problem_is_serious",
+        "problem_is_hidden",
+        "solution_is_simple",
+        "solution_is_safe",
+        "solution_is_scientific",
+        "solution_is_unknown",
+        "others_have_this_problem",
+        "doctors_are_wrong",
+        "time_is_running_out"
+      ],
+      "description": "Core belief being communicated"
+    },
+    "promise_type": {
+      "type": "string",
+      "enum": ["instant", "gradual", "effortless", "hidden", "scientific", "guaranteed", "preventive"],
+      "description": "Type of promise made"
+    },
+    "emotion_primary": {
+      "type": "string",
+      "enum": ["fear", "relief", "anger", "hope", "curiosity", "shame", "trust"],
+      "description": "Primary emotion evoked"
+    },
+    "emotion_intensity": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Intensity of the primary emotion"
+    },
+    "message_structure": {
+      "type": "string",
+      "enum": [
+        "problem_solution",
+        "story_reveal",
+        "myth_debunk",
+        "authority_proof",
+        "question_answer",
+        "before_after",
+        "confession"
+      ],
+      "description": "Structure of the message"
+    },
+    "opening_type": {
+      "type": "string",
+      "enum": ["shock_statement", "direct_question", "personal_story", "authority_claim", "visual_pattern_break"],
+      "description": "Type of opening"
+    },
+    "state_before": {
+      "type": "string",
+      "enum": ["unsafe", "uncertain", "powerless", "ignorant", "overwhelmed", "excluded", "dissatisfied"],
+      "description": "State before the solution"
+    },
+    "state_after": {
+      "type": "string",
+      "enum": ["safe", "confident", "in_control", "informed", "calm", "included", "satisfied"],
+      "description": "State after the solution"
+    },
+    "context_frame": {
+      "type": "string",
+      "enum": ["institutional", "anti_authority", "peer_based", "expert_led", "personal_confession", "ironic"],
+      "description": "Contextual framing"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["internal", "spy", "human_override", "epistemic_shock"],
+      "description": "Source of the idea"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Risk level of the idea"
+    },
+    "horizon": {
+      "type": "string",
+      "enum": ["T1", "T2", "T3"],
+      "description": "Time horizon"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Creation timestamp"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": ["v1"],
+      "description": "Schema version"
+    }
+  },
+  "additionalProperties": false
+}
+
+

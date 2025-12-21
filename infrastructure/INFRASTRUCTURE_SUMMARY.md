@@ -1,8 +1,25 @@
 # Infrastructure Summary
 
 **Агент:** Агент 2 — Infrastructure  
-**Дата:** 2025-01-XX  
+**Дата:** 2025-12-21  
 **Статус:** ✅ Завершено
+
+## ✅ STEP 01 — Ingestion + Validation: COMPLETED & TESTED
+
+**Epic:** #1 - закрыт  
+**Все Issues:** #2, #3, #4, #5, #6, #7, #8, #9 - закрыты  
+**Gate Check:** STEP 01 → STEP 02 - ✅ PASSED
+
+**Реализовано:**
+- ✅ Workflow: `creative_ingestion_webhook` (ID: `dvZvUUmhtPzYOK7X`) - активен
+- ✅ Таблица: `genomai.creatives` - создана и протестирована (7 записей)
+- ✅ Таблица: `genomai.event_log` - создана и протестирована (4 ingestion события)
+- ✅ Все события реализованы и протестированы
+- ✅ Все проверки из playbook пройдены
+
+**Статистика:**
+- Creatives: 7 записей
+- Ingestion Events: 4 события (3 уникальных по idempotency_key)
 
 ## 📋 Выполненные задачи
 
@@ -127,11 +144,29 @@ infrastructure/
 - ✅ `LEARNING_MEMORY_POLICY.md` - learning таблицы
 - ✅ `API_CONTRACTS.md` - структура данных
 
+## ✅ STEP 01 — Ingestion + Validation: COMPLETED & TESTED
+
+**Epic:** #1 - закрыт  
+**Все Issues:** #2, #3, #4, #5, #6, #7, #8, #9 - закрыты  
+**Gate Check:** STEP 01 → STEP 02 - ✅ PASSED
+
+**Реализовано:**
+- ✅ Workflow: `creative_ingestion_webhook` (ID: `dvZvUUmhtPzYOK7X`) - активен
+- ✅ Таблица: `genomai.creatives` - создана и протестирована (7 записей)
+- ✅ Таблица: `genomai.event_log` - создана и протестирована (4 ingestion события)
+- ✅ Все события реализованы: `CreativeReferenceReceived`, `CreativeRegistered`, `CreativeIngestionRejected`
+- ✅ Все проверки из playbook пройдены (Happy path, Idempotency, Invalid input, Garbage input)
+
+**Статистика:**
+- Creatives: 7 записей (7 уникальных по video_url + tracker_id)
+- Ingestion Events: 4 события (3 уникальных по idempotency_key)
+
 ## 🚀 Следующие шаги
 
-1. **Агент 1** может начать работу с таблицей `creatives` (STEP 01)
-2. **n8n workflows** могут использовать Supabase для записи данных
-3. **Event logging** готов к использованию через `emit_event()`
+1. ✅ **STEP 01 завершён** - все компоненты работают
+2. 🟡 **STEP 02 — Decomposition (LLM)** - в процессе (Epic #2)
+3. **n8n workflows** используют Supabase для записи данных
+4. **Event logging** работает через Supabase nodes в workflows
 
 ## 📝 Примечания
 

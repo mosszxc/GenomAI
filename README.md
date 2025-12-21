@@ -330,13 +330,18 @@ Decision Engine
 - ✅ **Error Handling** - [Error Handling Specification](./docs/layer-3-implementation-design/ERROR_HANDLING.md) (v1.0)
 
 **🟦 Layer 4 — Implementation Planning:**
-- 🚧 **Technical Decisions** - [Technical Decisions](./docs/layer-4-implementation-planning/TECH_DECISIONS.md) (v1.0, в разработке)
-- 🚧 **Data Schemas** - [Data Schemas](./docs/layer-4-implementation-planning/DATA_SCHEMAS.md) (v1.0, в разработке)
-- 🚧 **API Contracts** - [API Contracts](./docs/layer-4-implementation-planning/API_CONTRACTS.md) (v1.0, в разработке)
-- 🚧 **Implementation Checklist** - [Implementation Checklist](./docs/layer-4-implementation-planning/IMPLEMENTATION_CHECKLIST.md) (v1.0, в разработке)
+- ✅ **Technical Decisions** - [Technical Decisions](./docs/layer-4-implementation-planning/TECH_DECISIONS.md) (v1.2)
+- ✅ **Data Schemas** - [Data Schemas](./docs/layer-4-implementation-planning/DATA_SCHEMAS.md) (v1.0)
+- ✅ **API Contracts** - [API Contracts](./docs/layer-4-implementation-planning/API_CONTRACTS.md) (v1.0)
+- ✅ **Implementation Checklist** - [Implementation Checklist](./docs/layer-4-implementation-planning/IMPLEMENTATION_CHECKLIST.md) (v1.0)
 - ✅ **Порядок разработки** - [Development Order](./docs/DEVELOPMENT_ORDER.md)
 - ✅ **GitHub репозиторий** - настроен и готов к работе
-- 🚧 **Разработка** - в процессе
+- ✅ **STEP 01 — Ingestion + Validation** - ✅ **COMPLETED & TESTED**
+  - Workflow: `creative_ingestion_webhook` (активен)
+  - Таблицы: `genomai.creatives`, `genomai.event_log` (созданы и протестированы)
+  - События: `CreativeReferenceReceived`, `CreativeRegistered`, `CreativeIngestionRejected` (реализованы)
+  - Epic: #1 - закрыт
+- 🚧 **STEP 02 — Decomposition (LLM)** - в процессе
 
 ---
 
@@ -413,6 +418,35 @@ Decision Engine
 Человек остаётся источником редкого сдвига.
 
 Все остальные решения — ответственность системы.
+
+---
+
+## 🧪 Автоматизация тестирования
+
+### Тестирование n8n Workflows через GitHub Issues
+
+**Новое!** Автоматическое тестирование workflows при упоминании в Issues:
+
+```markdown
+# В Issue добавьте комментарий:
+/test-workflow workflow-id
+
+# Пример:
+/test-workflow mv6diVtqnuwr7qev
+```
+
+**Что произойдёт:**
+1. GitHub Action автоматически запустится
+2. Скрипт начнёт ждать ручного запуска workflow в n8n UI
+3. После запуска workflow, результаты автоматически появятся в комментарии к Issue
+
+**Настройка:**
+- Добавьте `N8N_API_KEY` в GitHub Secrets (Settings → Secrets and variables → Actions)
+- Получить API ключ: n8n Dashboard → Settings → API → Create API Key
+
+**Подробнее:**
+- [GitHub Actions Integration](./tests/scripts/README_GITHUB_ACTIONS.md) — Автоматизация через GitHub Actions
+- [Ручное тестирование](./tests/scripts/README_N8N_TESTING.md) — Ручное тестирование workflows
 
 ---
 
