@@ -147,6 +147,22 @@ infrastructure/
 - ✅ Задача #6: event_log создана
 - ✅ Задача #7: Все таблицы STEP 02-08 созданы
 - ✅ Задача #8: Документация по настройке Supabase готова
+- ✅ Схема `genomai` создана и все таблицы перемещены
+- ✅ Права доступа выданы (anon, authenticated, service_role)
+- ✅ Схема `genomai` экспонирована в Supabase API
+- ✅ n8n workflow создан и протестирован
+- ✅ Supabase node успешно подключается к схеме `genomai`
 
 **Инфраструктура готова к использованию!**
+
+## ✅ Финальная проверка (2025-01-XX)
+
+**Проверено:**
+- ✅ Все 12 таблиц в схеме `genomai` существуют и доступны
+- ✅ Схема `genomai` экспонирована в Supabase Dashboard
+- ✅ Права доступа выданы через миграцию `011_grant_genomai_schema_permissions.sql`
+- ✅ Workflow `Test Supabase Connection` работает (ID: `cpaFx4dhT5gQBB4C`)
+- ✅ Supabase node успешно читает данные из `genomai.event_log`
+
+**Статус:** 🟢 **ГОТОВО К ИСПОЛЬЗОВАНИЮ**
 

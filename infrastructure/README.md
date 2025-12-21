@@ -17,6 +17,10 @@
 infrastructure/
 ├── README.md                    # Этот файл
 ├── SUPABASE_SETUP.md            # Инструкции по настройке Supabase
+├── N8N_SETUP.md                 # Инструкции по настройке n8n
+├── N8N_CREDENTIALS_TEMPLATE.md  # Шаблоны credentials для n8n
+├── N8N_TEST_WORKFLOW.md         # Тестовый workflow для проверки
+├── INFRASTRUCTURE_SUMMARY.md    # Итоговая сводка
 ├── migrations/                   # SQL миграции
 │   ├── 001_event_log.sql        # Таблица event_log (задача #6)
 │   ├── 002_core_tables.sql      # creatives, ideas (STEP 01, 03)
@@ -33,15 +37,20 @@ infrastructure/
 
 ### ✅ Задача #6: Создание таблицы `event_log`
 - Файл: `migrations/001_event_log.sql`
-- Статус: Готово
+- Статус: ✅ Готово (схема `genomai`)
 
 ### ✅ Задача #7: Создание всех таблиц для STEP 02-08
 - Файлы: `migrations/002-007_*.sql`
-- Статус: Готово
+- Статус: ✅ Готово (схема `genomai`)
 
 ### ✅ Задача #8: Настройка Supabase проекта
 - Файл: `SUPABASE_SETUP.md`
-- Статус: Готово
+- Статус: ✅ Готово
+
+### ✅ Настройка n8n instance
+- Файл: `N8N_SETUP.md`
+- Тестовый workflow: `GenomAI - Test Supabase Connection` (ID: `cpaFx4dhT5gQBB4C`)
+- Статус: ✅ Документация готова, workflow создан (требует настройки credential)
 
 ## 🚀 Быстрый старт
 
@@ -58,22 +67,26 @@ infrastructure/
 
 3. **Проверка:**
    ```sql
-   -- Проверьте, что все таблицы созданы
+   -- Проверьте, что все таблицы созданы в схеме genomai
    SELECT table_name 
    FROM information_schema.tables 
-   WHERE table_schema = 'public' 
-   AND table_name IN (
-     'event_log', 'creatives', 'ideas', 'transcripts',
-     'decomposed_creatives', 'raw_metrics_current',
-     'daily_metrics_snapshot', 'outcome_aggregates',
-     'idea_confidence_versions', 'fatigue_state_versions',
-     'hypotheses', 'deliveries'
-   );
+   WHERE table_schema = 'genomai' 
+   AND table_type = 'BASE TABLE'
+   ORDER BY table_name;
    ```
+
+4. **Настройка n8n:**
+   - Следуйте инструкциям в `N8N_SETUP.md`
+   - Создайте Postgres credential в n8n
+   - Протестируйте подключение через workflow `GenomAI - Test Supabase Connection`
 
 ## 📚 Документация
 
-- [Supabase Setup Guide](./SUPABASE_SETUP.md) — Подробная инструкция по настройке
+- [Supabase Setup Guide](./SUPABASE_SETUP.md) — Подробная инструкция по настройке Supabase
+- [n8n Setup Guide](./N8N_SETUP.md) — Инструкции по настройке n8n instance
+- [n8n Credentials Template](./N8N_CREDENTIALS_TEMPLATE.md) — Шаблоны для credentials
+- [n8n Test Workflow](./N8N_TEST_WORKFLOW.md) — Тестовый workflow для проверки
+- [Infrastructure Summary](./INFRASTRUCTURE_SUMMARY.md) — Итоговая сводка по инфраструктуре
 - [DATA_SCHEMAS.md](../docs/layer-4-implementation-planning/DATA_SCHEMAS.md) — Спецификация схем данных
 - [TECH_DECISIONS.md](../docs/layer-4-implementation-planning/TECH_DECISIONS.md) — Технические решения
 
