@@ -248,3 +248,4 @@ decision_traces (
 - ✅ decisions создаются корректно
 - ✅ decision_trace всегда есть
 - ✅ approve / reject / defer работают
+

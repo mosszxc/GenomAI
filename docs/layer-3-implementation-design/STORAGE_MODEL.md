@@ -153,6 +153,18 @@
 - ❌ не равен daily snapshot
 - ✅ равен стабилизированной динамике
 
+**❗ КРИТИЧЕСКОЕ РАЗДЕЛЕНИЕ:**
+
+**System Outcome (`origin_type = system`):**
+- Требует `decision_id IS NOT NULL` и `hypothesis_id IS NOT NULL`
+- Хранит `CPA_window` как единственную метрику успешности в MVP
+- Используется для causal learning (единственный вход в Learning Loop)
+
+**User Outcome (`origin_type = user`):**
+- `decision_id` nullable и `hypothesis_id` nullable
+- Не хранит `CPA_window` как метрику успешности (может хранить для observability)
+- Не используется для learning
+
 ---
 
 ## 7. Layer 4 — Learning Memory Storage
@@ -178,16 +190,25 @@
 
 **Learning Memory может обновляться ТОЛЬКО на основе OutcomeAggregate с `origin_type = system`.**
 
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО — MVP SUCCESS METRIC:**
+
+**В рамках MVP единственной метрикой успешности является CPA_window, рассчитанный по агрегированному временному окну и применимый исключительно к System Outcome.**
+
 **System outcomes (`origin_type = system`):**
-- требуют `decision_id` (не nullable)
+- требуют `decision_id IS NOT NULL` и `hypothesis_id IS NOT NULL`
 - используются для causal updates (confidence, fatigue, death memory)
 - обновляют Learning Memory
+- **Единственный числовой сигнал для learning:** `CPA_window`
+- **Допустимые derived-атрибуты:** `trend(CPA_window)`, `volatility(CPA_window)`
+- **Запрещено:** использование CTR, CVR, ROAS, Early CPA, Engagement metrics
 
 **User outcomes (`origin_type = user`):**
 - `decision_id` nullable (может быть NULL)
+- `hypothesis_id` nullable (может быть NULL)
 - хранятся отдельно
 - используются только для observational memory (discovery, similarity signals)
 - **НЕ обновляют** Learning Memory (confidence, fatigue, death memory, cluster priors)
+- **Явно запрещено:** learning на user outcomes
 
 ---
 

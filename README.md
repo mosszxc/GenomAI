@@ -1,4 +1,4 @@
-# 🧬 GenomAI
+    # 🧬 GenomAI
 
 > Autonomous Creative Decision System — полностью автономная система принятия креативных решений в нестабильной рыночной среде
 

@@ -122,14 +122,22 @@
 
 **Содержит:**
 - агрегированные метрики
-- динамические признаки (trend, volatility, saturation)
+- `CPA_window` — **единственная метрика успешности в MVP**
+- динамические признаки (trend, volatility, saturation) — derived от CPA_window
 - environment_context
 - origin_type (system | user)
 - decision_id (nullable, обязателен для `origin_type = system`)
+- hypothesis_id (nullable, обязателен для `origin_type = system`)
 
-**Критическое правило:**
-- `origin_type = system` → требует Decision (decision_id обязателен)
-- `origin_type = user` → допускается без Decision (decision_id может быть NULL)
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО:**
+
+**OutcomeAggregated допускается:**
+- **без Decision** только при `origin_type = user` (decision_id может быть NULL, hypothesis_id может быть NULL)
+- **с обязательным Decision** при `origin_type = system` (decision_id обязателен, hypothesis_id обязателен)
+
+**Подтверждение:**
+- `OutcomeAppliedToLearning` разрешён только для `origin_type = system`
+- User Outcome никогда не триггерит `OutcomeAppliedToLearning`
 
 👉 **Это единственный допустимый Outcome в системе.**
 
@@ -174,6 +182,14 @@ Outcome учтён в Learning Memory.
 - только если:
   - `origin_type = system`
   - Outcome получен из OutcomeAggregated
+  - `decision_id IS NOT NULL`
+  - `hypothesis_id IS NOT NULL`
+
+**❗ ЖЁСТКОЕ ПРАВИЛО:**
+
+**OutcomeAppliedToLearning разрешён только для `origin_type = system`.**
+
+**User Outcome (`origin_type = user`) никогда не триггерит OutcomeAppliedToLearning.**
 
 ---
 

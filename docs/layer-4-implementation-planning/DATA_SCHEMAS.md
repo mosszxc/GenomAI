@@ -191,6 +191,22 @@ outcome_aggregates (
 - FK логический (через `decision_id`), без каскадных delete
 - CHECK constraint гарантирует causal chain: system outcome всегда связан с Decision
 
+**❗ ПОДТВЕРЖДЕНИЕ СТРУКТУРЫ (GLOBAL ARCHITECTURAL PATCH):**
+
+**Схема уже поддерживает:**
+- ✅ `origin_type` (system | user) — NOT NULL, CHECK constraint
+- ✅ `decision_id` — nullable, обязателен для `origin_type = system` через CHECK constraint
+- ✅ `cpa` (CPA_window) — единственная метрика успешности в MVP
+- ✅ `trend`, `volatility` — derived от CPA_window
+
+**Семантика:**
+- `origin_type = system` → требует `decision_id IS NOT NULL` (enforced через CHECK)
+- `origin_type = user` → `decision_id` nullable (может быть NULL)
+- `cpa` (CPA_window) — единственная метрика для learning/decision в MVP
+- CTR, CVR, ROAS не хранятся как метрики успешности (только observability, если нужно)
+
+**Никаких новых полей не вводить.**
+
 ### 7.2 Migration SQL (для существующих таблиц)
 
 Если таблица `outcome_aggregates` уже создана без `decision_id`, выполните следующую миграцию:

@@ -405,7 +405,30 @@ Requires:
 
 ---
 
-## 15. Final Rule
+## 15. MVP Success Definition
+
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО — MVP SUCCESS METRIC:**
+
+**В рамках MVP единственной метрикой успешности является CPA_window, рассчитанный по агрегированному временному окну и применимый исключительно к System Outcome.**
+
+**Decision Engine не читает CTR / CVR / ROAS.**
+
+**Decision опирается на:**
+- confidence (производная от CPA_window через Learning Loop)
+- fatigue (динамика CPA_window через Learning Loop)
+
+**Запрещено:**
+- ❌ Использование CTR, CVR, ROAS, Early CPA, Engagement metrics для решений
+- ❌ Любые формулировки про "успех" вне CPA_window
+- ❌ Real-time показатели как метрика успешности
+
+**Допустимо:**
+- ✅ CTR, CVR, ROAS как observability (логирование, ручной просмотр)
+- ✅ CPA_window как единственная метрика для learning и decision
+
+---
+
+## 16. Final Rule
 
 **The Decision Engine is the law of the system.**  
 **If another component disagrees with the Decision Engine,  

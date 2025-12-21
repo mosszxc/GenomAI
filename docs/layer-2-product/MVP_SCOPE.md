@@ -92,14 +92,26 @@ SOFT_DEAD и уровни death используются только в full sy
 ### 3.5 Learning Loop (Minimal)
 
 **В MVP Learning Loop обновляет только:**
-- basic confidence (binary / coarse)
-- simple fatigue
-- idea death (hard threshold)
+- basic confidence (binary / coarse) — на основе CPA_window
+- simple fatigue — на основе динамики CPA_window
+- idea death (hard threshold) — на основе CPA_window
+
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО:**
+
+**Единственная метрика успешности:** `CPA_window`
+
+**Формула:** `CPA_window = total_spend(window) / total_conversions(window)`
+
+**Окно:** фиксированное агрегированное окно (D1–D3 или D1–D7, выбрать одно и использовать везде)
+
+**Применяется только к System Outcome.**
 
 **❌ Нет:**
 - сложного decay
 - cluster priors
 - long-term memory
+- multi-metric optimization
+- использования CTR, CVR, ROAS для learning
 
 ### 3.6 Telegram Interaction
 
@@ -168,12 +180,31 @@ SOFT_DEAD и уровни death используются только в full sy
 
 ## 5. MVP Success Criteria
 
+**❗ КРИТИЧЕСКОЕ ПРАВИЛО — MVP SUCCESS METRIC:**
+
+**В рамках MVP единственной метрикой успешности является CPA_window, рассчитанный по агрегированному временному окну и применимый исключительно к System Outcome.**
+
+**Single Success Metric:** `CPA_window`
+
+**Отсутствие multi-metric optimization:**
+- ❌ CTR не используется для learning/decision
+- ❌ CVR не используется для learning/decision
+- ❌ ROAS не используется для learning/decision
+- ❌ Early CPA не используется для learning/decision
+- ❌ Engagement metrics не используются для learning/decision
+
+**Rule-based only, no ML optimism:**
+- Learning основан на простых правилах (например, leads > 0 → +1 confidence)
+- Нет сложных ML-моделей для оптимизации
+- Нет multi-objective optimization
+
 **MVP считается успешным, если:**
 
 ### Система:
 - корректно принимает video_url + tracker_id
 - стабильно транскрибирует
 - принимает детерминированные решения
+- рассчитывает CPA_window для System Outcome
 
 ### Пользователь:
 - получает новые транскрипты
@@ -181,9 +212,10 @@ SOFT_DEAD и уровни death используются только в full sy
 - может возвращать performance
 
 ### Learning:
-- меняет поведение системы со временем
+- меняет поведение системы со временем на основе CPA_window
 - не деградирует
 - не требует ручной правки
+- использует только CPA_window как метрику успешности
 
 ---
 

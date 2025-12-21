@@ -239,6 +239,21 @@ Scope: MVP
 - idempotency_key обязателен для предотвращения дубликатов
 - window_id обязателен (или window_definition) — окно является сущностью в Event Model и Storage Model
 
+**❗ ПОДТВЕРЖДЕНИЕ СТРУКТУРЫ (GLOBAL ARCHITECTURAL PATCH):**
+
+**Структура контракта уже поддерживает:**
+- ✅ `origin_type` (system | user) — обязательное поле
+- ✅ `decision_id` — nullable, обязателен для `origin_type = system`
+- ✅ `cpa` (CPA_window) — единственная метрика успешности в MVP
+
+**Семантика:**
+- `origin_type = system` → требует `decision_id IS NOT NULL` и `hypothesis_id IS NOT NULL`
+- `origin_type = user` → `decision_id` nullable и `hypothesis_id` nullable
+- `cpa` (CPA_window) — единственная метрика для learning/decision в MVP
+- CTR, CVR, ROAS не используются для learning/decision (только observability)
+
+**Никаких новых полей не вводить.**
+
 ## 9. Learning Contract
 
 ### 9.1 Apply Outcome to Learning
@@ -254,7 +269,14 @@ Scope: MVP
 **Правила:**
 - допускается строго один раз
 - только origin_type = system
+- требует decision_id IS NOT NULL и hypothesis_id IS NOT NULL
 - повтор → hard abort
+
+**❗ ПОДТВЕРЖДЕНИЕ (GLOBAL ARCHITECTURAL PATCH):**
+
+**OutcomeAppliedToLearning разрешён только для `origin_type = system`.**
+
+**User Outcome (`origin_type = user`) никогда не триггерит OutcomeAppliedToLearning.**
 
 ## 10. Decision Engine Contract
 
