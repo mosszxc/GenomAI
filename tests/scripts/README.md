@@ -220,6 +220,42 @@ export VERBOSE=true
 
 **Подробнее:** см. [README_GITHUB_ACTIONS.md](./README_GITHUB_ACTIONS.md)
 
+## 🤖 Workflow Testing Agent — Error-Fix Loop
+
+**НОВОЕ!** Агент автоматически тестирует n8n workflows с автоматическим исправлением ошибок в цикле до успеха.
+
+**Принцип работы:**
+1. Тестируешь workflow
+2. Если есть ошибка → исправляешь
+3. Тестируешь снова
+4. Если снова ошибка → исправляешь
+5. Повторяешь до успеха или максимума итераций
+
+**Использование в Cursor:**
+```bash
+# Просто скажи агенту:
+"Протестируй workflow из Issue #22"
+"Исправь и протестируй workflow"
+"Запусти error-fix loop для Epic #23"
+
+# Агент автоматически:
+# 1. Прочитает Issue/Epic
+# 2. Извлечёт Workflow ID(ы)
+# 3. Запустит error-fix loop
+# 4. Покажет результаты
+```
+
+**Ручной запуск:**
+```bash
+# Тестирование одного workflow
+node tests/scripts/fix_and_test_workflow.js 22
+
+# Тестирование всех workflows из Epic
+node tests/scripts/execute_task_block.js 23
+```
+
+**Подробнее:** см. [.cursor/rules/workflow-testing-agent.mdc](../../.cursor/rules/workflow-testing-agent.mdc)
+
 ## 🔗 Связанные документы
 
 ### Основные документы:

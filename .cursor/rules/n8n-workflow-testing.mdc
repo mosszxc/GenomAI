@@ -1,7 +1,7 @@
 ---
 description: Автоматизация тестирования n8n workflows через Cursor
 globs: **/*
-alwaysApply: true
+alwaysApply: false
 ---
 
 # n8n Workflow Testing Automation

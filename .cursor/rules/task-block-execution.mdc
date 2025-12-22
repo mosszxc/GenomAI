@@ -1,7 +1,7 @@
 ---
 description: Выполнение блока задач (Epic/Issues) с автоматическим тестированием и исправлением до конца
 globs: **/*
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Task Block Execution

@@ -17,26 +17,50 @@ priority: 1
 
 1. **ВСЕГДА** читать workflow через `n8n_get_workflow` с `mode: "full"`
 2. **ВСЕГДА** проверять все Supabase узлы на формат `tableId`
-3. **ВСЕГДА** исправлять объектный формат на выражение
-4. **ВСЕГДА** применять исправление ко ВСЕМ Supabase узлам
+3. **ИСПРАВЛЯТЬ объектный формат на выражение ТОЛЬКО при ошибке** `Could not find the table 'genomai.[object Object]'`
+4. **Если workflow работает с объектным форматом без ошибок** - НЕ МЕНЯТЬ (но проверить последние executions)
+5. **Если найдена ошибка** - исправлять объектный формат на выражение для ВСЕХ Supabase узлов
+
+**⚠️ ПРИОРИТЕТ:** Это правило имеет приоритет над правилом "НЕ МЕНЯТЬ рабочий workflow" - если есть ошибка, исправляем независимо от того, работает workflow или нет.
 
 ## 🔧 Алгоритм автоматического исправления
 
-### Шаг 1: Проверка всех Supabase узлов
+### Шаг 1: Проверка ошибок в последних executions
+
+**СНАЧАЛА проверить последние executions на наличие ошибки:**
+```javascript
+// Проверить последние executions
+const executions = await n8n_executions({
+  action: "list",
+  workflowId: workflowId,
+  limit: 5,
+  status: "error"
+});
+
+// Проверить, есть ли ошибка "Could not find the table 'genomai.[object Object]'"
+const hasTableIdError = executions.some(exec => 
+  exec.error?.message?.includes("Could not find the table 'genomai.[object Object]'")
+);
+```
+
+### Шаг 2: Проверка всех Supabase узлов (только если есть ошибка)
 
 ```javascript
-// Для каждого узла типа "n8n-nodes-base.supabase":
-if (node.type === "n8n-nodes-base.supabase") {
-  const tableId = node.parameters.tableId;
-  
-  // Проверяем, является ли tableId объектом
-  if (tableId && typeof tableId === "object" && tableId.__rl === true) {
-    // НУЖНО ИСПРАВИТЬ!
-    const tableName = tableId.value;
-    const fixedTableId = `={{ "${tableName}" }}`;
+// ТОЛЬКО если найдена ошибка в executions:
+if (hasTableIdError) {
+  // Для каждого узла типа "n8n-nodes-base.supabase":
+  if (node.type === "n8n-nodes-base.supabase") {
+    const tableId = node.parameters.tableId;
     
-    // Применить исправление
-    node.parameters.tableId = fixedTableId;
+    // Проверяем, является ли tableId объектом
+    if (tableId && typeof tableId === "object" && tableId.__rl === true) {
+      // НУЖНО ИСПРАВИТЬ!
+      const tableName = tableId.value;
+      const fixedTableId = `={{ "${tableName}" }}`;
+      
+      // Применить исправление
+      node.parameters.tableId = fixedTableId;
+    }
   }
 }
 ```
@@ -60,10 +84,12 @@ if (node.type === "n8n-nodes-base.supabase") {
 ## 📋 Чеклист перед обновлением workflow
 
 - [ ] Прочитан workflow через `n8n_get_workflow` с `mode: "full"`
-- [ ] Проверены ВСЕ Supabase узлы на формат `tableId`
-- [ ] Найдены все узлы с объектным форматом `{"__rl": true, ...}`
-- [ ] Исправлены ВСЕ найденные узлы на выражение `={{ "table_name" }}`
-- [ ] Применены исправления через `n8n_update_partial_workflow`
+- [ ] Проверены последние executions на наличие ошибки `Could not find the table 'genomai.[object Object]'`
+- [ ] Если ошибка найдена - проверены ВСЕ Supabase узлы на формат `tableId`
+- [ ] Если ошибка найдена - найдены все узлы с объектным форматом `{"__rl": true, ...}`
+- [ ] Если ошибка найдена - исправлены ВСЕ найденные узлы на выражение `={{ "table_name" }}`
+- [ ] Если ошибка найдена - применены исправления через `n8n_update_partial_workflow`
+- [ ] Если ошибки нет и workflow работает - НЕ МЕНЯТЬ формат `tableId`
 
 ## 🎯 Правило для всех операций
 
@@ -125,10 +151,14 @@ if (node.type === "n8n-nodes-base.supabase") {
 **ОБЯЗАТЕЛЬНО выполнять при каждом обновлении workflow:**
 
 1. **ВСЕГДА** читать workflow через `n8n_get_workflow` с `mode: "full"`
-2. **ВСЕГДА** найти все Supabase узлы (тип `"n8n-nodes-base.supabase"`)
-3. **ВСЕГДА** проверить формат `tableId` в каждом узле
-4. **ВСЕГДА** исправить все найденные проблемы (объект → выражение)
-5. **ВСЕГДА** применить исправления через `n8n_update_partial_workflow`
+2. **ВСЕГДА** проверить последние executions на наличие ошибки `Could not find the table 'genomai.[object Object]'`
+3. **ЕСЛИ ошибка найдена:**
+   - Найти все Supabase узлы (тип `"n8n-nodes-base.supabase"`)
+   - Проверить формат `tableId` в каждом узле
+   - Исправить все найденные проблемы (объект → выражение)
+   - Применить исправления через `n8n_update_partial_workflow`
+4. **ЕСЛИ ошибки нет и workflow работает:**
+   - НЕ МЕНЯТЬ формат `tableId` (даже если это объект)
 
 **Функция автоматического исправления:**
 
@@ -177,10 +207,14 @@ function autoFixSupabaseTableId(workflow) {
 **ОБЯЗАТЕЛЬНО выполнять ПЕРЕД ЛЮБЫМ обновлением n8n workflow:**
 
 1. **ВСЕГДА** читать workflow через `n8n_get_workflow` с `mode: "full"`
-2. **ВСЕГДА** найти все Supabase узлы (тип `"n8n-nodes-base.supabase"`)
-3. **ВСЕГДА** проверить формат `tableId` в каждом узле
-4. **ВСЕГДА** исправить все найденные проблемы (объект `{"__rl": true, ...}` → выражение `={{ "table_name" }}`)
-5. **ВСЕГДА** применить исправления через `n8n_update_partial_workflow` **ДО** любых других изменений
+2. **ВСЕГДА** проверить последние executions на наличие ошибки `Could not find the table 'genomai.[object Object]'`
+3. **ЕСЛИ ошибка найдена:**
+   - Найти все Supabase узлы (тип `"n8n-nodes-base.supabase"`)
+   - Проверить формат `tableId` в каждом узле
+   - Исправить все найденные проблемы (объект `{"__rl": true, ...}` → выражение `={{ "table_name" }}`)
+   - Применить исправления через `n8n_update_partial_workflow` **ДО** любых других изменений
+4. **ЕСЛИ ошибки нет и workflow работает:**
+   - НЕ МЕНЯТЬ формат `tableId` (даже если это объект)
 
 **Алгоритм автоматического исправления:**
 
@@ -188,43 +222,58 @@ function autoFixSupabaseTableId(workflow) {
 // 1. Прочитать workflow
 const workflow = await n8n_get_workflow({id: workflowId, mode: "full"});
 
-// 2. Найти все Supabase узлы с проблемой
-const operations = [];
-workflow.nodes.forEach(node => {
-  if (node.type === "n8n-nodes-base.supabase") {
-    const tableId = node.parameters?.tableId;
-    
-    // Проверяем, является ли tableId объектом
-    if (tableId && typeof tableId === "object" && tableId.__rl === true) {
-      const tableName = tableId.value;
-      const fixedTableId = `={{ "${tableName}" }}`;
-      
-      operations.push({
-        type: "updateNode",
-        nodeId: node.id,
-        updates: {
-          parameters: {
-            ...node.parameters,
-            tableId: fixedTableId
-          }
-        }
-      });
-    }
-  }
+// 2. Проверить последние executions на наличие ошибки
+const executions = await n8n_executions({
+  action: "list",
+  workflowId: workflowId,
+  limit: 5,
+  status: "error"
 });
 
-// 3. Применить все исправления ОДНИМ запросом
-if (operations.length > 0) {
-  await n8n_update_partial_workflow({
-    id: workflowId,
-    operations: operations
+const hasTableIdError = executions.some(exec => 
+  exec.error?.message?.includes("Could not find the table 'genomai.[object Object]'")
+);
+
+// 3. ТОЛЬКО если найдена ошибка - исправить
+if (hasTableIdError) {
+  const operations = [];
+  workflow.nodes.forEach(node => {
+    if (node.type === "n8n-nodes-base.supabase") {
+      const tableId = node.parameters?.tableId;
+      
+      // Проверяем, является ли tableId объектом
+      if (tableId && typeof tableId === "object" && tableId.__rl === true) {
+        const tableName = tableId.value;
+        const fixedTableId = `={{ "${tableName}" }}`;
+        
+        operations.push({
+          type: "updateNode",
+          nodeId: node.id,
+          updates: {
+            parameters: {
+              ...node.parameters,
+              tableId: fixedTableId
+            }
+          }
+        });
+      }
+    }
   });
+
+  // 4. Применить все исправления ОДНИМ запросом
+  if (operations.length > 0) {
+    await n8n_update_partial_workflow({
+      id: workflowId,
+      operations: operations
+    });
+  }
 }
 ```
 
 **⚠️ КРИТИЧЕСКИ ВАЖНО:**
 - **НЕ** ждать напоминаний от пользователя
-- **НЕ** пропускать эту проверку
-- **НЕ** полагаться на то, что формат останется правильным
-- **ВСЕГДА** проверять и исправлять автоматически
+- **НЕ** пропускать проверку executions на наличие ошибки
+- **ИСПРАВЛЯТЬ только при ошибке** `Could not find the table 'genomai.[object Object]'`
+- **НЕ МЕНЯТЬ** формат, если workflow работает без ошибок
+- **ПРИОРИТЕТ:** Это правило имеет приоритет над "НЕ МЕНЯТЬ рабочий workflow" - если есть ошибка, исправляем
 - Это системная проблема n8n - формат меняется автоматически при сохранении

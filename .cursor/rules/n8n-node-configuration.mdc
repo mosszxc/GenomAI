@@ -1,0 +1,394 @@
+---
+description: Конфигурация n8n узлов с учетом зависимостей свойств - основано на n8n-skills
+globs: **/*
+alwaysApply: true
+---
+
+# n8n Node Configuration
+
+## 🎯 Назначение
+
+Руководство по конфигурации n8n узлов с учетом зависимостей свойств и операций.
+
+**Основано на:** [n8n-skills](https://github.com/czlonkowski/n8n-skills) - n8n Node Configuration skill
+
+## 🔗 Зависимости свойств
+
+### HTTP Request Node:
+
+**Правило:** Если `sendBody: true`, то обязательно указать `contentType`:
+
+```json
+{
+  "sendBody": true,
+  "contentType": "json",  // ← Обязательно!
+  "bodyParameters": {
+    "parameters": [...]
+  }
+}
+```
+
+**Правило:** Если `sendHeaders: true`, то указать `headerParameters`:
+
+```json
+{
+  "sendHeaders": true,
+  "headerParameters": {
+    "parameters": [
+      {
+        "name": "Api-Key",
+        "value": "={{ $json.api_key }}"
+      }
+    ]
+  }
+}
+```
+
+### Supabase Node:
+
+**Правило:** Для операций `create` и `update` обязательно указать `fieldsUi`:
+
+```json
+{
+  "operation": "create",
+  "tableId": "={{ \"table_name\" }}",
+  "fieldsUi": {
+    "fieldValues": [
+      {
+        "fieldId": "field_name",
+        "fieldValue": "={{ $json.value }}"
+      }
+    ]
+  }
+}
+```
+
+**Правило:** Для операций `getAll` с фильтрами указать `filters`:
+
+```json
+{
+  "operation": "getAll",
+  "tableId": "={{ \"table_name\" }}",
+  "filters": {
+    "conditions": [
+      {
+        "keyName": "field_name",
+        "condition": "eq",
+        "keyValue": "={{ $json.value }}"
+      }
+    ]
+  }
+}
+```
+
+**Правило:** Для кастомной схемы ВСЕГДА указывать в правильном порядке:
+
+```json
+{
+  "useCustomSchema": true,    // ← ШАГ 1: Включить кастомную схему
+  "schema": "genomai",         // ← ШАГ 2: Указать схему
+  "tableId": "={{ \"table_name\" }}"  // ← ШАГ 3: Только после этого указать table name
+}
+```
+
+### IF Node:
+
+**Правило:** Всегда использовать `typeVersion: 2.3` и `combinator: "and"`:
+
+```json
+{
+  "type": "n8n-nodes-base.if",
+  "typeVersion": 2.3,
+  "parameters": {
+    "conditions": {
+      "combinator": "and",
+      "conditions": [
+        {
+          "id": "condition-1",
+          "leftValue": "={{ $json.field }}",
+          "rightValue": "value",
+          "operator": {
+            "type": "string",
+            "operation": "equals"
+          }
+        }
+      ],
+      "options": {
+        "version": 3,
+        "caseSensitive": true,
+        "typeValidation": "strict"
+      }
+    }
+  }
+}
+```
+
+### Webhook Node:
+
+**Правило:** Всегда указывать `onError: "continueRegularOutput"`:
+
+```json
+{
+  "type": "n8n-nodes-base.webhook",
+  "parameters": {
+    "httpMethod": "GET",
+    "path": "webhook-path",
+    "responseMode": "lastNode"
+  },
+  "onError": "continueRegularOutput"  // ← Обязательно!
+}
+```
+
+### SplitInBatches Node:
+
+**Правило:** Указывать `batchSize` для контроля размера батча:
+
+```json
+{
+  "type": "n8n-nodes-base.splitInBatches",
+  "parameters": {
+    "batchSize": 50  // ← Рекомендуется для больших объемов данных
+  }
+}
+```
+
+## 🎯 Операционно-специфичные требования
+
+### Supabase Operations:
+
+#### Operation: `getAll`
+
+```json
+{
+  "operation": "getAll",
+  "useCustomSchema": true,
+  "schema": "genomai",
+  "tableId": "={{ \"table_name\" }}",
+  "returnAll": true,
+  "filters": {
+    "conditions": [...]
+  }
+}
+```
+
+#### Operation: `get`
+
+```json
+{
+  "operation": "get",
+  "useCustomSchema": true,
+  "schema": "genomai",
+  "tableId": "={{ \"table_name\" }}",
+  "filters": {
+    "conditions": [
+      {
+        "keyName": "id",
+        "keyValue": "={{ $json.id }}"
+      }
+    ]
+  }
+}
+```
+
+#### Operation: `create`
+
+```json
+{
+  "operation": "create",
+  "useCustomSchema": true,
+  "schema": "genomai",
+  "tableId": "={{ \"table_name\" }}",
+  "fieldsUi": {
+    "fieldValues": [
+      {
+        "fieldId": "field_name",
+        "fieldValue": "={{ $json.value }}"
+      }
+    ]
+  }
+}
+```
+
+#### Operation: `update`
+
+```json
+{
+  "operation": "update",
+  "useCustomSchema": true,
+  "schema": "genomai",
+  "tableId": "={{ \"table_name\" }}",
+  "filters": {
+    "conditions": [
+      {
+        "keyName": "id",
+        "keyValue": "={{ $json.id }}"
+      }
+    ]
+  },
+  "fieldsUi": {
+    "fieldValues": [
+      {
+        "fieldId": "field_name",
+        "fieldValue": "={{ $json.new_value }}"
+      }
+    ]
+  }
+}
+```
+
+## 🤖 AI Connection Types
+
+### Для AI Agent Workflows (8 типов):
+
+1. **OpenAI** - `openAiApi`
+2. **Anthropic** - `anthropicApi`
+3. **Google AI** - `googleAiApi`
+4. **Azure OpenAI** - `azureOpenAiApi`
+5. **Mistral AI** - `mistralApi`
+6. **Cohere** - `cohereApi`
+7. **Hugging Face** - `huggingFaceApi`
+8. **Custom API** - `httpHeaderAuth` или `httpBasicAuth`
+
+**Пример конфигурации:**
+
+```json
+{
+  "type": "n8n-nodes-base.aiAgent",
+  "credentials": {
+    "openAiApi": {
+      "id": "credential-id",
+      "name": "OpenAI API"
+    }
+  },
+  "parameters": {
+    "model": "gpt-4",
+    "prompt": "={{ $json.prompt }}"
+  }
+}
+```
+
+## 📋 Общие паттерны конфигурации
+
+### Паттерн 1: HTTP Request с аутентификацией
+
+```json
+{
+  "type": "n8n-nodes-base.httpRequest",
+  "parameters": {
+    "method": "POST",
+    "url": "={{ $(\"Load Config\").first().json.domain + \"/api/v1/endpoint\" }}",
+    "sendHeaders": true,
+    "headerParameters": {
+      "parameters": [
+        {
+          "name": "Api-Key",
+          "value": "={{ $(\"Load Config\").first().json.api_key }}"
+        }
+      ]
+    },
+    "sendBody": true,
+    "contentType": "json",
+    "bodyParameters": {
+      "parameters": [
+        {
+          "name": "data",
+          "value": "={{ JSON.stringify($json) }}"
+        }
+      ]
+    }
+  },
+  "onError": "continueRegularOutput"
+}
+```
+
+### Паттерн 2: Supabase Create с event_log
+
+```json
+{
+  "type": "n8n-nodes-base.supabase",
+  "parameters": {
+    "useCustomSchema": true,
+    "schema": "genomai",
+    "tableId": "={{ \"event_log\" }}",
+    "fieldsUi": {
+      "fieldValues": [
+        {
+          "fieldId": "event_type",
+          "fieldValue": "EventTypeName"
+        },
+        {
+          "fieldId": "entity_type",
+          "fieldValue": "entity_type"
+        },
+        {
+          "fieldId": "entity_id",
+          "fieldValue": "={{ $json.id }}"
+        },
+        {
+          "fieldId": "payload",
+          "fieldValue": "={{ JSON.stringify($json) }}"
+        },
+        {
+          "fieldId": "occurred_at",
+          "fieldValue": "={{ $now }}"
+        },
+        {
+          "fieldId": "idempotency_key",
+          "fieldValue": "={{ \"key:\" + $json.id }}"
+        }
+      ]
+    }
+  },
+  "onError": "continueRegularOutput"
+}
+```
+
+### Паттерн 3: IF Node с проверкой существования
+
+```json
+{
+  "type": "n8n-nodes-base.if",
+  "typeVersion": 2.3,
+  "parameters": {
+    "conditions": {
+      "combinator": "and",
+      "conditions": [
+        {
+          "id": "exists-check",
+          "leftValue": "={{ $json.id || (Array.isArray($json) && $json.length > 0 && $json[0].id) || '' }}",
+          "rightValue": "",
+          "operator": {
+            "type": "string",
+            "operation": "isNotEmpty",
+            "singleValue": true
+          }
+        }
+      ],
+      "options": {
+        "version": 3,
+        "caseSensitive": true,
+        "typeValidation": "strict"
+      }
+    }
+  }
+}
+```
+
+## 🎯 Ключевые правила
+
+1. **ВСЕГДА проверять зависимости свойств** (sendBody → contentType, sendHeaders → headerParameters)
+2. **Для Supabase ВСЕГДА указывать useCustomSchema и schema ПЕРЕД tableId**
+3. **Для IF nodes ВСЕГДА использовать typeVersion: 2.3 и combinator: "and"**
+4. **Для Webhook ВСЕГДА указывать onError: "continueRegularOutput"**
+5. **Для операций create/update ВСЕГДА указывать fieldsUi**
+
+## 📖 Связанные правила
+
+- `.cursor/rules/n8n-workflow-patterns.mdc` - Паттерны создания workflows
+- `.cursor/rules/n8n-mcp-tools-expert.mdc` - Использование MCP инструментов
+- `.cursor/rules/n8n-supabase-tableid-auto-fix.mdc` - Автоматическое исправление tableId
+
+## 🔗 Источники
+
+- [n8n-skills](https://github.com/czlonkowski/n8n-skills) - n8n Node Configuration skill
+- [n8n Nodes Documentation](https://docs.n8n.io/integrations/)

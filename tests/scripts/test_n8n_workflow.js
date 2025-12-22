@@ -174,8 +174,12 @@ async function triggerWorkflowViaWebhook(workflowId, data = {}) {
             return null;
         }
         
-        const webhookUrl = `${N8N_API_URL.replace('/api/v1', '')}/webhook/${webhookPath}`;
-        log('info', `Запуск через webhook: ${webhookUrl}`);
+        // Для тестирования используем /webhook-test/ вместо /webhook/
+        // Это позволяет тестировать workflow без влияния на production
+        const isTestWebhook = webhookPath.startsWith('test-');
+        const webhookEndpoint = isTestWebhook ? 'webhook-test' : 'webhook';
+        const webhookUrl = `${N8N_API_URL.replace('/api/v1', '')}/${webhookEndpoint}/${webhookPath}`;
+        log('info', `Запуск через ${isTestWebhook ? 'тестовый' : 'production'} webhook: ${webhookUrl}`);
         
         const response = await makeRequest(webhookUrl, {
             method: 'POST',

@@ -191,6 +191,37 @@
 
 **Epic:** #1 - закрыт
 
+### ✅ Статус выполнения (STEP 07 MVP)
+
+**Реализовано:**
+- ✅ Workflow для получения метрик из Keitaro
+- ✅ Получение списка всех кампаний (GET `/admin_api/v1/campaigns`)
+- ✅ Итерация по кампаниям с получением метрик (POST `/admin_api/v1/report/build`)
+- ✅ Агрегация метрик (clicks, conversions, revenue, cost)
+- ✅ Сохранение raw metrics в `genomai.raw_metrics_current` (create/update)
+- ✅ Создание daily snapshot в `genomai.daily_metrics_snapshot`
+- ✅ Event logging в `genomai.event_log`
+- ✅ Workflow: `Outcome Ingestion Keitaro` (ID: `zMHVFT2rM7PpTiJj`) - создан, требует тестирования
+
+**События:**
+- ✅ `RawMetricsObserved` - после сохранения raw metrics
+- ✅ `DailyMetricsSnapshotCreated` - после создания daily snapshot
+
+**Логика:**
+- ✅ Schedule Trigger (cron: `0 3 * * *` - 03:00 UTC ежедневно)
+- ✅ Manual Trigger для тестирования
+- ✅ Загрузка конфигурации из `genomai.keitaro_config`
+- ✅ Обработка всех кампаний из Keitaro
+- ✅ Фильтрация активных кампаний (только с данными за вчерашний день)
+- ✅ Обработка ошибок (пропуск кампаний без данных, не падение workflow)
+
+**Требуется:**
+- ⏳ Тестирование workflow
+- ⏳ Проверка данных в БД после выполнения
+- ⏳ Валидация метрик
+
+**Epic:** #7 - в работе
+
 ---
 
 ## PHASE 7 — Decomposition Layer (первое место для LLM)

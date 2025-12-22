@@ -37,76 +37,133 @@ Outcome ingestion отвечает не на вопрос "почему",
 
 ## 2. n8n Workflow
 
-**Workflow name:** `outcome_ingestion_keitaro`
+**Workflow name:** `Outcome Ingestion Keitaro`  
+**Workflow ID:** `zMHVFT2rM7PpTiJj`  
+**Статус:** Создан, требует тестирования
 
 ### 2.1 Trigger
 
-- **Node:** Scheduler (Cron)
+- **Node:** Schedule Trigger (Cron)
 - **Frequency:** 1 раз в сутки
-- **Time:** фиксированное (например, 03:00 UTC)
+- **Time:** 03:00 UTC (cron: `0 3 * * *`)
+- **Manual Trigger:** Для тестирования и отладки
 
 📌 **Нет realtime ingestion в MVP.**
 
-### 2.2 Pull Raw Metrics
+### 2.2 Load Keitaro Config
 
-- **Node:** HTTP Request (Keitaro API)
+- **Node:** Supabase Get
+- **Таблица:** `keitaro_config`
+- **Фильтр:** `is_active = true`
+
+**Назначение:** Загрузка активной конфигурации Keitaro (domain и api_key) из БД.
+
+📌 **Credentials хранятся в БД, а не в environment variables.**
+
+### 2.3 Pull Raw Metrics
+
+**Логика:**
+1. **Get All Campaigns** (HTTP Request GET `/admin_api/v1/campaigns`)
+   - Получить список всех кампаний из Keitaro
+   - Headers: `Api-Key: {{ api_key }}`
+2. **Extract Campaign IDs** (Function node)
+   - Извлечь `campaign_id` из каждой кампании
+   - `campaign_id` = `tracker_id` в нашей системе
+3. **Loop Over Campaigns** (SplitInBatches)
+   - Итерация по всем `campaign_id`
+4. **Get Campaign Metrics** (HTTP Request POST `/admin_api/v1/report/build`)
+   - Для каждой кампании получить метрики за вчерашний день
+   - Фильтр: `campaign_id` = текущий `tracker_id`
+   - Период: last 24h (yesterday)
+5. **Check Has Data** (IF node)
+   - Проверка наличия данных (rows.length > 0)
+   - Если данных нет → возврат в цикл (пропуск кампании)
+   - Если данные есть → обработка
 
 **Параметры:**
-- период: last 24h
-- идентификация по tracker_id
+- период: last 24h (yesterday)
+- идентификация по `campaign_id` (который = `tracker_id`)
 
-📌 **Ошибка Keitaro ≠ ошибка системы.**
+📌 **Ошибка Keitaro ≠ ошибка системы.**  
+📌 **Если данных нет для кампании → пропускаем, не падаем.**
 
-### 2.3 Persist Raw Metrics (Mutable)
+### 2.4 Aggregate Metrics
 
-- **Node:** Supabase Upsert
+- **Node:** Function node
+- **Назначение:** Агрегация метрик из Keitaro response
+- **Поля:**
+  - `clicks` (сумма всех clicks)
+  - `conversions` (сумма всех conversions/leads)
+  - `revenue` (сумма всего revenue)
+  - `cost` (сумма всего cost/spend)
+
+### 2.5 Persist Raw Metrics (Mutable)
+
+- **Node:** Supabase Get → IF → Update/Create
 - **Таблица:** `raw_metrics_current`
 
-**Поля (примерно):**
-- tracker_id
-- date
-- impressions
-- clicks
-- leads
-- revenue
-- spend
-- updated_at
+**Логика:**
+1. **Persist Raw Metrics** (Supabase Get)
+   - Проверка существования записи по `tracker_id` и `date`
+2. **Check Exists** (IF node)
+   - Если существует → Update
+   - Если не существует → Create
+3. **Update Raw Metrics** / **Create Raw Metrics**
+   - Сохранение агрегированных метрик
+
+**Поля:**
+- tracker_id (text, primary key)
+- date (date, not null)
+- metrics (jsonb, not null) - содержит: clicks, conversions, revenue, cost
+- updated_at (timestamp, not null)
 
 📌 **UPDATE разрешён.**
 
-### 2.4 Emit Event
+### 2.6 Emit Event
 
 **RawMetricsObserved**
 
+- **Node:** Supabase Create (event_log)
+- **Event Type:** `RawMetricsObserved`
+- **Entity Type:** `tracker`
+- **Entity ID:** `tracker_id`
+- **Payload:**
 ```json
 {
-  "tracker_id": "KT-123456",
+  "tracker_id": "campaign_id_from_keitaro",
   "date": "YYYY-MM-DD"
 }
 ```
 
-### 2.5 Daily Snapshot Creation
+### 2.7 Daily Snapshot Creation
 
-- **Node:** Supabase Insert
+- **Node:** Supabase Create
 - **Таблица:** `daily_metrics_snapshot`
 
 **Поля:**
-- `id` (uuid)
-- `tracker_id`
-- `date`
-- `metrics` (jsonb)
-- `created_at`
+- `id` (uuid, primary key, auto-generated)
+- `tracker_id` (text, not null)
+- `date` (date, not null)
+- `metrics` (jsonb, not null) - содержит: clicks, conversions, revenue, cost
+- `created_at` (timestamp, not null, default now())
+
+**Unique constraint:** `(tracker_id, date)` - предотвращает дубликаты
 
 📌 **append-only**  
 📌 **отсутствие snapshot = валидно**
 
-### 2.6 Emit Event
+### 2.8 Emit Event
 
 **DailyMetricsSnapshotCreated**
 
+- **Node:** Supabase Create (event_log)
+- **Event Type:** `DailyMetricsSnapshotCreated`
+- **Entity Type:** `tracker`
+- **Entity ID:** `tracker_id`
+- **Payload:**
 ```json
 {
-  "tracker_id": "KT-123456",
+  "tracker_id": "campaign_id_from_keitaro",
   "date": "YYYY-MM-DD",
   "snapshot_id": "uuid"
 }
@@ -114,7 +171,22 @@ Outcome ingestion отвечает не на вопрос "почему",
 
 ## 3. Хранилище
 
-### 3.1 raw_metrics_current (mutable)
+### 3.1 keitaro_config (configuration)
+
+```sql
+keitaro_config (
+  id          uuid primary key,
+  domain      text not null,
+  api_key     text not null,
+  is_active   boolean not null default true,
+  created_at  timestamp not null,
+  updated_at  timestamp not null
+)
+```
+
+📌 **Только одна активная конфигурация должна существовать.**
+
+### 3.2 raw_metrics_current (mutable)
 
 ```sql
 raw_metrics_current (
@@ -125,7 +197,7 @@ raw_metrics_current (
 )
 ```
 
-### 3.2 daily_metrics_snapshot (immutable)
+### 3.3 daily_metrics_snapshot (immutable)
 
 ```sql
 daily_metrics_snapshot (
@@ -169,6 +241,7 @@ daily_metrics_snapshot (
 ## 5. Definition of Done (DoD)
 
 Шаг считается выполненным, если:
+- ✅ Workflow создан и настроен
 - ✅ raw metrics подтягиваются по cron
 - ✅ raw_metrics_current обновляется
 - ✅ daily snapshot создаётся
@@ -177,6 +250,11 @@ daily_metrics_snapshot (
   - интерпретация
   - learning
   - принятие решений
+
+**Текущий статус:**
+- ✅ Workflow создан (ID: `zMHVFT2rM7PpTiJj`)
+- ⏳ Требуется тестирование
+- ⏳ Требуется проверка данных в БД
 
 ## 6. Типовые ошибки (PR-блокеры)
 
