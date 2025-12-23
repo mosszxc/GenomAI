@@ -21,6 +21,8 @@ def _get_supabase_client() -> Client:
             raise SupabaseError("Missing Supabase credentials. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
         
         supabase = create_client(supabase_url, supabase_key)
+        # Note: Accept-Profile header must be set per-request, not at client level
+        # See individual functions for header usage
     return supabase
 
 
@@ -39,7 +41,8 @@ async def load_idea(idea_id: str) -> dict | None:
     """
     try:
         client = _get_supabase_client()
-        # Use genomai schema via Accept-Profile header
+        # Use genomai schema - set header for this request
+        # PostgREST requires Accept-Profile header for custom schemas
         response = client.table('ideas').select('*').eq('id', idea_id).execute(
             headers={"Accept-Profile": "genomai"}
         )
@@ -64,7 +67,8 @@ async def load_system_state() -> dict:
     """
     try:
         client = _get_supabase_client()
-        # Count active ideas - use genomai schema via Accept-Profile header
+        # Use genomai schema - set header for this request
+        # PostgREST requires Accept-Profile header for custom schemas
         response = client.table('ideas').select('id', count='exact').eq('status', 'active').execute(
             headers={"Accept-Profile": "genomai"}
         )
@@ -95,7 +99,8 @@ async def save_decision(decision: dict) -> dict:
     """
     try:
         client = _get_supabase_client()
-        # Use genomai schema via Accept-Profile header
+        # Use genomai schema - set header for this request
+        # PostgREST requires Accept-Profile header for custom schemas
         response = client.table('decisions').insert(decision).execute(
             headers={"Accept-Profile": "genomai"}
         )
@@ -123,7 +128,8 @@ async def save_decision_trace(trace: dict) -> dict:
     """
     try:
         client = _get_supabase_client()
-        # Use genomai schema via Accept-Profile header
+        # Use genomai schema - set header for this request
+        # PostgREST requires Accept-Profile header for custom schemas
         response = client.table('decision_traces').insert(trace).execute(
             headers={"Accept-Profile": "genomai"}
         )
