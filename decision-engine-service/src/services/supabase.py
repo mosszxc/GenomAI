@@ -6,19 +6,27 @@ import os
 from src.utils.errors import SupabaseError
 
 
-# Initialize Supabase client
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# Initialize Supabase client (lazy initialization)
+supabase: Client | None = None
 
-if not supabase_url or not supabase_key:
-    raise ValueError("Missing Supabase credentials")
 
-supabase: Client = create_client(supabase_url, supabase_key)
+def _get_supabase_client() -> Client:
+    """Get or create Supabase client"""
+    global supabase
+    if supabase is None:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            raise SupabaseError("Missing Supabase credentials. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
+        
+        supabase = create_client(supabase_url, supabase_key)
+    return supabase
 
 
 async def load_idea(idea_id: str) -> dict | None:
     """
-    Load Idea from Supabase
+    Load Idea from Supabase (schema: genomai)
     
     Args:
         idea_id: Idea UUID
@@ -30,7 +38,11 @@ async def load_idea(idea_id: str) -> dict | None:
         SupabaseError: If Supabase operation fails
     """
     try:
-        response = supabase.table('ideas').select('*').eq('id', idea_id).execute()
+        client = _get_supabase_client()
+        # Use genomai schema via Accept-Profile header
+        response = client.table('ideas').select('*').eq('id', idea_id).execute(
+            headers={"Accept-Profile": "genomai"}
+        )
         
         if not response.data or len(response.data) == 0:
             return None
@@ -42,7 +54,7 @@ async def load_idea(idea_id: str) -> dict | None:
 
 async def load_system_state() -> dict:
     """
-    Load System State from Supabase
+    Load System State from Supabase (schema: genomai)
     
     Returns:
         dict: System state with active_ideas_count, max_active_ideas, current_state
@@ -51,8 +63,11 @@ async def load_system_state() -> dict:
         SupabaseError: If Supabase operation fails
     """
     try:
-        # Count active ideas
-        response = supabase.table('ideas').select('id', count='exact').eq('status', 'active').execute()
+        client = _get_supabase_client()
+        # Count active ideas - use genomai schema via Accept-Profile header
+        response = client.table('ideas').select('id', count='exact').eq('status', 'active').execute(
+            headers={"Accept-Profile": "genomai"}
+        )
         
         active_ideas_count = response.count if hasattr(response, 'count') else 0
         
@@ -67,7 +82,7 @@ async def load_system_state() -> dict:
 
 async def save_decision(decision: dict) -> dict:
     """
-    Save Decision to Supabase
+    Save Decision to Supabase (schema: genomai)
     
     Args:
         decision: Decision object
@@ -79,7 +94,11 @@ async def save_decision(decision: dict) -> dict:
         SupabaseError: If Supabase operation fails
     """
     try:
-        response = supabase.table('decisions').insert(decision).execute()
+        client = _get_supabase_client()
+        # Use genomai schema via Accept-Profile header
+        response = client.table('decisions').insert(decision).execute(
+            headers={"Accept-Profile": "genomai"}
+        )
         
         if not response.data or len(response.data) == 0:
             raise SupabaseError("Failed to save decision: no data returned")
@@ -91,7 +110,7 @@ async def save_decision(decision: dict) -> dict:
 
 async def save_decision_trace(trace: dict) -> dict:
     """
-    Save Decision Trace to Supabase
+    Save Decision Trace to Supabase (schema: genomai)
     
     Args:
         trace: Decision trace object
@@ -103,7 +122,11 @@ async def save_decision_trace(trace: dict) -> dict:
         SupabaseError: If Supabase operation fails
     """
     try:
-        response = supabase.table('decision_traces').insert(trace).execute()
+        client = _get_supabase_client()
+        # Use genomai schema via Accept-Profile header
+        response = client.table('decision_traces').insert(trace).execute(
+            headers={"Accept-Profile": "genomai"}
+        )
         
         if not response.data or len(response.data) == 0:
             raise SupabaseError("Failed to save decision trace: no data returned")
