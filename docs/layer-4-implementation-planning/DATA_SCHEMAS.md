@@ -378,6 +378,43 @@ deliveries (
 - idea_confidence_versions (source_outcome_id) (для provenance tracking — поиск learning records по source Outcome)
 - fatigue_state_versions (source_outcome_id) (для provenance tracking — поиск learning records по source Outcome)
 
+## 11. Configuration Tables
+
+### 11.1 config (Mutable)
+
+Централизованное хранилище для конфигурации (API ключи, URLs, токены).
+
+**Назначение:** Хранение секретов и конфигурации для n8n workflows на basic plan (где нет глобальных env vars).
+
+```sql
+config (
+  id                uuid PK,
+  key               text UNIQUE NOT NULL,
+  value             text NOT NULL,
+  description       text,
+  is_secret         boolean NOT NULL DEFAULT false,
+  created_at        timestamp NOT NULL DEFAULT now(),
+  updated_at        timestamp NOT NULL DEFAULT now()
+)
+```
+
+**Правила:**
+- **Mutable:** UPDATE разрешен (для обновления значений)
+- **Unique key:** Каждый `key` уникален
+- **is_secret:** Флаг для UI (маскирование секретов)
+- **Использование:** n8n workflows загружают конфигурацию через Supabase node
+
+**Примеры ключей:**
+- `decision_engine_api_url`: `https://genomai.onrender.com`
+- `decision_engine_api_key`: `[API_KEY]` (секрет)
+- `keitaro_api_url`: `https://keitaro.example.com`
+- `telegram_bot_token`: `[BOT_TOKEN]` (секрет)
+
+**Использование в n8n:**
+1. Supabase node → Load Config (getAll из `genomai.config`)
+2. Function node → Extract values by key
+3. Set node или HTTP Request → Use extracted values
+
 ## 12. Final Rule
 
 Если данные можно перезаписать —
