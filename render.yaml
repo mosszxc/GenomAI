@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: decision-engine-service
+    env: node
+    rootDir: decision-engine-service
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    region: frankfurt
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: API_KEY
+        generateValue: true
+
