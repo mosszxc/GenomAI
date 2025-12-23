@@ -1,15 +1,15 @@
 services:
   - type: web
     name: decision-engine-service
-    env: node
-    buildCommand: npm install
-    startCommand: npm start
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    region: frankfurt
+    plan: free
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: PORT
-        value: 10000
+        value: "10000"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY

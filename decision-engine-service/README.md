@@ -1,8 +1,9 @@
 # Decision Engine Service
 
-**Версия:** v1.0  
+**Версия:** v1.0 (Python)  
 **Статус:** IN DEVELOPMENT  
-**Платформа:** Render
+**Платформа:** Render  
+**Runtime:** Python 3.11+ / FastAPI
 
 ## 📋 Описание
 
@@ -12,13 +13,14 @@ REST API сервис для Decision Engine — детерминированн�
 - Stateless сервис (не хранит состояние между вызовами)
 - Детерминированный (одинаковый input → одинаковый output)
 - Все состояние загружается из Supabase при каждом вызове
+- Реализован на Python/FastAPI
 
 ## 🚀 Быстрый старт
 
 ### Установка
 
 ```bash
-npm install
+pip install -r requirements.txt
 ```
 
 ### Настройка environment variables
@@ -26,8 +28,7 @@ npm install
 Создайте `.env` файл:
 
 ```bash
-NODE_ENV=development
-PORT=3000
+PORT=10000
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 API_KEY=your_api_key_here
@@ -37,48 +38,34 @@ API_KEY=your_api_key_here
 
 ```bash
 # Development
-npm run dev
+uvicorn main:app --reload --host 0.0.0.0 --port 10000
 
 # Production
-npm start
+uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
 ## 📁 Структура проекта
 
 ```
 decision-engine-service/
+├── main.py                    # FastAPI application entry point
 ├── src/
-│   ├── index.js              # Express server entry point
 │   ├── routes/
-│   │   └── decision.js       # POST /api/decision route
+│   │   └── decision.py        # POST /api/decision route
 │   ├── services/
-│   │   ├── decisionEngine.js # Core decision logic
-│   │   └── supabase.js       # Supabase client
+│   │   ├── decision_engine.py  # Core decision logic
+│   │   └── supabase.py        # Supabase client
 │   ├── checks/
-│   │   ├── schemaValidity.js
-│   │   ├── deathMemory.js
-│   │   ├── fatigueConstraint.js
-│   │   ├── pseudoNovelty.js
-│   │   ├── contextValidity.js
-│   │   ├── riskBudget.js
-│   │   ├── horizonCompatibility.js
-│   │   ├── diversityControl.js
-│   │   └── epistemicShock.js
-│   ├── models/
-│   │   ├── Idea.js
-│   │   ├── Decision.js
-│   │   └── DecisionTrace.js
+│   │   ├── __init__.py
+│   │   ├── schema_validity.py
+│   │   ├── death_memory.py
+│   │   ├── fatigue_constraint.py
+│   │   └── risk_budget.py
 │   └── utils/
-│       ├── validators.js
-│       └── errors.js
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-├── package.json
-├── Dockerfile
+│       ├── validators.py
+│       └── errors.py
+├── requirements.txt
 ├── render.yaml
-├── .env.example
 └── README.md
 ```
 
@@ -88,9 +75,39 @@ decision-engine-service/
 
 Принимает решение о допустимости идеи.
 
-**Request:** См. `API_CONTRACTS.md`
+**Headers:**
+```
+Authorization: Bearer <API_KEY>
+Content-Type: application/json
+```
 
-**Response:** См. `API_CONTRACTS.md`
+**Request Body:**
+```json
+{
+  "idea_id": "uuid",
+  "idea": {...},
+  "system_state": {...},
+  "fatigue_state": {...},
+  "death_memory": {...}
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "decision": {
+    "decision_id": "uuid",
+    "idea_id": "uuid",
+    "decision_type": "APPROVE|REJECT|DEFER",
+    "decision_reason": "...",
+    "passed_checks": [...],
+    "failed_checks": [...],
+    "timestamp": "2025-01-01T00:00:00Z"
+  },
+  "decision_trace": {...}
+}
+```
 
 ### GET /health
 
@@ -107,27 +124,33 @@ Health check endpoint.
 ## 🧪 Тестирование
 
 ```bash
-# Unit tests
-npm run test:unit
+# Run with pytest (when tests are added)
+pytest tests/
 
-# Integration tests
-npm run test:integration
-
-# E2E tests
-npm run test:e2e
-
-# All tests
-npm test
+# Run with coverage
+pytest --cov=src tests/
 ```
 
 ## 🚀 Деплой на Render
 
-1. Создайте новый Web Service на Render
-2. Подключите GitHub репозиторий
-3. Настройте environment variables
-4. Render автоматически задеплоит сервис
+Сервис автоматически деплоится через `render.yaml`:
 
-**См. `render.yaml` для конфигурации.**
+```yaml
+services:
+  - type: web
+    name: decision-engine-service
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    region: frankfurt
+    plan: free
+```
+
+**Настройте environment variables в Render Dashboard:**
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `API_KEY`
 
 ## 📚 Документация
 
@@ -139,14 +162,21 @@ npm test
 
 ## 🔒 Безопасность
 
-- API Key authentication
-- Input validation
+- API Key authentication (Bearer token)
+- Input validation (Pydantic models)
 - Error handling
-- Rate limiting (опционально)
+- CORS middleware
 
 ## 📈 Мониторинг
 
-- Health check endpoint
+- Health check endpoint (`/health`)
 - Logging всех решений
-- Metrics (опционально)
+- FastAPI automatic API documentation (`/docs`)
 
+## 🔄 Миграция с Node.js
+
+Сервис переписан с Node.js на Python:
+- Express → FastAPI
+- JavaScript → Python
+- Все checks и логика сохранены
+- API контракт остался прежним

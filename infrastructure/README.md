@@ -23,7 +23,8 @@ infrastructure/
 │   ├── N8N_CREDENTIALS_TEMPLATE.md    # Шаблоны credentials для n8n
 │   ├── N8N_TEST_WORKFLOW.md           # Тестовый workflow для проверки
 │   ├── INFRASTRUCTURE_SUMMARY.md      # Итоговая сводка
-│   └── SUPABASE_SCHEMA_EXPOSURE.md    # Настройка экспорта схемы
+│   ├── SUPABASE_SCHEMA_EXPOSURE.md    # Настройка экспорта схемы
+│   └── RENDER_MCP_INTRO.md            # Интро по Render MCP интеграции
 │
 ├── Telegram:
 │   ├── TELEGRAM_BOT_SETUP.md          # Настройка Telegram бота
@@ -110,6 +111,7 @@ infrastructure/
 - [n8n Credentials Template](./N8N_CREDENTIALS_TEMPLATE.md) — Шаблоны для credentials
 - [n8n Test Workflow](./N8N_TEST_WORKFLOW.md) — Тестовый workflow для проверки
 - [Infrastructure Summary](./INFRASTRUCTURE_SUMMARY.md) — Итоговая сводка по инфраструктуре
+- [Render MCP Intro](./RENDER_MCP_INTRO.md) — Интро по Render MCP интеграции и использованию
 
 ### Telegram:
 - [Telegram Bot Setup Guide](./TELEGRAM_BOT_SETUP.md) — Инструкции по настройке Telegram бота

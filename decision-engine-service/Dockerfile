@@ -1,23 +1,23 @@
-FROM node:18-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy requirements
+COPY requirements.txt .
 
 # Install dependencies
-RUN npm ci --only=production
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/
+COPY main.py .
 
 # Expose port
 EXPOSE 10000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:10000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:10000/health')"
 
 # Start server
-CMD ["npm", "start"]
-
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]
