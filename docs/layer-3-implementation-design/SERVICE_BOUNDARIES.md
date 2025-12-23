@@ -153,7 +153,12 @@
 
 ### 4.6 Decision Engine Service
 
-**Тип:** Stateless
+**Тип:** Stateless REST API Service (Render)
+
+**Реализация:**
+- REST API сервис на Render (Node.js/Express)
+- Endpoint: `POST /api/decision`
+- Вызывается из n8n workflow через HTTP Request
 
 **Отвечает за:**
 - approve / reject / defer / allow_with_constraints
@@ -172,31 +177,34 @@
 **All required state is loaded per execution.**
 
 **Детали:**
-- Decision Engine читает:
+- Decision Engine читает из Supabase при каждом вызове:
+  - Idea (полная структура)
   - Learning Memory (Confidence, Fatigue, Death)
   - Risk Budget / Fatigue
+  - System State
 - Но **НЕ кеширует** эти данные между вызовами
 - Но **НЕ хранит состояние** между вызовами
 - Все требуемое состояние загружается **при каждом выполнении** (per execution)
 - Каждый вызов Decision Engine начинается с "чистого листа"
 
 **⚠️ Имплементационная ловушка:**
-В n8n разработчик **НЕ должен**:
-- ❌ кешировать результаты чтения Memory между вызовами Decision Engine
+В Render service разработчик **НЕ должен**:
+- ❌ кешировать результаты чтения из Supabase между вызовами
 - ❌ хранить состояние Decision Engine между вызовами
-- ❌ использовать глобальные переменные или shared state для Decision Engine
-- ❌ полагаться на предыдущие результаты Decision Engine в текущем вызове
+- ❌ использовать глобальные переменные или shared state
+- ❌ полагаться на предыдущие результаты Decision Engine
 
 **Правильный подход:**
 - ✅ При каждом вызове Decision Engine:
-  - загрузить актуальное состояние Memory из Memory Store
-  - загрузить актуальный Risk Budget / Fatigue
+  - загрузить актуальное состояние из Supabase (Idea, Memory, Risk Budget)
   - выполнить decision logic на основе загруженных данных
-  - вернуть Decision без сохранения состояния
+  - сохранить Decision и Decision Trace в Supabase
+  - вернуть Decision без сохранения состояния в памяти
 - ✅ Каждый вызов Decision Engine независим от предыдущих
+- ✅ Использовать connection pooling для Supabase, но не кешировать данные
 
 **Защита от state drift:**
-Это правило защищает от неявного state drift в n8n, когда кешированные данные могут стать устаревшими между вызовами.
+Это правило защищает от неявного state drift, когда кешированные данные могут стать устаревшими между вызовами.
 
 **Не имеет права:**
 - читать environment напрямую,

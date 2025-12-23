@@ -330,7 +330,8 @@ Decision Engine
 - ✅ **Error Handling** - [Error Handling Specification](./docs/layer-3-implementation-design/ERROR_HANDLING.md) (v1.0)
 
 **🟦 Layer 4 — Implementation Planning:**
-- ✅ **Technical Decisions** - [Technical Decisions](./docs/layer-4-implementation-planning/TECH_DECISIONS.md) (v1.2)
+- ✅ **Technical Decisions** - [Technical Decisions](./docs/layer-4-implementation-planning/TECH_DECISIONS.md) (v1.3)
+- ✅ **Decision Engine Migration** - [Decision Engine Render Migration](./docs/layer-4-implementation-planning/DECISION_ENGINE_RENDER_MIGRATION.md) (v1.0)
 - ✅ **Data Schemas** - [Data Schemas](./docs/layer-4-implementation-planning/DATA_SCHEMAS.md) (v1.0)
 - ✅ **API Contracts** - [API Contracts](./docs/layer-4-implementation-planning/API_CONTRACTS.md) (v1.0)
 - ✅ **Implementation Checklist** - [Implementation Checklist](./docs/layer-4-implementation-planning/IMPLEMENTATION_CHECKLIST.md) (v1.0)
@@ -342,6 +343,13 @@ Decision Engine
   - События: `CreativeReferenceReceived`, `CreativeRegistered`, `CreativeIngestionRejected` (реализованы)
   - Epic: #1 - закрыт
 - 🚧 **STEP 02 — Decomposition (LLM)** - в процессе
+- 🚧 **STEP 04 — Decision Engine** - 🚧 **MIGRATING TO RENDER**
+  - **Статус:** Миграция на Render в процессе
+  - **Текущая реализация:** n8n workflow (`decision_engine_mvp`)
+  - **Целевая реализация:** REST API сервис на Render
+  - **Структура проекта:** `decision-engine-service/` (создана)
+  - **Документация:** [Decision Engine Render Migration](./docs/layer-4-implementation-planning/DECISION_ENGINE_RENDER_MIGRATION.md)
+  - **Playbook:** [04_decision_engine_playbook.md](./docs/layer-4-implementation-planning/STEP_IMPLEMENTATION_PLAYBOOKS/04_decision_engine_playbook.md) (обновлен)
 
 ---
 

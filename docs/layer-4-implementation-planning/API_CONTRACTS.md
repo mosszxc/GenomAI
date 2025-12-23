@@ -278,24 +278,109 @@ Scope: MVP
 
 **User Outcome (`origin_type = user`) никогда не триггерит OutcomeAppliedToLearning.**
 
-## 10. Decision Engine Contract
+## 10. Decision Engine Contract (Render API)
 
-### 10.1 Decision Output
+**⚠️ ВАЖНО:** Decision Engine мигрирован на Render. n8n вызывает Render API.
 
+### 10.1 n8n → Render API (Request)
+
+**Endpoint:** `POST /api/decision`
+
+**Request:**
 ```json
 {
   "idea_id": "uuid",
-  "decision": "approve | reject | defer",
-  "decision_epoch": 3,
-  "decision_trace_id": "uuid",
-  "decided_at": "2025-01-01T00:20:00Z"
+  "idea": {
+    "id": "uuid",
+    "canonical_hash": "string",
+    "active_cluster_id": "uuid",
+    "angle_type": "enum",
+    "core_belief": "enum",
+    "promise_type": "enum",
+    "state_before": "enum",
+    "state_after": "enum",
+    "context_frame": "enum",
+    "status": "string",
+    "risk_level": "enum",
+    "horizon": "enum"
+  },
+  "system_state": {
+    "current_state": "enum",
+    "risk_budget": 1000,
+    "max_active_ideas": 100,
+    "active_ideas_count": 50
+  },
+  "fatigue_state": {
+    "idea_id": "uuid",
+    "fatigue_level": "enum"
+  },
+  "death_memory": {
+    "idea_id": "uuid",
+    "is_dead": false
+  }
+}
+```
+
+**Headers:**
+- `Content-Type: application/json`
+- `Authorization: Bearer {API_KEY}`
+
+### 10.2 Render API → n8n (Response)
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "decision": {
+    "decision_id": "uuid",
+    "idea_id": "uuid",
+    "decision_type": "APPROVE" | "REJECT" | "DEFER" | "ALLOW_WITH_CONSTRAINTS",
+    "decision_reason": "string",
+    "passed_checks": ["check1", "check2"],
+    "failed_checks": [],
+    "failed_check": null,
+    "dominant_constraint": null,
+    "cluster_at_decision": "uuid",
+    "horizon": "enum",
+    "system_state": "enum",
+    "policy_version": "v1.0",
+    "timestamp": "2025-01-01T00:20:00Z"
+  },
+  "decision_trace": {
+    "id": "uuid",
+    "decision_id": "uuid",
+    "checks": [
+      {
+        "check_name": "schema_validity",
+        "order": 1,
+        "result": "PASSED",
+        "details": {}
+      }
+    ],
+    "result": "APPROVE",
+    "created_at": "2025-01-01T00:20:00Z"
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "IDEA_NOT_FOUND" | "INVALID_INPUT" | "SUPABASE_ERROR" | "INTERNAL_ERROR",
+    "message": "string",
+    "details": {}
+  }
 }
 ```
 
 **Правила:**
-- детерминированный
-- воспроизводимый
+- Decision Engine детерминированный
+- Decision Engine воспроизводимый
 - LLM не участвует
+- Decision и Decision Trace сохраняются в Supabase Render API
+- n8n получает результат и эмитит событие DecisionMade
 
 ## 11. Hypothesis Factory Contract
 
