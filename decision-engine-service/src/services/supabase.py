@@ -11,7 +11,7 @@ supabase: Client | None = None
 
 
 def _get_supabase_client() -> Client:
-    """Get or create Supabase client"""
+    """Get or create Supabase client with genomai schema"""
     global supabase
     if supabase is None:
         supabase_url = os.getenv("SUPABASE_URL")
@@ -21,8 +21,10 @@ def _get_supabase_client() -> Client:
             raise SupabaseError("Missing Supabase credentials. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
         
         supabase = create_client(supabase_url, supabase_key)
-        # Note: Accept-Profile header must be set per-request, not at client level
-        # See individual functions for header usage
+        # Set Accept-Profile header for genomai schema on PostgREST session
+        # This header must be set for all requests to use custom schema
+        if hasattr(supabase.postgrest, 'session') and hasattr(supabase.postgrest.session, 'headers'):
+            supabase.postgrest.session.headers.update({"Accept-Profile": "genomai"})
     return supabase
 
 
@@ -41,11 +43,8 @@ async def load_idea(idea_id: str) -> dict | None:
     """
     try:
         client = _get_supabase_client()
-        # Use genomai schema - set header for this request
-        # PostgREST requires Accept-Profile header for custom schemas
-        response = client.table('ideas').select('*').eq('id', idea_id).execute(
-            headers={"Accept-Profile": "genomai"}
-        )
+        # Schema genomai is set at client level via Accept-Profile header
+        response = client.table('ideas').select('*').eq('id', idea_id).execute()
         
         if not response.data or len(response.data) == 0:
             return None
@@ -67,11 +66,8 @@ async def load_system_state() -> dict:
     """
     try:
         client = _get_supabase_client()
-        # Use genomai schema - set header for this request
-        # PostgREST requires Accept-Profile header for custom schemas
-        response = client.table('ideas').select('id', count='exact').eq('status', 'active').execute(
-            headers={"Accept-Profile": "genomai"}
-        )
+        # Schema genomai is set at client level via Accept-Profile header
+        response = client.table('ideas').select('id', count='exact').eq('status', 'active').execute()
         
         active_ideas_count = response.count if hasattr(response, 'count') else 0
         
@@ -99,11 +95,8 @@ async def save_decision(decision: dict) -> dict:
     """
     try:
         client = _get_supabase_client()
-        # Use genomai schema - set header for this request
-        # PostgREST requires Accept-Profile header for custom schemas
-        response = client.table('decisions').insert(decision).execute(
-            headers={"Accept-Profile": "genomai"}
-        )
+        # Schema genomai is set at client level via Accept-Profile header
+        response = client.table('decisions').insert(decision).execute()
         
         if not response.data or len(response.data) == 0:
             raise SupabaseError("Failed to save decision: no data returned")
@@ -128,11 +121,8 @@ async def save_decision_trace(trace: dict) -> dict:
     """
     try:
         client = _get_supabase_client()
-        # Use genomai schema - set header for this request
-        # PostgREST requires Accept-Profile header for custom schemas
-        response = client.table('decision_traces').insert(trace).execute(
-            headers={"Accept-Profile": "genomai"}
-        )
+        # Schema genomai is set at client level via Accept-Profile header
+        response = client.table('decision_traces').insert(trace).execute()
         
         if not response.data or len(response.data) == 0:
             raise SupabaseError("Failed to save decision trace: no data returned")
