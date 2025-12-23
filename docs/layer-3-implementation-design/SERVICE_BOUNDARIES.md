@@ -156,7 +156,7 @@
 **Тип:** Stateless REST API Service (Render)
 
 **Реализация:**
-- REST API сервис на Render (Node.js/Express)
+- REST API сервис на Render (Python/FastAPI)
 - Endpoint: `POST /api/decision`
 - Вызывается из n8n workflow через HTTP Request
 

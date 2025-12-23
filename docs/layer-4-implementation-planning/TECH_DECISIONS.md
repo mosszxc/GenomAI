@@ -118,7 +118,7 @@ Scope: MVP
 
 **Ключевое решение**
 
-Decision Engine реализуется как REST API сервис на Render (Node.js/Express).
+Decision Engine реализуется как REST API сервис на Render (Python/FastAPI).
 
 **Архитектура:**
 - Stateless сервис (не хранит состояние между вызовами)

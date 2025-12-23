@@ -69,7 +69,7 @@ Emit DecisionMade Event
 ### Архитектура сервиса
 
 ```
-Render Service (Node.js/Express)
+Render Service (Python/FastAPI)
     ↓
 POST /api/decision
     ↓
@@ -102,35 +102,32 @@ Emit DecisionMade Event (если нужно)
 
 ```
 decision-engine-service/
+├── main.py                    # FastAPI application entry point
 ├── src/
-│   ├── index.js              # Express server
 │   ├── routes/
-│   │   └── decision.js       # POST /api/decision
+│   │   └── decision.py        # POST /api/decision route
 │   ├── services/
-│   │   ├── decisionEngine.js # Core decision logic
-│   │   └── supabase.js       # Supabase client
+│   │   ├── decision_engine.py  # Core decision logic
+│   │   └── supabase.py        # Supabase client
 │   ├── checks/
-│   │   ├── schemaValidity.js
-│   │   ├── deathMemory.js
-│   │   ├── fatigueConstraint.js
-│   │   ├── pseudoNovelty.js
-│   │   ├── contextValidity.js
-│   │   ├── riskBudget.js
-│   │   ├── horizonCompatibility.js
-│   │   ├── diversityControl.js
-│   │   └── epistemicShock.js
-│   ├── models/
-│   │   ├── Idea.js
-│   │   ├── Decision.js
-│   │   └── DecisionTrace.js
+│   │   ├── __init__.py
+│   │   ├── schema_validity.py
+│   │   ├── death_memory.py
+│   │   ├── fatigue_constraint.py
+│   │   ├── risk_budget.py
+│   │   ├── pseudo_novelty.py (future)
+│   │   ├── context_validity.py (future)
+│   │   ├── horizon_compatibility.py (future)
+│   │   ├── diversity_control.py (future)
+│   │   └── epistemic_shock.py (future)
 │   └── utils/
-│       ├── validators.js
-│       └── errors.js
+│       ├── validators.py
+│       └── errors.py
 ├── tests/
 │   ├── unit/
 │   ├── integration/
 │   └── e2e/
-├── package.json
+├── requirements.txt
 ├── Dockerfile
 ├── render.yaml
 ├── .env.example
@@ -284,39 +281,43 @@ decision-engine-service/
 
 ### Unit Tests
 
-```javascript
-// tests/unit/checks/schemaValidity.test.js
-describe('Schema Validity Check', () => {
-  it('should PASS for valid idea', () => {
-    // ...
-  });
-  
-  it('should REJECT for invalid idea', () => {
-    // ...
-  });
-});
+```python
+# tests/unit/checks/test_schema_validity.py
+import pytest
+from src.checks.schema_validity import schema_validity
+
+def test_schema_validity_pass_for_valid_idea():
+    """Should PASS for valid idea"""
+    # ...
+    
+def test_schema_validity_reject_for_invalid_idea():
+    """Should REJECT for invalid idea"""
+    # ...
 ```
 
 ### Integration Tests
 
-```javascript
-// tests/integration/decisionEngine.test.js
-describe('Decision Engine Integration', () => {
-  it('should make decision and persist to Supabase', async () => {
-    // ...
-  });
-});
+```python
+# tests/integration/test_decision_engine.py
+import pytest
+from src.services.decision_engine import make_decision
+
+@pytest.mark.asyncio
+async def test_decision_engine_persist_to_supabase():
+    """Should make decision and persist to Supabase"""
+    # ...
 ```
 
 ### E2E Tests
 
-```javascript
-// tests/e2e/fullFlow.test.js
-describe('Full Decision Flow', () => {
-  it('should handle IdeaRegistered event end-to-end', async () => {
-    // ...
-  });
-});
+```python
+# tests/e2e/test_full_flow.py
+import pytest
+
+@pytest.mark.asyncio
+async def test_full_decision_flow():
+    """Should handle IdeaRegistered event end-to-end"""
+    # ...
 ```
 
 ---
@@ -348,14 +349,16 @@ describe('Full Decision Flow', () => {
 services:
   - type: web
     name: decision-engine-service
-    env: node
-    buildCommand: npm install
-    startCommand: npm start
+    env: python
+    rootDir: decision-engine-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    region: frankfurt
+    plan: free
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: PORT
-        value: 10000
+        value: "10000"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -367,7 +370,6 @@ services:
 ### Environment Variables
 
 ```bash
-NODE_ENV=production
 PORT=10000
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
