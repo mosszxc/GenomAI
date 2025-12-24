@@ -2,9 +2,9 @@
 Supabase client and data access functions
 """
 from supabase import create_client, Client
-from supabase.lib.client_options import ClientOptions
 import os
 from src.utils.errors import SupabaseError
+import httpx
 
 
 # Initialize Supabase client (lazy initialization)
@@ -24,9 +24,17 @@ def _get_supabase_client() -> Client:
         if not supabase_url or not supabase_key:
             raise SupabaseError("Missing Supabase credentials. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
 
-        # Create client with genomai schema
-        options = ClientOptions(schema=SCHEMA)
-        supabase = create_client(supabase_url, supabase_key, options=options)
+        supabase = create_client(supabase_url, supabase_key)
+
+        # Set Accept-Profile and Content-Profile headers for genomai schema
+        # This must be done on the underlying httpx client
+        supabase.postgrest.auth(
+            token=supabase_key,
+            headers={
+                "Accept-Profile": SCHEMA,
+                "Content-Profile": SCHEMA
+            }
+        )
     return supabase
 
 
