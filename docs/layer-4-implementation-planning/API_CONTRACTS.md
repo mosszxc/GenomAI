@@ -282,11 +282,20 @@ Scope: MVP
 
 **⚠️ ВАЖНО:** Decision Engine мигрирован на Render. n8n вызывает Render API.
 
+**✅ ОПТИМИЗИРОВАНО:** Только `idea_id` обязателен. Render API сам загружает все необходимые данные из Supabase.
+
 ### 10.1 n8n → Render API (Request)
 
 **Endpoint:** `POST /api/decision`
 
-**Request:**
+**Request (оптимизированный - рекомендуется):**
+```json
+{
+  "idea_id": "uuid"
+}
+```
+
+**Request (полный - для обратной совместимости, не рекомендуется):**
 ```json
 {
   "idea_id": "uuid",
@@ -320,6 +329,8 @@ Scope: MVP
   }
 }
 ```
+
+**Примечание:** Для оптимальной производительности передавайте только `idea_id`. Render API автоматически загрузит idea, system_state, fatigue_state и death_memory из Supabase.
 
 **Headers:**
 - `Content-Type: application/json`

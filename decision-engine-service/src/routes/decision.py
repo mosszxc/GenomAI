@@ -54,15 +54,20 @@ async def create_decision(
     
     Make decision for an idea
     
-    Request Body:
-        - idea_id (optional): UUID of idea
-        - idea (optional): Idea object
-        - system_state (optional): System state
-        - fatigue_state (optional): Fatigue state
-        - death_memory (optional): Death memory
+    Optimized: Only idea_id is required. Render API will load all necessary data from Supabase.
+    
+    Request Body (optimized):
+        - idea_id (required): UUID of idea
+        - idea (optional): Idea object (for backward compatibility, not recommended)
+        - system_state (optional): System state (for backward compatibility, not recommended)
+        - fatigue_state (optional): Fatigue state (for backward compatibility, not recommended)
+        - death_memory (optional): Death memory (for backward compatibility, not recommended)
         
     Returns:
         dict: Decision result with decision and decision_trace
+        
+    Note: For optimal performance, pass only idea_id. Render API will load idea, 
+    system_state, fatigue_state, and death_memory from Supabase automatically.
     """
     # Validate request
     validation_error = validate_decision_request(body)

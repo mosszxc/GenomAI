@@ -1,6 +1,13 @@
-# Dependencies
-node_modules/
-package-lock.json
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
 
 # Environment
 .env
@@ -10,7 +17,6 @@ package-lock.json
 # Logs
 logs/
 *.log
-npm-debug.log*
 
 # OS
 .DS_Store
@@ -23,10 +29,12 @@ Thumbs.db
 *.swo
 
 # Test coverage
-coverage/
-.nyc_output/
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
 
 # Build
 dist/
 build/
-
+*.egg-info/
