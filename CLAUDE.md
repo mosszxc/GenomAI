@@ -69,9 +69,12 @@ Results: APPROVE (all pass) | REJECT (checks 1-3 fail) | DEFER (check 4 fails)
 ### Tech Stack
 
 - **Database:** Supabase PostgreSQL (custom schema: `genomai`)
+  - **Project ID:** `ftrerelppsnbdcmtcwya` (UnionGenerateBuying)
+  - **Region:** ap-southeast-1
 - **Backend:** Python 3.11+, FastAPI, Pydantic
 - **Orchestration:** n8n workflows
 - **Hosting:** Render (Decision Engine), Supabase (data)
+  - **Render URL:** https://genomai.onrender.com
 - **Tracking:** Keitaro (pull-based metrics)
 - **UI:** Telegram Bot
 

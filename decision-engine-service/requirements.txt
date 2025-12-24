@@ -1,7 +1,9 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-supabase==2.3.0
+supabase==2.10.0
 python-dotenv==1.0.0
 pydantic==2.8.2
-# Using pydantic 2.8.2 with pre-built wheels for Python 3.12.7 compatibility
+httpx>=0.27.0
+# Using pydantic 2.8.2 with pre-built wheels for Python 3.11 compatibility
+# supabase 2.10.0 fixes proxy initialization issues
 
