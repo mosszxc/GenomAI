@@ -2,6 +2,7 @@
 Supabase client and data access functions
 """
 from supabase import create_client, Client
+from supabase.lib.client_options import ClientOptions
 import os
 from src.utils.errors import SupabaseError
 
@@ -9,9 +10,12 @@ from src.utils.errors import SupabaseError
 # Initialize Supabase client (lazy initialization)
 supabase: Client | None = None
 
+# Schema name for all operations
+SCHEMA = "genomai"
+
 
 def _get_supabase_client() -> Client:
-    """Get or create Supabase client"""
+    """Get or create Supabase client with genomai schema"""
     global supabase
     if supabase is None:
         supabase_url = os.getenv("SUPABASE_URL")
@@ -20,12 +24,10 @@ def _get_supabase_client() -> Client:
         if not supabase_url or not supabase_key:
             raise SupabaseError("Missing Supabase credentials. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
 
-        supabase = create_client(supabase_url, supabase_key)
+        # Create client with genomai schema
+        options = ClientOptions(schema=SCHEMA)
+        supabase = create_client(supabase_url, supabase_key, options=options)
     return supabase
-
-
-# Schema name for all operations
-SCHEMA = "genomai"
 
 
 async def load_idea(idea_id: str) -> dict | None:
@@ -43,7 +45,7 @@ async def load_idea(idea_id: str) -> dict | None:
     """
     try:
         client = _get_supabase_client()
-        response = client.schema(SCHEMA).table('ideas').select('*').eq('id', idea_id).execute()
+        response = client.table('ideas').select('*').eq('id', idea_id).execute()
 
         if not response.data or len(response.data) == 0:
             return None
@@ -65,7 +67,7 @@ async def load_system_state() -> dict:
     """
     try:
         client = _get_supabase_client()
-        response = client.schema(SCHEMA).table('ideas').select('id', count='exact').eq('status', 'active').execute()
+        response = client.table('ideas').select('id', count='exact').eq('status', 'active').execute()
 
         active_ideas_count = response.count if hasattr(response, 'count') else 0
 
@@ -93,7 +95,7 @@ async def save_decision(decision: dict) -> dict:
     """
     try:
         client = _get_supabase_client()
-        response = client.schema(SCHEMA).table('decisions').insert(decision).execute()
+        response = client.table('decisions').insert(decision).execute()
 
         if not response.data or len(response.data) == 0:
             raise SupabaseError("Failed to save decision: no data returned")
@@ -118,7 +120,7 @@ async def save_decision_trace(trace: dict) -> dict:
     """
     try:
         client = _get_supabase_client()
-        response = client.schema(SCHEMA).table('decision_traces').insert(trace).execute()
+        response = client.table('decision_traces').insert(trace).execute()
 
         if not response.data or len(response.data) == 0:
             raise SupabaseError("Failed to save decision trace: no data returned")
