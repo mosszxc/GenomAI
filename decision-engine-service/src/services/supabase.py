@@ -4,7 +4,6 @@ Supabase client and data access functions
 from supabase import create_client, Client
 import os
 from src.utils.errors import SupabaseError
-import httpx
 
 
 # Initialize Supabase client (lazy initialization)
@@ -27,14 +26,12 @@ def _get_supabase_client() -> Client:
         supabase = create_client(supabase_url, supabase_key)
 
         # Set Accept-Profile and Content-Profile headers for genomai schema
-        # This must be done on the underlying httpx client
-        supabase.postgrest.auth(
-            token=supabase_key,
-            headers={
+        # Access the internal httpx client and update default headers
+        if hasattr(supabase.postgrest, '_session'):
+            supabase.postgrest._session.headers.update({
                 "Accept-Profile": SCHEMA,
                 "Content-Profile": SCHEMA
-            }
-        )
+            })
     return supabase
 
 
