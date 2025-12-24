@@ -1,136 +1,150 @@
 """
 Supabase client and data access functions
+
+Uses direct HTTP requests with proper schema headers to ensure
+all operations use the genomai schema.
 """
-from supabase import create_client, Client
 import os
+import httpx
 from src.utils.errors import SupabaseError
 
-
-# Initialize Supabase client (lazy initialization)
-supabase: Client | None = None
 
 # Schema name for all operations
 SCHEMA = "genomai"
 
 
-def _get_supabase_client() -> Client:
-    """Get or create Supabase client with genomai schema"""
-    global supabase
-    if supabase is None:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+def _get_credentials():
+    """Get Supabase credentials from environment"""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-        if not supabase_url or not supabase_key:
-            raise SupabaseError("Missing Supabase credentials. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.")
+    if not supabase_url or not supabase_key:
+        raise SupabaseError("Missing Supabase credentials")
 
-        supabase = create_client(supabase_url, supabase_key)
+    # Extract the REST URL from Supabase URL
+    # Supabase URL format: https://xxx.supabase.co
+    # REST URL format: https://xxx.supabase.co/rest/v1
+    rest_url = f"{supabase_url}/rest/v1"
 
-        # Set Accept-Profile and Content-Profile headers for genomai schema
-        # Access the internal httpx client and update default headers
-        if hasattr(supabase.postgrest, '_session'):
-            supabase.postgrest._session.headers.update({
-                "Accept-Profile": SCHEMA,
-                "Content-Profile": SCHEMA
-            })
-    return supabase
+    return rest_url, supabase_key
+
+
+def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
+    """Get headers for Supabase REST API with schema"""
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Accept-Profile": SCHEMA,
+        "Content-Type": "application/json"
+    }
+    if for_write:
+        headers["Content-Profile"] = SCHEMA
+        headers["Prefer"] = "return=representation"
+    return headers
 
 
 async def load_idea(idea_id: str) -> dict | None:
-    """
-    Load Idea from Supabase (schema: genomai)
-
-    Args:
-        idea_id: Idea UUID
-
-    Returns:
-        dict: Idea data or None if not found
-
-    Raises:
-        SupabaseError: If Supabase operation fails
-    """
+    """Load Idea from Supabase (schema: genomai)"""
     try:
-        client = _get_supabase_client()
-        response = client.table('ideas').select('*').eq('id', idea_id).execute()
+        rest_url, supabase_key = _get_credentials()
+        headers = _get_headers(supabase_key)
 
-        if not response.data or len(response.data) == 0:
-            return None
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{rest_url}/ideas?id=eq.{idea_id}&select=*",
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
 
-        return response.data[0]
+            if not data or len(data) == 0:
+                return None
+
+            return data[0]
+    except httpx.HTTPStatusError as e:
+        raise SupabaseError(f"Failed to load idea: HTTP {e.response.status_code}")
     except Exception as e:
         raise SupabaseError(f"Failed to load idea: {str(e)}")
 
 
 async def load_system_state() -> dict:
-    """
-    Load System State from Supabase (schema: genomai)
-
-    Returns:
-        dict: System state with active_ideas_count, max_active_ideas, current_state
-
-    Raises:
-        SupabaseError: If Supabase operation fails
-    """
+    """Load System State from Supabase (schema: genomai)"""
     try:
-        client = _get_supabase_client()
-        response = client.table('ideas').select('id', count='exact').eq('status', 'active').execute()
+        rest_url, supabase_key = _get_credentials()
+        headers = _get_headers(supabase_key)
+        headers["Prefer"] = "count=exact"
 
-        active_ideas_count = response.count if hasattr(response, 'count') else 0
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{rest_url}/ideas?status=eq.active&select=id",
+                headers=headers
+            )
+            response.raise_for_status()
 
-        return {
-            'active_ideas_count': active_ideas_count,
-            'max_active_ideas': 100,  # MVP: фиксированное значение
-            'current_state': 'exploit'  # MVP: фиксированное значение
-        }
+            # Get count from Content-Range header
+            content_range = response.headers.get("Content-Range", "")
+            # Format: "0-N/total" or "*/total"
+            total = 0
+            if "/" in content_range:
+                total = int(content_range.split("/")[1])
+
+            return {
+                'active_ideas_count': total,
+                'max_active_ideas': 100,
+                'current_state': 'exploit'
+            }
     except Exception as e:
         raise SupabaseError(f"Failed to load system state: {str(e)}")
 
 
 async def save_decision(decision: dict) -> dict:
-    """
-    Save Decision to Supabase (schema: genomai)
-
-    Args:
-        decision: Decision object
-
-    Returns:
-        dict: Saved decision data
-
-    Raises:
-        SupabaseError: If Supabase operation fails
-    """
+    """Save Decision to Supabase (schema: genomai)"""
     try:
-        client = _get_supabase_client()
-        response = client.table('decisions').insert(decision).execute()
+        rest_url, supabase_key = _get_credentials()
+        headers = _get_headers(supabase_key, for_write=True)
 
-        if not response.data or len(response.data) == 0:
-            raise SupabaseError("Failed to save decision: no data returned")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{rest_url}/decisions",
+                headers=headers,
+                json=decision
+            )
+            response.raise_for_status()
+            data = response.json()
 
-        return response.data[0]
+            if not data or len(data) == 0:
+                raise SupabaseError("Failed to save decision: no data returned")
+
+            return data[0]
+    except httpx.HTTPStatusError as e:
+        error_detail = e.response.text
+        raise SupabaseError(f"Failed to save decision: {error_detail}")
     except Exception as e:
         raise SupabaseError(f"Failed to save decision: {str(e)}")
 
 
 async def save_decision_trace(trace: dict) -> dict:
-    """
-    Save Decision Trace to Supabase (schema: genomai)
-
-    Args:
-        trace: Decision trace object
-
-    Returns:
-        dict: Saved trace data
-
-    Raises:
-        SupabaseError: If Supabase operation fails
-    """
+    """Save Decision Trace to Supabase (schema: genomai)"""
     try:
-        client = _get_supabase_client()
-        response = client.table('decision_traces').insert(trace).execute()
+        rest_url, supabase_key = _get_credentials()
+        headers = _get_headers(supabase_key, for_write=True)
 
-        if not response.data or len(response.data) == 0:
-            raise SupabaseError("Failed to save decision trace: no data returned")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{rest_url}/decision_traces",
+                headers=headers,
+                json=trace
+            )
+            response.raise_for_status()
+            data = response.json()
 
-        return response.data[0]
+            if not data or len(data) == 0:
+                raise SupabaseError("Failed to save decision trace: no data returned")
+
+            return data[0]
+    except httpx.HTTPStatusError as e:
+        error_detail = e.response.text
+        raise SupabaseError(f"Failed to save decision trace: {error_detail}")
     except Exception as e:
         raise SupabaseError(f"Failed to save decision trace: {str(e)}")
 
