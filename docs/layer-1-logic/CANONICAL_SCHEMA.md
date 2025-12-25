@@ -1,7 +1,7 @@
 # Canonical Schema Specification
 ## GenomAI — Canonical Data Model
 
-**Version:** v1.2  
+**Version:** v2.0
 **Status:** CANONICAL / SINGLE SOURCE OF TRUTH
 
 ---
@@ -81,7 +81,51 @@ An Idea is **not** a text, creative, or hypothesis.
   "horizon": "enum",
 
   "created_at": "timestamp",
-  "schema_version": "string"
+  "schema_version": "string",
+
+  // V2 Optional Fields (copywriting psychology)
+  // UMP/UMS (Unique Mechanism)
+  "ump_present": "boolean",
+  "ump_type": "enum",
+  "ums_present": "boolean",
+  "ums_type": "enum",
+
+  // Paradigm Shift
+  "paradigm_shift_present": "boolean",
+  "paradigm_shift_type": "enum",
+
+  // Specificity
+  "specificity_level": "enum",
+  "specificity_markers": "array<enum>",
+
+  // Hook
+  "hook_mechanism": "enum",
+  "hook_stopping_power": "enum",
+
+  // Proof
+  "proof_type": "enum",
+  "proof_source": "enum",
+
+  // Story
+  "story_type": "enum",
+  "story_bridge_present": "boolean",
+
+  // Desire
+  "desire_level": "enum",
+  "emotional_trigger": "enum",
+
+  // Social Proof
+  "social_proof_pattern": "enum",
+  "proof_progression": "enum",
+
+  // CTA
+  "cta_style": "enum",
+  "risk_reversal_type": "enum",
+
+  // Focus (Rule of One)
+  "focus_score": "enum",
+  "idea_count": "integer",
+  "emotion_count": "integer"
 }
 ```
 
@@ -203,6 +247,144 @@ An Idea is **not** a text, creative, or hypothesis.
 - `T1`
 - `T2`
 - `T3`
+
+---
+
+## 4a. V2 Enum Definitions (Optional Fields)
+
+### 4a.1 ump_type
+
+- `hidden_cause`
+- `wrong_approach`
+- `missing_ingredient`
+- `inflammation`
+- `absorption`
+- `none`
+
+### 4a.2 ums_type
+
+- `secret_ingredient`
+- `new_technology`
+- `natural_approach`
+- `scientific_method`
+- `none`
+
+### 4a.3 paradigm_shift_type
+
+- `blame_shift`
+- `new_understanding`
+- `revelation`
+- `myth_bust`
+- `none`
+
+### 4a.4 specificity_level
+
+- `high`
+- `medium`
+- `low`
+
+### 4a.5 specificity_markers (array)
+
+- `money_amount`
+- `time_period`
+- `product_names`
+- `person_names`
+- `locations`
+- `statistics`
+
+### 4a.6 hook_mechanism
+
+- `pattern_interrupt`
+- `counter_intuitive`
+- `specific_number`
+- `confession`
+- `direct_question`
+- `shock_statement`
+
+### 4a.7 hook_stopping_power
+
+- `high`
+- `medium`
+- `low`
+
+### 4a.8 proof_type
+
+- `personal_story`
+- `expert_quote`
+- `research`
+- `testimonial`
+- `statistics`
+- `demonstration`
+
+### 4a.9 proof_source
+
+- `self`
+- `expert`
+- `doctor`
+- `research_institution`
+- `customer`
+- `celebrity`
+
+### 4a.10 story_type
+
+- `direct`
+- `parallel`
+- `discovery`
+- `confession`
+- `transformation`
+
+### 4a.11 desire_level
+
+- `surface`
+- `deep`
+
+### 4a.12 emotional_trigger
+
+- `fear_of_loss`
+- `shame`
+- `social_rejection`
+- `health_anxiety`
+- `relationship_fear`
+- `aging_fear`
+- `financial_fear`
+
+### 4a.13 social_proof_pattern
+
+- `single`
+- `cascading`
+- `stacked`
+
+### 4a.14 proof_progression
+
+- `immediate`
+- `short_term`
+- `long_term`
+- `multi_stage`
+
+### 4a.15 cta_style
+
+- `direct`
+- `two_step`
+- `soft`
+- `embedded`
+
+### 4a.16 risk_reversal_type
+
+- `money_back`
+- `performance_guarantee`
+- `keep_bonus`
+- `none`
+
+### 4a.17 focus_score
+
+- `focused`
+- `scattered`
+
+### 4a.18 idea_count / emotion_count
+
+- `1`
+- `2`
+- `3`
 
 ---
 

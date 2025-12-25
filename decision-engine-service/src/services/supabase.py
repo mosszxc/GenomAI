@@ -90,12 +90,24 @@ async def load_idea(idea_id: str) -> dict | None:
                         payload = {}
 
                 # Merge Canonical Schema fields into idea
+                # V1 required fields
                 canonical_fields = [
                     'angle_type', 'core_belief', 'promise_type',
                     'emotion_primary', 'emotion_intensity',
                     'message_structure', 'opening_type',
                     'state_before', 'state_after', 'context_frame',
-                    'source_type', 'risk_level', 'horizon', 'schema_version'
+                    'source_type', 'risk_level', 'horizon', 'schema_version',
+                    # V2 optional fields (copywriting psychology)
+                    'ump_present', 'ump_type', 'ums_present', 'ums_type',
+                    'paradigm_shift_present', 'paradigm_shift_type',
+                    'specificity_level', 'specificity_markers',
+                    'hook_mechanism', 'hook_stopping_power',
+                    'proof_type', 'proof_source',
+                    'story_type', 'story_bridge_present',
+                    'desire_level', 'emotional_trigger',
+                    'social_proof_pattern', 'proof_progression',
+                    'cta_style', 'risk_reversal_type',
+                    'focus_score', 'idea_count', 'emotion_count'
                 ]
                 for field in canonical_fields:
                     if field in payload:
