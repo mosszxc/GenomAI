@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 from src.routes.decision import router as decision_router
+from src.routes.learning import router as learning_router
 from src.utils.errors import DecisionEngineError
 
 # Environment variables
@@ -32,6 +33,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(decision_router, prefix="/api/decision", tags=["decision"])
+app.include_router(learning_router, prefix="/learning", tags=["learning"])
 
 
 @app.get("/health")
