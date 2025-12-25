@@ -44,23 +44,71 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
 
 
 async def load_idea(idea_id: str) -> dict | None:
-    """Load Idea from Supabase (schema: genomai)"""
+    """
+    Load Idea from Supabase with Canonical Schema payload (schema: genomai)
+
+    Joins ideas with decomposed_creatives to get full Canonical Schema fields.
+    Returns idea with merged payload fields (angle_type, horizon, etc.)
+    """
     try:
         rest_url, supabase_key = _get_credentials()
         headers = _get_headers(supabase_key)
 
         async with httpx.AsyncClient() as client:
+            # First, load the idea
             response = await client.get(
                 f"{rest_url}/ideas?id=eq.{idea_id}&select=*",
                 headers=headers
             )
             response.raise_for_status()
-            data = response.json()
+            ideas_data = response.json()
 
-            if not data or len(data) == 0:
+            if not ideas_data or len(ideas_data) == 0:
                 return None
 
-            return data[0]
+            idea = ideas_data[0]
+
+            # Then, load decomposed_creative linked to this idea
+            response = await client.get(
+                f"{rest_url}/decomposed_creatives?idea_id=eq.{idea_id}&select=*&order=created_at.desc&limit=1",
+                headers=headers
+            )
+            response.raise_for_status()
+            decomposed_data = response.json()
+
+            # Merge payload fields into idea if decomposed_creative exists
+            if decomposed_data and len(decomposed_data) > 0:
+                decomposed = decomposed_data[0]
+                payload = decomposed.get('payload', {})
+
+                # Handle payload as string or dict
+                if isinstance(payload, str):
+                    import json
+                    try:
+                        payload = json.loads(payload)
+                    except json.JSONDecodeError:
+                        payload = {}
+
+                # Merge Canonical Schema fields into idea
+                canonical_fields = [
+                    'angle_type', 'core_belief', 'promise_type',
+                    'emotion_primary', 'emotion_intensity',
+                    'message_structure', 'opening_type',
+                    'state_before', 'state_after', 'context_frame',
+                    'source_type', 'risk_level', 'horizon', 'schema_version'
+                ]
+                for field in canonical_fields:
+                    if field in payload:
+                        idea[field] = payload[field]
+
+                # Add decomposed_creative reference
+                idea['decomposed_creative_id'] = decomposed.get('id')
+                idea['creative_id'] = decomposed.get('creative_id')
+
+            # Map cluster_id to active_cluster_id for backward compatibility
+            idea['active_cluster_id'] = idea.get('cluster_id')
+
+            return idea
     except httpx.HTTPStatusError as e:
         raise SupabaseError(f"Failed to load idea: HTTP {e.response.status_code}")
     except Exception as e:
