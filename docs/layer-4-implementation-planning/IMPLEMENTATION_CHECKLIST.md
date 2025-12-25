@@ -71,70 +71,100 @@ TECH_DECISIONS v1.2, DATA_SCHEMAS, API_CONTRACTS
 - Тестирование: все проверки из playbook пройдены
 - Epic: #1 - закрыт
 
-## 4. Transcription Pipeline
-- [ ] Триггер транскрипции
-- [ ] Получение результата
-- [ ] Запись в transcripts (version = 1)
-- [ ] Emit TranscriptCreated
+## 4. Transcription Pipeline ✅ COMPLETED
+- [x] Триггер транскрипции
+- [x] Получение результата (AssemblyAI polling)
+- [x] Запись в transcripts (version = 1)
+- [x] Emit TranscriptCreated
+
+**Статус:** ✅ **Transcription Pipeline готов**
+- Workflow: `GenomAI - Creative Transcription` (ID: `WMnFHqsFh8i7ddjV`) - активен
 
 ❗ **UPDATE транскрипта запрещён**
 
-## 5. Decomposition & Canonical Schema
-- [ ] LLM decomposition workflow
-- [ ] Проверка schema_version
-- [ ] Запись в decomposed_creatives
-- [ ] Emit CreativeDecomposed
+## 5. Decomposition & Canonical Schema ✅ COMPLETED
+- [x] LLM decomposition workflow
+- [x] Проверка schema_version
+- [x] Запись в decomposed_creatives
+- [x] Emit CreativeDecomposed
 
-## 6. Decision Engine (n8n)
+**Статус:** ✅ **Decomposition готов**
+- Workflow: `creative_decomposition_llm` (ID: `mv6diVtqnuwr7qev`) - активен
+
+## 6. Decision Engine (n8n + Render API) ✅ COMPLETED
 
 ### 6.1 Decision Workflow
-- [ ] Загрузка Idea + Learning Memory
-- [ ] Проверка confidence
-- [ ] Проверка fatigue
-- [ ] Apply rules
-- [ ] Emit DecisionMade
+- [x] Загрузка Idea + Learning Memory
+- [x] Проверка confidence (death_memory check)
+- [x] Проверка fatigue
+- [x] Apply rules (4 checks: schema, death, fatigue, risk)
+- [x] Emit DecisionMade
+
+**Статус:** ✅ **Decision Engine готов**
+- Workflow: `decision_engine_mvp` (ID: `YT2d7z5h9bPy1R4v`) - активен
+- API: `genomai.onrender.com/api/decision/`
 
 ❗ **LLM здесь запрещён**
 
-## 7. Hypothesis Factory (n8n + LLM)
-- [ ] Определение mutation scope
-- [ ] Формирование prompt
-- [ ] LLM generation
-- [ ] Запись hypotheses
-- [ ] Emit HypothesisGenerated
+## 7. Hypothesis Factory (n8n + LLM) ✅ COMPLETED
+- [x] Определение mutation scope
+- [x] Формирование prompt
+- [x] LLM generation (OpenAI)
+- [x] Запись hypotheses
+- [x] Emit HypothesisGenerated
 
-## 8. Delivery (Telegram)
-- [ ] Отправка транскрипта байеру
-- [ ] Запись в deliveries
-- [ ] Emit HypothesisDelivered
+**Статус:** ✅ **Hypothesis Factory готов**
+- Workflow: `hypothesis_factory_generate` (ID: `oxG1DqxtkTGCqLZi`) - активен
 
-## 9. Metrics Ingestion (Keitaro)
-- [ ] Pull raw metrics по tracker_id
-- [ ] Запись в raw_metrics_current
-- [ ] Emit RawMetricsObserved
+## 8. Delivery (Telegram) ✅ COMPLETED
+- [x] Отправка гипотезы байеру
+- [x] Запись в deliveries
+- [x] Emit HypothesisDelivered
 
-## 10. Daily Scan (Scheduler)
-- [ ] n8n cron (1 раз в день)
-- [ ] Чтение raw metrics
-- [ ] Создание daily_metrics_snapshot
-- [ ] Emit DailyMetricsSnapshotCreated
+**Статус:** ✅ **Telegram Delivery готов**
+- Workflow: `Telegram Hypothesis Delivery` (ID: `5q3mshC9HRPpL6C0`) - активен
+
+## 9. Metrics Ingestion (Keitaro) ✅ COMPLETED
+- [x] Pull raw metrics по tracker_id
+- [x] Запись в raw_metrics_current
+- [x] Emit RawMetricsObserved
+
+**Статус:** ✅ **Metrics Ingestion готов**
+- Workflow: `Keitaro Poller` (ID: `0TrVJOtHiNEEAsTN`) - активен (schedule + webhook)
+
+## 10. Daily Scan (Scheduler) ✅ COMPLETED
+- [x] n8n cron (каждые 30 мин через Keitaro Poller)
+- [x] Чтение raw metrics
+- [x] Создание daily_metrics_snapshot
+- [x] Emit DailyMetricsSnapshotCreated
+
+**Статус:** ✅ **Daily Scan готов**
+- Workflow: `Snapshot Creator` (ID: `Gii8l2XwnX43Wqr4`) - активен
 
 ❗ **Snapshot не обязателен**
 
-## 11. Outcome Aggregation
-- [ ] Проверка наличия snapshot'ов
-- [ ] Закрытие окна (например, D1–D3)
-- [ ] Создание outcome_aggregates
-- [ ] Emit OutcomeAggregated
+## 11. Outcome Aggregation ✅ COMPLETED
+- [x] Проверка наличия snapshot'ов
+- [x] Закрытие окна (window_id)
+- [x] Создание outcome_aggregates
+- [x] Emit OutcomeAggregated
+
+**Статус:** ✅ **Outcome Aggregation готов**
+- Workflow: `Outcome Aggregator` (ID: `243QnGrUSDtXLjqU`) - активен
+- Workflow: `Outcome Processor` (ID: `bbbQC4Aua5E3SYSK`) - активен
 
 ❗ **Без snapshot — abort**
 
-## 12. Learning Loop
-- [ ] Проверка origin_type = system
-- [ ] Проверка неиспользованного outcome
-- [ ] Update confidence (new version)
-- [ ] Update fatigue (new version)
-- [ ] Emit OutcomeAppliedToLearning
+## 12. Learning Loop ✅ COMPLETED
+- [x] Проверка origin_type = system
+- [x] Проверка неиспользованного outcome (learning_applied=false)
+- [x] Update confidence (new version в idea_confidence_versions)
+- [x] Update death_state при необходимости
+- [x] Emit OutcomeAppliedToLearning
+
+**Статус:** ✅ **Learning Loop готов**
+- Workflow: `Learning Loop v2` (ID: `fzXkoG805jQZUR3S`) - активен
+- API: `genomai.onrender.com/learning/process`
 
 ❗ **Строго один раз**
 
