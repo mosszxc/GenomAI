@@ -71,6 +71,10 @@ def extract_webhook_calls(nodes: list) -> list[str]:
         params = node.get("parameters", {})
         url = params.get("url", "")
 
+        # Skip if url is not a string (can be dict in n8n expressions)
+        if not isinstance(url, str):
+            continue
+
         # Extract webhook path
         if "/webhook/" in url:
             # Pattern: /webhook/workflow-name or /webhook-test/workflow-name
@@ -95,6 +99,10 @@ def extract_supabase_tables(nodes: list) -> tuple[list[str], list[str]]:
             table = params.get("tableId", params.get("table", ""))
             operation = params.get("operation", "")
 
+            # Skip if table is not a string (can be dict in n8n expressions)
+            if not isinstance(table, str):
+                continue
+
             if table:
                 if operation in ["create", "update", "upsert", "delete"]:
                     writes.append(table)
@@ -105,6 +113,10 @@ def extract_supabase_tables(nodes: list) -> tuple[list[str], list[str]]:
         if node.get("type") == "n8n-nodes-base.httpRequest":
             params = node.get("parameters", {})
             url = params.get("url", "")
+
+            # Skip if url is not a string (can be dict in n8n expressions)
+            if not isinstance(url, str):
+                continue
 
             if "supabase" in url and "/rest/v1/" in url:
                 # Extract table from URL
@@ -144,6 +156,11 @@ def extract_external_deps(nodes: list) -> list[str]:
         # HTTP to known services
         if node_type == "n8n-nodes-base.httpRequest":
             url = params.get("url", "")
+
+            # Skip if url is not a string (can be dict in n8n expressions)
+            if not isinstance(url, str):
+                continue
+
             if "genomai.onrender.com" in url:
                 if "/api/decision" in url:
                     deps.append("Decision Engine API")
