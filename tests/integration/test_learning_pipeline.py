@@ -71,7 +71,8 @@ class TestLearningPipeline:
 
             assert response.status_code == 200
             data = response.json()
-            assert "pending_outcomes" in data or "status" in data
+            # Response format: {"success": true, "data": {"pending_outcomes": N}}
+            assert data.get("success") is True or "pending_outcomes" in data.get("data", {})
 
     @pytest.mark.integration
     async def test_raw_metrics_exist(self, db: DbAssertions):
@@ -226,8 +227,8 @@ class TestLearningPipeline:
 
             if response.status_code == 200:
                 data = response.json()
-                # Verify contract fields
-                assert "processed" in data or "results" in data or "error" in data
+                # Response format: {"success": true, "data": {"processed_count": N, ...}}
+                assert data.get("success") is True or "processed_count" in data.get("data", {})
 
 
 class TestLearningPipelineContracts:
