@@ -1,0 +1,341 @@
+# API Reference
+
+Decision Engine Service REST API documentation.
+
+**Base URL:** `https://genomai.onrender.com`
+**Auth:** `Authorization: Bearer {API_KEY}`
+
+---
+
+## Health Check
+
+```
+GET /health
+```
+
+No auth required.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-12-26T18:00:00.000000"
+}
+```
+
+---
+
+## Decision Engine
+
+### Make Decision
+
+```
+POST /api/decision/
+Authorization: Bearer {API_KEY}
+```
+
+**Request:**
+```json
+{
+  "idea_id": "uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "decision": {
+    "decision_id": "uuid",
+    "idea_id": "uuid",
+    "decision_type": "APPROVE|REJECT|DEFER",
+    "decision_reason": "all_checks_passed|schema_invalid|idea_dead|fatigue_constraint|risk_budget_exceeded",
+    "passed_checks": ["schema_validity", "death_memory", "fatigue_constraint", "risk_budget"],
+    "failed_checks": [],
+    "timestamp": "2025-12-26T18:00:00.000000"
+  },
+  "decision_trace": {
+    "id": "uuid",
+    "decision_id": "uuid",
+    "checks": [
+      {"check_name": "schema_validity", "order": 1, "result": "PASSED", "details": {}},
+      {"check_name": "death_memory", "order": 2, "result": "PASSED", "details": {}},
+      {"check_name": "fatigue_constraint", "order": 3, "result": "PASSED", "details": {}},
+      {"check_name": "risk_budget", "order": 4, "result": "PASSED", "details": {}}
+    ],
+    "result": "APPROVE"
+  }
+}
+```
+
+---
+
+## Schema Validator
+
+### Validate LLM Output
+
+```
+POST /api/schema/validate
+Authorization: Bearer {API_KEY}
+Content-Type: application/json
+```
+
+Validates a payload against the idea JSON Schema.
+
+**Request:**
+```json
+{
+  "payload": {
+    "angle_type": "pain",
+    "core_belief": "problem_is_serious",
+    "promise_type": "instant",
+    "emotion_primary": "fear",
+    "emotion_intensity": "high",
+    "message_structure": "problem_solution",
+    "opening_type": "shock_statement",
+    "state_before": "unsafe",
+    "state_after": "safe",
+    "context_frame": "institutional",
+    "source_type": "internal",
+    "risk_level": "low",
+    "horizon": "T1",
+    "schema_version": "v1"
+  },
+  "schema_version": "v1"
+}
+```
+
+**Response (valid):**
+```json
+{
+  "valid": true,
+  "errors": [],
+  "warnings": []
+}
+```
+
+**Response (invalid):**
+```json
+{
+  "valid": false,
+  "errors": [
+    {
+      "field": "angle_type",
+      "message": "Invalid value. Allowed values: ['pain', 'fear', 'hope', 'curiosity', 'authority', 'social_proof', 'urgency', 'identity']",
+      "code": "INVALID_ENUM_VALUE",
+      "value": "INVALID"
+    },
+    {
+      "field": "core_belief",
+      "message": "Missing required field(s): core_belief, promise_type, ...",
+      "code": "MISSING_REQUIRED_FIELD",
+      "value": null
+    }
+  ],
+  "warnings": []
+}
+```
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| `MISSING_REQUIRED_FIELD` | Required field is missing |
+| `TYPE_MISMATCH` | Value has wrong type |
+| `INVALID_ENUM_VALUE` | Value not in allowed enum |
+| `INVALID_FORMAT` | Value doesn't match format (e.g., uuid) |
+| `UNEXPECTED_FIELD` | Field not defined in schema |
+| `EMPTY_PAYLOAD` | Payload is empty or null |
+| `INVALID_SCHEMA_VERSION` | Unknown schema version |
+
+### Supported Schema Versions
+
+| Version | File | Description |
+|---------|------|-------------|
+| `v1` | `idea_schema_v1.json` | Base idea schema with 14 required fields |
+| `v2` | `idea_schema_v2.json` | Extended schema (if exists) |
+
+### Required Fields (v1)
+
+| Field | Allowed Values |
+|-------|----------------|
+| `angle_type` | pain, fear, hope, curiosity, authority, social_proof, urgency, identity |
+| `core_belief` | problem_is_serious, problem_is_hidden, solution_is_simple, solution_is_safe, solution_is_scientific, solution_is_unknown, others_have_this_problem, doctors_are_wrong, time_is_running_out |
+| `promise_type` | instant, gradual, effortless, hidden, scientific, guaranteed, preventive |
+| `emotion_primary` | fear, relief, anger, hope, curiosity, shame, trust |
+| `emotion_intensity` | low, medium, high |
+| `message_structure` | problem_solution, story_reveal, myth_debunk, authority_proof, question_answer, before_after, confession |
+| `opening_type` | shock_statement, direct_question, personal_story, authority_claim, visual_pattern_break |
+| `state_before` | unsafe, uncertain, powerless, ignorant, overwhelmed, excluded, dissatisfied |
+| `state_after` | safe, confident, in_control, informed, calm, included, satisfied |
+| `context_frame` | institutional, anti_authority, peer_based, expert_led, personal_confession, ironic |
+| `source_type` | internal, spy, human_override, epistemic_shock |
+| `risk_level` | low, medium, high |
+| `horizon` | T1, T2, T3 |
+| `schema_version` | v1 |
+
+### Usage from n8n
+
+```json
+{
+  "method": "POST",
+  "url": "https://genomai.onrender.com/api/schema/validate",
+  "authentication": "predefinedCredentialType",
+  "nodeCredentialType": "httpHeaderAuth",
+  "sendHeaders": true,
+  "headerParameters": {
+    "parameters": [
+      { "name": "Content-Type", "value": "application/json" }
+    ]
+  },
+  "sendBody": true,
+  "specifyBody": "json",
+  "jsonBody": "={{ JSON.stringify({ payload: $json, schema_version: 'v1' }) }}"
+}
+```
+
+**Note:** The `creative_decomposition_llm` workflow uses a Code node for validation that does more than JSON Schema validation:
+- Parses LLM output (handles markdown, JSON extraction)
+- Normalizes field names (camelCase → snake_case)
+- Validates v3 schema with optional fields
+- Handles lenient validation for optional fields
+
+For simple v1 schema validation, use this API. For complex LLM output processing, keep the Code node.
+
+---
+
+## Learning Loop
+
+### Process Learning
+
+```
+POST /learning/process
+Authorization: Bearer {API_KEY}
+```
+
+**Request:**
+```json
+{
+  "idea_id": "uuid",
+  "outcome_aggregate_id": "uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "updated_ideas": 1
+}
+```
+
+### Get Status
+
+```
+GET /learning/status
+Authorization: Bearer {API_KEY}
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "last_run": "2025-12-26T18:00:00.000000"
+}
+```
+
+---
+
+## Idea Registry
+
+### Create Idea
+
+```
+POST /api/idea-registry/create
+Authorization: Bearer {API_KEY}
+```
+
+**Request:**
+```json
+{
+  "creative_id": "uuid",
+  "schema_version": "v1"
+}
+```
+
+---
+
+## Recommendations
+
+### Get Recommendations
+
+```
+GET /recommendations/{avatar_hash}
+Authorization: Bearer {API_KEY}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "avatar_hash": "abc123",
+  "recommendations": [
+    {
+      "component_type": "hook_mechanism",
+      "component_value": "confession",
+      "confidence": 0.85,
+      "sample_count": 42
+    }
+  ]
+}
+```
+
+### Trigger Recommendation
+
+```
+POST /recommendations/trigger
+Authorization: Bearer {API_KEY}
+```
+
+**Request:**
+```json
+{
+  "avatar_hash": "abc123",
+  "buyer_id": "uuid"
+}
+```
+
+---
+
+## Error Responses
+
+All endpoints return errors in this format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message",
+    "details": {}
+  }
+}
+```
+
+### HTTP Status Codes
+
+| Code | Meaning |
+|------|---------|
+| 200 | Success |
+| 400 | Bad Request (validation error) |
+| 401 | Unauthorized (missing/invalid API key) |
+| 404 | Not Found |
+| 500 | Internal Server Error |
+
+---
+
+## Swagger/OpenAPI
+
+Interactive docs available at:
+- `https://genomai.onrender.com/docs` (Swagger UI)
+- `https://genomai.onrender.com/redoc` (ReDoc)
