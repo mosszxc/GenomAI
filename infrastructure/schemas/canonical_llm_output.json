@@ -1,0 +1,318 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Canonical LLM Output Schema",
+  "description": "JSON Schema for validating LLM decomposition output. Used to validate structured output from LLM creative analysis before storing in decomposed_creatives.payload",
+  "type": "object",
+  "required": [
+    "creative_id",
+    "components",
+    "hooks",
+    "angle_type",
+    "core_belief",
+    "promise_type",
+    "emotion_primary",
+    "emotion_intensity",
+    "message_structure",
+    "opening_type",
+    "state_before",
+    "state_after",
+    "context_frame",
+    "source_type",
+    "risk_level",
+    "horizon",
+    "schema_version"
+  ],
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Reference to the source creative being decomposed"
+    },
+    "avatar_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Target avatar for this creative (optional, can be inferred from buyer)"
+    },
+    "geo": {
+      "type": ["string", "null"],
+      "description": "Geographic targeting (e.g., 'MX', 'DE', 'US'). Optional, can be inferred from buyer"
+    },
+    "vertical": {
+      "type": ["string", "null"],
+      "description": "Vertical/niche (e.g., 'POT', 'WL'). Optional, can be inferred from buyer"
+    },
+    "components": {
+      "type": "array",
+      "description": "Semantic components extracted from the creative",
+      "items": {
+        "type": "object",
+        "required": ["type", "content"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["hook", "problem", "agitation", "solution", "proof", "cta", "transition", "story_element"],
+            "description": "Component type in the message structure"
+          },
+          "content": {
+            "type": "string",
+            "description": "Actual text/description of the component"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Order position in the creative (0-indexed)"
+          },
+          "timestamp_start": {
+            "type": ["number", "null"],
+            "description": "Start timestamp in seconds (for video)"
+          },
+          "timestamp_end": {
+            "type": ["number", "null"],
+            "description": "End timestamp in seconds (for video)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "hooks": {
+      "type": "array",
+      "description": "Opening hooks identified in the creative",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+
+    "angle_type": {
+      "type": "string",
+      "enum": ["pain", "fear", "hope", "curiosity", "authority", "social_proof", "urgency", "identity"],
+      "description": "Primary angle of the message"
+    },
+    "core_belief": {
+      "type": "string",
+      "enum": [
+        "problem_is_serious",
+        "problem_is_hidden",
+        "solution_is_simple",
+        "solution_is_safe",
+        "solution_is_scientific",
+        "solution_is_unknown",
+        "others_have_this_problem",
+        "doctors_are_wrong",
+        "time_is_running_out"
+      ],
+      "description": "Core belief being communicated"
+    },
+    "promise_type": {
+      "type": "string",
+      "enum": ["instant", "gradual", "effortless", "hidden", "scientific", "guaranteed", "preventive"],
+      "description": "Type of promise made"
+    },
+    "emotion_primary": {
+      "type": "string",
+      "enum": ["fear", "relief", "anger", "hope", "curiosity", "shame", "trust"],
+      "description": "Primary emotion evoked"
+    },
+    "emotion_intensity": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Intensity of the primary emotion"
+    },
+    "message_structure": {
+      "type": "string",
+      "enum": [
+        "problem_solution",
+        "story_reveal",
+        "myth_debunk",
+        "authority_proof",
+        "question_answer",
+        "before_after",
+        "confession"
+      ],
+      "description": "Structure of the message"
+    },
+    "opening_type": {
+      "type": "string",
+      "enum": ["shock_statement", "direct_question", "personal_story", "authority_claim", "visual_pattern_break"],
+      "description": "Type of opening"
+    },
+    "state_before": {
+      "type": "string",
+      "enum": ["unsafe", "uncertain", "powerless", "ignorant", "overwhelmed", "excluded", "dissatisfied"],
+      "description": "Audience state before the solution"
+    },
+    "state_after": {
+      "type": "string",
+      "enum": ["safe", "confident", "in_control", "informed", "calm", "included", "satisfied"],
+      "description": "Audience state after the solution"
+    },
+    "context_frame": {
+      "type": "string",
+      "enum": ["institutional", "anti_authority", "peer_based", "expert_led", "personal_confession", "ironic"],
+      "description": "Contextual framing"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["internal", "spy", "human_override", "epistemic_shock"],
+      "description": "Source of the idea"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Risk level of the creative approach"
+    },
+    "horizon": {
+      "type": "string",
+      "enum": ["T1", "T2", "T3"],
+      "description": "Time horizon: T1=exploit known, T2=explore adjacent, T3=explore novel"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": ["v1", "v2", "v3"],
+      "description": "Schema version for backward compatibility"
+    },
+
+    "ump_present": {
+      "type": "boolean",
+      "description": "Whether a Unique Mechanism of Problem is present"
+    },
+    "ump_type": {
+      "type": ["string", "null"],
+      "enum": ["hidden_cause", "wrong_approach", "missing_ingredient", "inflammation", "absorption", "none", null],
+      "description": "Type of UMP: what hidden problem is revealed"
+    },
+    "ums_present": {
+      "type": "boolean",
+      "description": "Whether a Unique Mechanism of Solution is present"
+    },
+    "ums_type": {
+      "type": ["string", "null"],
+      "enum": ["secret_ingredient", "new_technology", "natural_approach", "scientific_method", "none", null],
+      "description": "Type of UMS: what makes the solution different"
+    },
+
+    "paradigm_shift_present": {
+      "type": "boolean",
+      "description": "Whether the creative creates a paradigm shift"
+    },
+    "paradigm_shift_type": {
+      "type": ["string", "null"],
+      "enum": ["blame_shift", "new_understanding", "revelation", "myth_bust", "none", null],
+      "description": "Type of paradigm shift"
+    },
+
+    "specificity_level": {
+      "type": ["string", "null"],
+      "enum": ["high", "medium", "low", null],
+      "description": "Level of specific details used"
+    },
+    "specificity_markers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["money_amount", "time_period", "product_names", "person_names", "locations", "statistics"]
+      },
+      "description": "Types of specific details present"
+    },
+
+    "hook_mechanism": {
+      "type": ["string", "null"],
+      "enum": ["pattern_interrupt", "counter_intuitive", "specific_number", "confession", "direct_question", "shock_statement", null],
+      "description": "Mechanism used to stop the scroll"
+    },
+    "hook_stopping_power": {
+      "type": ["string", "null"],
+      "enum": ["high", "medium", "low", null],
+      "description": "Estimated scroll-stopping power"
+    },
+
+    "proof_type": {
+      "type": ["string", "null"],
+      "enum": ["personal_story", "expert_quote", "research", "testimonial", "statistics", "demonstration", null],
+      "description": "Primary type of proof used"
+    },
+    "proof_source": {
+      "type": ["string", "null"],
+      "enum": ["self", "expert", "doctor", "research_institution", "customer", "celebrity", null],
+      "description": "Source of the credibility/proof"
+    },
+
+    "story_type": {
+      "type": ["string", "null"],
+      "enum": ["direct", "parallel", "discovery", "confession", "transformation", null],
+      "description": "Type of story structure used"
+    },
+    "story_bridge_present": {
+      "type": "boolean",
+      "description": "Whether a story bridge connects problem to solution"
+    },
+
+    "desire_level": {
+      "type": ["string", "null"],
+      "enum": ["surface", "deep", null],
+      "description": "Surface desire vs deep desire addressed"
+    },
+    "deep_desire_type": {
+      "type": ["string", "null"],
+      "enum": ["inadequacy", "rejection", "loss", "powerlessness", null],
+      "description": "Type of deep desire if desire_level=deep"
+    },
+    "emotional_trigger": {
+      "type": ["string", "null"],
+      "enum": ["fear_of_loss", "shame", "social_rejection", "health_anxiety", "relationship_fear", "aging_fear", "financial_fear", null],
+      "description": "Primary emotional trigger"
+    },
+    "primary_trigger": {
+      "type": ["string", "null"],
+      "enum": ["health_symptom", "social_situation", "relationship_event", "financial_stress", null],
+      "description": "Primary external trigger"
+    },
+
+    "social_proof_pattern": {
+      "type": ["string", "null"],
+      "enum": ["single", "cascading", "stacked", null],
+      "description": "Pattern of social proof presentation"
+    },
+    "proof_progression": {
+      "type": ["string", "null"],
+      "enum": ["immediate", "short_term", "long_term", "multi_stage", null],
+      "description": "Timeline of results shown"
+    },
+
+    "cta_style": {
+      "type": ["string", "null"],
+      "enum": ["direct", "two_step", "soft", "embedded", null],
+      "description": "Style of call-to-action"
+    },
+    "risk_reversal_type": {
+      "type": ["string", "null"],
+      "enum": ["money_back", "performance_guarantee", "keep_bonus", "none", null],
+      "description": "Type of risk reversal offered"
+    },
+
+    "focus_score": {
+      "type": ["string", "null"],
+      "enum": ["focused", "scattered", null],
+      "description": "Whether copy follows Rule of One"
+    },
+    "idea_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Number of distinct ideas (1 is best per Rule of One)"
+    },
+    "emotion_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Number of distinct emotions targeted"
+    },
+    "awareness_level": {
+      "type": ["string", "null"],
+      "enum": ["unaware", "problem_aware", "solution_aware", "product_aware", "most_aware", null],
+      "description": "Audience awareness level (Eugene Schwartz scale)"
+    }
+  },
+  "additionalProperties": false
+}
