@@ -60,6 +60,8 @@ class OutcomeRequest(BaseModel):
     revenue: Optional[float] = None
 
 
+# Static routes MUST come before dynamic routes with path parameters
+
 @router.post("/generate")
 async def generate(
     request: GenerateRequest,
@@ -126,6 +128,70 @@ async def generate(
             detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
         )
 
+
+@router.get("/stats")
+async def stats(
+    _: bool = Depends(verify_api_key)
+):
+    """
+    GET /recommendations/stats
+
+    Get recommendation statistics for monitoring.
+    """
+    try:
+        result = await get_recommendation_stats()
+
+        return {
+            "success": True,
+            "data": result
+        }
+
+    except SupabaseError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+        )
+
+
+@router.get("/")
+async def list_pending(
+    buyer_id: Optional[str] = None,
+    _: bool = Depends(verify_api_key)
+):
+    """
+    GET /recommendations/
+
+    Get pending recommendations, optionally filtered by buyer.
+
+    Query params:
+        - buyer_id: Filter by buyer (optional)
+    """
+    try:
+        recs = await get_pending_recommendations(buyer_id)
+
+        return {
+            "success": True,
+            "data": recs
+        }
+
+    except SupabaseError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+        )
+
+
+# Dynamic routes with path parameters come after static routes
 
 @router.post("/{recommendation_id}/executed")
 async def mark_executed(
@@ -230,68 +296,6 @@ async def get_one(
 
     except HTTPException:
         raise
-    except SupabaseError as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
-        )
-
-
-@router.get("/")
-async def list_pending(
-    buyer_id: Optional[str] = None,
-    _: bool = Depends(verify_api_key)
-):
-    """
-    GET /recommendations/
-
-    Get pending recommendations, optionally filtered by buyer.
-
-    Query params:
-        - buyer_id: Filter by buyer (optional)
-    """
-    try:
-        recs = await get_pending_recommendations(buyer_id)
-
-        return {
-            "success": True,
-            "data": recs
-        }
-
-    except SupabaseError as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
-        )
-
-
-@router.get("/stats")
-async def stats(
-    _: bool = Depends(verify_api_key)
-):
-    """
-    GET /recommendations/stats
-
-    Get recommendation statistics for monitoring.
-    """
-    try:
-        result = await get_recommendation_stats()
-
-        return {
-            "success": True,
-            "data": result
-        }
-
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
