@@ -59,6 +59,12 @@ Webhook issue: API не регистрирует → добавить → акт
 
 Credentials: Supabase `RNItSRYOCypd9H1a` | Telegram `06SWHhdUxiQNwDWD`
 
+### n8n Common Issues
+- Supabase nodes: ALWAYS `useCustomSchema: true, schema: "genomai"` (default = public)
+- HTTP Request to Supabase: `authentication: "predefinedCredentialType"` + `Content-Profile: genomai` header
+- Before CREATE: check table NOT NULL constraints via `information_schema.columns`
+- Expression refs: verify upstream node output structure before using `$json.field`
+
 ## Validation
 `/valid {process}` — валидация процесса (learning-loop, hypothesis-factory, decision-engine, video-ingestion)
 После изменения workflow/API → автоматически `/valid {affected_process}`
