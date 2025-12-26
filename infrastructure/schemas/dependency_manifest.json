@@ -1,0 +1,346 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "updated_at": "2025-12-26",
+  "description": "Dependency manifest for GenomAI workflows and services",
+
+  "workflows": {
+    "creative_ingestion_webhook": {
+      "id": "dvZvUUmhtPzYOK7X",
+      "active": false,
+      "trigger": "webhook",
+      "calls": ["creative_decomposition_llm"],
+      "writes": ["creatives", "event_log"],
+      "reads": ["creatives"],
+      "events_emitted": ["CreativeIngestionRejected", "CreativeReferenceReceived", "CreativeRegistered"]
+    },
+
+    "idea_registry_create": {
+      "id": "cGSyJPROrkqLVHZP",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["decision_engine_mvp"],
+      "writes": ["ideas", "decomposed_creatives", "event_log"],
+      "reads": ["decomposed_creatives", "ideas"],
+      "events_emitted": ["IdeaRegistered"]
+    },
+
+    "decision_engine_mvp": {
+      "id": "YT2d7z5h9bPy1R4v",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["decision_engine_api"],
+      "writes": ["event_log"],
+      "reads": ["configurations"],
+      "events_emitted": ["DecisionMade"],
+      "external_deps": ["https://genomai.onrender.com/api/decision/"]
+    },
+
+    "keep_alive_decision_engine": {
+      "id": "ClXUPP2IvWRgu99y",
+      "active": true,
+      "trigger": "schedule",
+      "calls": [],
+      "writes": [],
+      "reads": [],
+      "events_emitted": [],
+      "external_deps": ["https://genomai.onrender.com/health"]
+    },
+
+    "creative_transcription": {
+      "id": "WMnFHqsFh8i7ddjV",
+      "active": true,
+      "trigger": "webhook",
+      "calls": [],
+      "writes": ["transcripts", "creatives", "event_log"],
+      "reads": ["creatives", "transcripts"],
+      "events_emitted": ["TranscriptCreated", "TranscriptionFailed"],
+      "external_deps": ["AssemblyAI", "Google Drive"]
+    },
+
+    "creative_decomposition_llm": {
+      "id": "mv6diVtqnuwr7qev",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["idea_registry_create"],
+      "writes": ["decomposed_creatives", "event_log"],
+      "reads": ["creatives", "transcripts"],
+      "events_emitted": [],
+      "external_deps": ["OpenAI"]
+    },
+
+    "hypothesis_factory_generate": {
+      "id": "oxG1DqxtkTGCqLZi",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["telegram_hypothesis_delivery"],
+      "writes": ["hypotheses", "event_log"],
+      "reads": ["ideas", "decisions"],
+      "events_emitted": ["HypothesisGenerated"],
+      "external_deps": ["OpenAI"]
+    },
+
+    "telegram_hypothesis_delivery": {
+      "id": "5q3mshC9HRPpL6C0",
+      "active": true,
+      "trigger": "webhook",
+      "calls": [],
+      "writes": ["hypothesis_deliveries", "event_log"],
+      "reads": ["hypotheses"],
+      "events_emitted": ["HypothesisDelivered"],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "keitaro_poller": {
+      "id": "0TrVJOtHiNEEAsTN",
+      "active": true,
+      "trigger": "schedule",
+      "calls": ["snapshot_creator", "buyer_test_conclusion_checker"],
+      "writes": ["raw_metrics", "event_log"],
+      "reads": ["configurations", "raw_metrics"],
+      "events_emitted": ["RawMetricsObserved"],
+      "external_deps": ["Keitaro API"]
+    },
+
+    "snapshot_creator": {
+      "id": "Gii8l2XwnX43Wqr4",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["outcome_processor", "outcome_aggregator"],
+      "writes": ["daily_metrics_snapshot", "event_log"],
+      "reads": ["raw_metrics", "daily_metrics_snapshot"],
+      "events_emitted": ["DailyMetricsSnapshotCreated"]
+    },
+
+    "outcome_aggregator": {
+      "id": "243QnGrUSDtXLjqU",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["learning_loop_v2"],
+      "writes": ["outcome_aggregates", "event_log"],
+      "reads": ["daily_metrics_snapshot", "ideas", "decisions"],
+      "events_emitted": ["OutcomeAggregated"]
+    },
+
+    "outcome_processor": {
+      "id": "bbbQC4Aua5E3SYSK",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["decision_engine_mvp"],
+      "writes": ["event_log"],
+      "reads": ["creatives", "configurations", "decomposed_creatives"],
+      "events_emitted": ["HypothesisEvaluated"]
+    },
+
+    "learning_loop_v2": {
+      "id": "fzXkoG805jQZUR3S",
+      "active": true,
+      "trigger": "webhook",
+      "calls": ["learning_loop_api"],
+      "writes": [],
+      "reads": [],
+      "events_emitted": [],
+      "external_deps": ["https://genomai.onrender.com/learning/process"]
+    },
+
+    "buyer_creative_registration": {
+      "id": "d5i9dB2GNqsbfmSD",
+      "active": true,
+      "trigger": "telegram",
+      "calls": ["creative_decomposition_llm"],
+      "writes": ["creatives", "event_log"],
+      "reads": ["buyers"],
+      "events_emitted": ["CreativeRegistered"],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "buyer_test_conclusion_checker": {
+      "id": "4uluD04qYHhsetBy",
+      "active": true,
+      "trigger": "webhook",
+      "calls": [],
+      "writes": ["creatives", "event_log"],
+      "reads": ["creatives", "raw_metrics"],
+      "events_emitted": ["TestConcluded"],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "buyer_daily_digest": {
+      "id": "WkS1fPSxZaLmWcYy",
+      "active": true,
+      "trigger": "schedule",
+      "calls": [],
+      "writes": [],
+      "reads": ["creatives", "raw_metrics"],
+      "events_emitted": [],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "buyer_onboarding": {
+      "id": "hgTozRQFwh4GLM0z",
+      "active": true,
+      "trigger": "telegram",
+      "calls": ["buyer_historical_loader"],
+      "writes": ["buyers", "buyer_onboarding_states", "event_log"],
+      "reads": ["buyers", "buyer_onboarding_states"],
+      "events_emitted": ["BuyerRegistered"],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "buyer_historical_loader": {
+      "id": "lmiWkYTRZPSpydJH",
+      "active": true,
+      "trigger": "webhook",
+      "calls": [],
+      "writes": ["historical_import_queue", "buyer_onboarding_states"],
+      "reads": ["configurations", "buyers"],
+      "events_emitted": [],
+      "external_deps": ["Keitaro API", "Telegram Bot API"]
+    },
+
+    "buyer_historical_url_handler": {
+      "id": "A8gKvO5810L1lusZ",
+      "active": true,
+      "trigger": "telegram",
+      "calls": ["historical_creative_import"],
+      "writes": ["historical_import_queue", "buyer_onboarding_states"],
+      "reads": ["buyer_onboarding_states", "historical_import_queue"],
+      "events_emitted": [],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "buyer_stats_command": {
+      "id": "rHuT8dYyIXoiHMAV",
+      "active": true,
+      "trigger": "telegram",
+      "calls": [],
+      "writes": [],
+      "reads": ["creatives", "raw_metrics"],
+      "events_emitted": [],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "telegram_router": {
+      "id": "BuyQncnHNb7ulL6z",
+      "active": true,
+      "trigger": "telegram",
+      "calls": ["buyer_onboarding", "buyer_stats_command", "buyer_creative_registration", "buyer_historical_url_handler"],
+      "writes": [],
+      "reads": ["buyers", "buyer_onboarding_states"],
+      "events_emitted": [],
+      "external_deps": ["Telegram Bot API"]
+    },
+
+    "historical_creative_import": {
+      "id": "1FC7amTd3dCRZPEa",
+      "active": false,
+      "trigger": "manual",
+      "calls": ["creative_transcription", "learning_loop_v2"],
+      "writes": ["creatives", "outcome_aggregates", "event_log"],
+      "reads": ["configurations", "ideas"],
+      "events_emitted": ["CreativeRegistered", "OutcomeImported"],
+      "external_deps": ["Keitaro API"]
+    },
+
+    "historical_import_batch_loader": {
+      "id": "RLO7XEoDV3lj74cl",
+      "active": false,
+      "trigger": "manual",
+      "calls": [],
+      "writes": ["historical_import_queue"],
+      "reads": ["configurations", "buyers", "historical_import_queue"],
+      "events_emitted": [],
+      "external_deps": ["Keitaro API", "Telegram Bot API"]
+    },
+
+    "historical_import_video_handler": {
+      "id": "UYgvqpsU3TMzb2Qd",
+      "active": true,
+      "trigger": "telegram",
+      "calls": ["historical_creative_import"],
+      "writes": ["historical_import_queue"],
+      "reads": ["historical_import_queue"],
+      "events_emitted": [],
+      "external_deps": ["Telegram Bot API"]
+    }
+  },
+
+  "services": {
+    "decision_engine_api": {
+      "type": "api",
+      "url": "https://genomai.onrender.com",
+      "endpoints": {
+        "/api/decision/": {
+          "method": "POST",
+          "writes": ["decisions", "decision_traces"],
+          "reads": ["ideas", "decomposed_creatives"]
+        },
+        "/learning/process": {
+          "method": "POST",
+          "writes": ["ideas", "idea_confidence_versions", "outcome_aggregates", "event_log"],
+          "reads": ["outcome_aggregates", "decomposed_creatives", "idea_confidence_versions"]
+        },
+        "/learning/status": {
+          "method": "GET",
+          "writes": [],
+          "reads": ["outcome_aggregates"]
+        },
+        "/health": {
+          "method": "GET",
+          "writes": [],
+          "reads": []
+        }
+      }
+    }
+  },
+
+  "tables": {
+    "ideas": {
+      "writers": ["idea_registry_create", "decision_engine_api"],
+      "readers": ["decision_engine_mvp", "outcome_aggregator", "hypothesis_factory_generate", "historical_creative_import"]
+    },
+    "creatives": {
+      "writers": ["creative_ingestion_webhook", "buyer_creative_registration", "creative_transcription", "buyer_test_conclusion_checker", "historical_creative_import"],
+      "readers": ["creative_ingestion_webhook", "creative_transcription", "creative_decomposition_llm", "buyer_test_conclusion_checker", "buyer_daily_digest", "buyer_stats_command", "outcome_processor"]
+    },
+    "decisions": {
+      "writers": ["decision_engine_api"],
+      "readers": ["outcome_aggregator", "hypothesis_factory_generate"]
+    },
+    "outcome_aggregates": {
+      "writers": ["outcome_aggregator", "historical_creative_import", "decision_engine_api"],
+      "readers": ["decision_engine_api"]
+    },
+    "idea_confidence_versions": {
+      "writers": ["decision_engine_api"],
+      "readers": ["decision_engine_api"]
+    },
+    "raw_metrics": {
+      "writers": ["keitaro_poller"],
+      "readers": ["keitaro_poller", "snapshot_creator", "buyer_test_conclusion_checker", "buyer_daily_digest", "buyer_stats_command"]
+    },
+    "daily_metrics_snapshot": {
+      "writers": ["snapshot_creator"],
+      "readers": ["snapshot_creator", "outcome_aggregator"]
+    },
+    "buyers": {
+      "writers": ["buyer_onboarding"],
+      "readers": ["buyer_creative_registration", "telegram_router", "buyer_onboarding", "buyer_historical_loader", "historical_import_batch_loader"]
+    }
+  },
+
+  "chains": {
+    "creative_pipeline": {
+      "description": "Creative registration to hypothesis",
+      "steps": ["buyer_creative_registration", "creative_decomposition_llm", "idea_registry_create", "decision_engine_mvp", "hypothesis_factory_generate", "telegram_hypothesis_delivery"]
+    },
+    "learning_pipeline": {
+      "description": "Metrics collection to learning",
+      "steps": ["keitaro_poller", "snapshot_creator", "outcome_aggregator", "learning_loop_v2"]
+    },
+    "historical_import_pipeline": {
+      "description": "Historical data import",
+      "steps": ["buyer_onboarding", "buyer_historical_loader", "buyer_historical_url_handler", "historical_creative_import", "learning_loop_v2"]
+    }
+  }
+}

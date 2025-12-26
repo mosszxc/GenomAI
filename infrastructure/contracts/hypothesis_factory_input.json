@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hypothesis_factory_input",
+  "title": "Hypothesis Factory Input Contract",
+  "description": "Input contract for hypothesis_factory_generate workflow",
+  "type": "object",
+  "required": ["idea_id", "decision_id"],
+  "properties": {
+    "idea_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the approved idea"
+    },
+    "decision_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the APPROVE decision"
+    },
+    "decision": {
+      "type": "string",
+      "const": "approve",
+      "description": "Must be 'approve' to generate hypothesis"
+    }
+  },
+  "examples": [
+    {
+      "idea_id": "123e4567-e89b-12d3-a456-426614174000",
+      "decision_id": "123e4567-e89b-12d3-a456-426614174001",
+      "decision": "approve"
+    }
+  ]
+}

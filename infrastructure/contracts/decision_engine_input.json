@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "decision_engine_input",
+  "title": "Decision Engine Input Contract",
+  "description": "Input contract for decision_engine_mvp workflow and /api/decision endpoint",
+  "type": "object",
+  "required": ["idea_id"],
+  "properties": {
+    "idea_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the idea to evaluate"
+    },
+    "idea": {
+      "type": "object",
+      "description": "Optional pre-loaded idea data",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "canonical_hash": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused", "archived"]
+        },
+        "death_state": {
+          "type": ["string", "null"],
+          "enum": ["soft_dead", "hard_dead", "permanent_dead", null]
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "Additional context for decision",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["idea_registry", "outcome_processor", "manual"]
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "idea_id": "123e4567-e89b-12d3-a456-426614174000"
+    },
+    {
+      "idea_id": "123e4567-e89b-12d3-a456-426614174000",
+      "context": {
+        "source": "idea_registry"
+      }
+    }
+  ]
+}

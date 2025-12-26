@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "learning_loop_output",
+  "title": "Learning Loop Output Contract",
+  "description": "Output contract for /learning/process endpoint",
+  "type": "object",
+  "required": ["processed", "results"],
+  "properties": {
+    "processed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of outcomes processed"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["outcome_id", "status"],
+        "properties": {
+          "outcome_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idea_id": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["success", "error", "skipped"]
+          },
+          "confidence_delta": {
+            "type": ["number", "null"]
+          },
+          "new_confidence": {
+            "type": ["number", "null"]
+          },
+          "death_state": {
+            "type": ["string", "null"],
+            "enum": ["soft_dead", "hard_dead", "permanent_dead", null]
+          },
+          "error": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "outcome_id": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "processed": 3,
+      "results": [
+        {
+          "outcome_id": "123e4567-e89b-12d3-a456-426614174001",
+          "idea_id": "123e4567-e89b-12d3-a456-426614174000",
+          "status": "success",
+          "confidence_delta": 0.05,
+          "new_confidence": 0.75,
+          "death_state": null
+        }
+      ],
+      "errors": []
+    }
+  ]
+}

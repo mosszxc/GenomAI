@@ -1,0 +1,151 @@
+name: Bug Report
+description: Report a bug in GenomAI system
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+        Please fill out the following information to help us diagnose and fix the issue.
+
+        **Before submitting**, check [KNOWN_ISSUES.md](../../docs/KNOWN_ISSUES.md) for similar issues.
+
+  - type: dropdown
+    id: affected_component
+    attributes:
+      label: Affected Component
+      description: Which component is affected?
+      options:
+        - "n8n: telegram_router"
+        - "n8n: buyer_onboarding"
+        - "n8n: buyer_creative_registration"
+        - "n8n: creative_decomposition_llm"
+        - "n8n: creative_transcription"
+        - "n8n: idea_registry_create"
+        - "n8n: decision_engine_mvp"
+        - "n8n: hypothesis_factory_generate"
+        - "n8n: telegram_hypothesis_delivery"
+        - "n8n: keitaro_poller"
+        - "n8n: snapshot_creator"
+        - "n8n: outcome_aggregator"
+        - "n8n: outcome_processor"
+        - "n8n: learning_loop_v2"
+        - "n8n: buyer_historical_loader"
+        - "n8n: buyer_historical_url_handler"
+        - "n8n: historical_creative_import"
+        - "n8n: keep_alive_decision_engine"
+        - "n8n: buyer_test_conclusion_checker"
+        - "n8n: buyer_daily_digest"
+        - "API: Decision Engine (/api/decision)"
+        - "API: Learning Loop (/learning/process)"
+        - "DB: Schema/Migration"
+        - "DB: Data integrity"
+        - "Integration: Keitaro"
+        - "Integration: Telegram"
+        - "Integration: AssemblyAI"
+        - "Integration: OpenAI"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is this issue?
+      options:
+        - "Critical - System down or data loss"
+        - "High - Major feature broken"
+        - "Medium - Feature partially broken"
+        - "Low - Minor issue or cosmetic"
+    validations:
+      required: true
+
+  - type: input
+    id: related_tables
+    attributes:
+      label: Related Tables
+      description: Which database tables are affected? (comma-separated)
+      placeholder: "ideas, decisions, outcome_aggregates"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+      placeholder: "Describe the bug..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Go to...
+        2. Click on...
+        3. See error...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Messages
+      description: Any relevant logs or error messages
+      render: shell
+
+  - type: textarea
+    id: detection_query
+    attributes:
+      label: Detection Query
+      description: SQL query to detect this issue in production
+      placeholder: |
+        SELECT * FROM genomai.table
+        WHERE condition = 'error'
+        ORDER BY created_at DESC;
+      render: sql
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## After Fix (fill when closing)
+
+  - type: textarea
+    id: root_cause
+    attributes:
+      label: Root Cause
+      description: What was the actual root cause? (fill after investigation)
+
+  - type: textarea
+    id: resolution
+    attributes:
+      label: Resolution
+      description: What was done to fix it?
+
+  - type: textarea
+    id: regression_prevention
+    attributes:
+      label: Regression Prevention
+      description: What test/check should prevent this from happening again?
+      placeholder: |
+        - [ ] Added integration test: tests/integration/test_xxx.py
+        - [ ] Added contract validation
+        - [ ] Updated KNOWN_ISSUES.md
+
+  - type: checkboxes
+    id: cascade_check
+    attributes:
+      label: Cascade Check
+      description: After fixing, verify no cascade issues
+      options:
+        - label: "Checked DEPENDENCY_GRAPH.md for downstream impacts"
+        - label: "Tested affected workflows"
+        - label: "Verified no new errors in other components"

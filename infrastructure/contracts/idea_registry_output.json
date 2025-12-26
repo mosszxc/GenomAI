@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "idea_registry_output",
+  "title": "Idea Registry Output Contract",
+  "description": "Output contract for idea_registry_create workflow",
+  "type": "object",
+  "required": ["idea_id", "status"],
+  "properties": {
+    "idea_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the created or existing idea"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["created", "existing"],
+      "description": "Whether idea was newly created or already existed"
+    },
+    "canonical_hash": {
+      "type": "string",
+      "description": "Hash of the canonical idea representation"
+    },
+    "creative_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Source creative ID"
+    },
+    "decomposed_creative_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the decomposed creative"
+    }
+  },
+  "examples": [
+    {
+      "idea_id": "123e4567-e89b-12d3-a456-426614174000",
+      "status": "created",
+      "canonical_hash": "abc123def456",
+      "creative_id": "123e4567-e89b-12d3-a456-426614174002",
+      "decomposed_creative_id": "123e4567-e89b-12d3-a456-426614174003"
+    }
+  ]
+}

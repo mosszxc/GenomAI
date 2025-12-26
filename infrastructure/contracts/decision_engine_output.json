@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "decision_engine_output",
+  "title": "Decision Engine Output Contract",
+  "description": "Output contract for /api/decision endpoint",
+  "type": "object",
+  "required": ["decision_id", "idea_id", "decision", "checks"],
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID of the created decision"
+    },
+    "idea_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["approve", "reject", "defer"],
+      "description": "Decision outcome"
+    },
+    "checks": {
+      "type": "object",
+      "description": "Results of individual checks",
+      "required": ["schema_validity", "death_memory", "fatigue_constraint", "risk_budget"],
+      "properties": {
+        "schema_validity": {
+          "$ref": "#/definitions/check_result"
+        },
+        "death_memory": {
+          "$ref": "#/definitions/check_result"
+        },
+        "fatigue_constraint": {
+          "$ref": "#/definitions/check_result"
+        },
+        "risk_budget": {
+          "$ref": "#/definitions/check_result"
+        }
+      }
+    },
+    "decision_epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "trace": {
+      "type": "object",
+      "description": "Decision trace for debugging"
+    }
+  },
+  "definitions": {
+    "check_result": {
+      "type": "object",
+      "required": ["name", "passed"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "decision_id": "123e4567-e89b-12d3-a456-426614174001",
+      "idea_id": "123e4567-e89b-12d3-a456-426614174000",
+      "decision": "approve",
+      "checks": {
+        "schema_validity": {"name": "schema_validity", "passed": true},
+        "death_memory": {"name": "death_memory", "passed": true},
+        "fatigue_constraint": {"name": "fatigue_constraint", "passed": true},
+        "risk_budget": {"name": "risk_budget", "passed": true}
+      },
+      "decision_epoch": 1
+    }
+  ]
+}

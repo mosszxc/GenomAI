@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "learning_loop_input",
+  "title": "Learning Loop Input Contract",
+  "description": "Input contract for learning_loop_v2 workflow and /learning/process endpoint",
+  "type": "object",
+  "properties": {
+    "outcome_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Optional specific outcome to process"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 100,
+      "description": "Max outcomes to process in batch"
+    },
+    "force": {
+      "type": "boolean",
+      "default": false,
+      "description": "Force reprocessing of already processed outcomes"
+    }
+  },
+  "examples": [
+    {},
+    {
+      "limit": 50
+    },
+    {
+      "outcome_id": "123e4567-e89b-12d3-a456-426614174000"
+    }
+  ]
+}
