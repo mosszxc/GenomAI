@@ -299,6 +299,63 @@ Decision Engine
 
 ## 🎯 Статус проекта
 
+**Последнее обновление:** 2025-12-25
+
+### 🚀 Реализованная система
+
+| Компонент | Статус | Описание |
+|-----------|--------|----------|
+| **Decision Engine** | ✅ LIVE | FastAPI на Render (genomai.onrender.com:10000) |
+| **n8n Workflows** | ✅ 22 активных | Оркестрация всех процессов |
+| **Supabase DB** | ✅ 22 таблицы | Схема `genomai` |
+| **Telegram Bot** | ✅ LIVE | Buyer взаимодействие |
+| **Keitaro Integration** | ✅ LIVE | Метрики и трекинг |
+| **Learning Loop** | ✅ LIVE | Обучение на outcomes |
+
+### 📊 Статистика БД
+- **decisions**: 19 записей
+- **decision_traces**: 18 записей
+- **buyers**: 1 зарегистрирован
+
+### ✅ Выполненные фазы (из 17)
+
+| Фаза | Название | Статус |
+|------|----------|--------|
+| 0 | Architectural Lock | ✅ |
+| 1 | Domain Modeling | ✅ |
+| 2 | Core Variable Definition | ✅ |
+| 3 | Canonical Schema | ✅ |
+| 4 | Schema Validation | ✅ |
+| 5 | Storage & Memory Layer | ✅ |
+| 6 | Input & Ingestion Layer | ✅ |
+| 7 | Decomposition Layer (LLM) | ✅ |
+| 10 | Decision Engine | ✅ |
+| 11 | Hypothesis Factory | ✅ |
+| 13 | Outcome Logging | ✅ |
+| 15 | Learning Loop | ✅ |
+
+### 🆕 Дополнительно реализовано
+
+| Функционал | Workflows |
+|------------|-----------|
+| **Buyer System** | Onboarding, Registration, Stats, Daily Digest |
+| **Historical Import** | Loader, URL Handler, Batch Processing |
+| **Keitaro Polling** | Автоматический сбор метрик |
+| **Telegram Router** | Маршрутизация команд |
+| **Test Conclusion** | Автозавершение тестов по spend |
+
+### 📋 В разработке
+
+| Фаза | Название | Статус |
+|------|----------|--------|
+| 8 | Similarity / Novelty / Clustering | ⏳ Pending |
+| 9 | Fatigue & Death Systems | ⏳ Pending |
+| 14 | Horizon Evaluation | ⏳ Pending |
+| 16 | Epistemic Shock | ⏳ Pending |
+| 17 | Human Override Layer | ⏳ Pending |
+
+---
+
 **🟥 Layer 0 — Doctrine:**
 - ✅ **Concept Document** - [Concept Document](./docs/layer-0-doctrine/CONCEPT.md) (v1.0)
 - ✅ **Architecture Lock** - [Architecture Lock / Doctrine](./docs/layer-0-doctrine/ARCHITECTURE_LOCK.md) (v1.0)
@@ -329,27 +386,11 @@ Decision Engine
 - ✅ **Storage Model** - [Storage Model Specification](./docs/layer-3-implementation-design/STORAGE_MODEL.md) (v1.0)
 - ✅ **Error Handling** - [Error Handling Specification](./docs/layer-3-implementation-design/ERROR_HANDLING.md) (v1.0)
 
-**🟦 Layer 4 — Implementation Planning:**
-- ✅ **Technical Decisions** - [Technical Decisions](./docs/layer-4-implementation-planning/TECH_DECISIONS.md) (v1.3)
-- ✅ **Decision Engine Migration** - [Decision Engine Render Migration](./docs/layer-4-implementation-planning/DECISION_ENGINE_RENDER_MIGRATION.md) (v1.0)
-- ✅ **Data Schemas** - [Data Schemas](./docs/layer-4-implementation-planning/DATA_SCHEMAS.md) (v1.0)
-- ✅ **API Contracts** - [API Contracts](./docs/layer-4-implementation-planning/API_CONTRACTS.md) (v1.0)
-- ✅ **Implementation Checklist** - [Implementation Checklist](./docs/layer-4-implementation-planning/IMPLEMENTATION_CHECKLIST.md) (v1.0)
-- ✅ **Порядок разработки** - [Development Order](./docs/DEVELOPMENT_ORDER.md)
-- ✅ **GitHub репозиторий** - настроен и готов к работе
-- ✅ **STEP 01 — Ingestion + Validation** - ✅ **COMPLETED & TESTED**
-  - Workflow: `creative_ingestion_webhook` (активен)
-  - Таблицы: `genomai.creatives`, `genomai.event_log` (созданы и протестированы)
-  - События: `CreativeReferenceReceived`, `CreativeRegistered`, `CreativeIngestionRejected` (реализованы)
-  - Epic: #1 - закрыт
-- 🚧 **STEP 02 — Decomposition (LLM)** - в процессе
-- 🚧 **STEP 04 — Decision Engine** - 🚧 **MIGRATING TO RENDER**
-  - **Статус:** Миграция на Render в процессе
-  - **Текущая реализация:** n8n workflow (`decision_engine_mvp`)
-  - **Целевая реализация:** REST API сервис на Render
-  - **Структура проекта:** `decision-engine-service/` (создана)
-  - **Документация:** [Decision Engine Render Migration](./docs/layer-4-implementation-planning/DECISION_ENGINE_RENDER_MIGRATION.md)
-  - **Playbook:** [04_decision_engine_playbook.md](./docs/layer-4-implementation-planning/STEP_IMPLEMENTATION_PLAYBOOKS/04_decision_engine_playbook.md) (обновлен)
+**🟦 Layer 4 — Implementation:**
+- ✅ **Decision Engine** - FastAPI на Render ([genomai.onrender.com](https://genomai.onrender.com))
+- ✅ **n8n Workflows** - [N8N_WORKFLOWS.md](./docs/N8N_WORKFLOWS.md)
+- ✅ **Database** - 22 таблицы в схеме `genomai`
+- ✅ **Migrations** - 12 миграций в `infrastructure/migrations/`
 
 ---
 
