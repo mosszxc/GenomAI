@@ -17,6 +17,9 @@ jobs:
     name: Sync from n8n
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     # Only run if n8n API key is configured
     if: ${{ vars.N8N_API_KEY != '' || github.event_name == 'workflow_dispatch' }}
 
