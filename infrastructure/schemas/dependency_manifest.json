@@ -28,7 +28,8 @@
         "raw_metrics_current"
       ],
       "reads": [
-        "keitaro_config"
+        "keitaro_config",
+        "buyers"
       ],
       "events_emitted": [
         "RawMetricsObserved"
