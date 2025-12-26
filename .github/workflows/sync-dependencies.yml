@@ -1,0 +1,64 @@
+name: Sync Dependencies
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no changes)'
+        type: boolean
+        default: false
+
+jobs:
+  sync:
+    name: Sync from n8n
+    runs-on: ubuntu-latest
+
+    # Only run if n8n API key is configured
+    if: ${{ vars.N8N_API_KEY != '' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Sync dependencies
+        env:
+          N8N_API_URL: ${{ vars.N8N_API_URL }}
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            python scripts/sync_dependencies.py --dry-run --verbose
+          else
+            python scripts/sync_dependencies.py --verbose
+          fi
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            git diff --stat
+          fi
+
+      - name: Commit and push
+        if: steps.changes.outputs.changed == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add infrastructure/schemas/dependency_manifest.json docs/DEPENDENCY_GRAPH.md
+          git commit -m "docs: auto-sync dependency graph from n8n
+
+          🤖 Generated with GitHub Actions"
+          git push

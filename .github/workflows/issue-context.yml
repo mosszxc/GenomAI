@@ -1,0 +1,145 @@
+name: Issue Context
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+jobs:
+  add-context:
+    name: Add Related Context
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find related issues and add context
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Load known issues
+            let knownIssues = '';
+            try {
+              knownIssues = fs.readFileSync('docs/KNOWN_ISSUES.md', 'utf8');
+            } catch (e) {
+              console.log('KNOWN_ISSUES.md not found');
+            }
+
+            // Load dependency manifest
+            let manifest = {};
+            try {
+              manifest = JSON.parse(fs.readFileSync('infrastructure/schemas/dependency_manifest.json', 'utf8'));
+            } catch (e) {
+              console.log('dependency_manifest.json not found');
+            }
+
+            // Get issue/PR body
+            const isIssue = context.eventName === 'issues';
+            const item = isIssue ? context.payload.issue : context.payload.pull_request;
+            const title = item.title.toLowerCase();
+            const body = (item.body || '').toLowerCase();
+
+            // Extract affected components from title/body
+            const components = [];
+            const workflows = Object.keys(manifest.workflows || {});
+
+            for (const wf of workflows) {
+              const wfName = wf.replace(/_/g, ' ').replace(/-/g, ' ');
+              if (title.includes(wf) || title.includes(wfName) ||
+                  body.includes(wf) || body.includes(wfName)) {
+                components.push(wf);
+              }
+            }
+
+            // Check for API mentions
+            if (title.includes('decision') || body.includes('/api/decision')) {
+              components.push('decision_engine_api');
+            }
+            if (title.includes('learning') || body.includes('/learning')) {
+              components.push('learning_loop_api');
+            }
+
+            // Find related closed issues
+            const relatedIssues = [];
+            const issueNumbers = knownIssues.match(/### #(\d+):/g) || [];
+
+            for (const match of issueNumbers) {
+              const num = match.match(/\d+/)[0];
+              // Check if any component matches
+              const section = knownIssues.split(`### #${num}:`)[1]?.split('###')[0] || '';
+              for (const comp of components) {
+                if (section.toLowerCase().includes(comp.replace(/_/g, ' '))) {
+                  relatedIssues.push(num);
+                  break;
+                }
+              }
+            }
+
+            // Build comment
+            if (components.length === 0 && relatedIssues.length === 0) {
+              console.log('No related context found');
+              return;
+            }
+
+            let comment = '## 🔍 Related Context\n\n';
+
+            if (components.length > 0) {
+              comment += '### Affected Components\n';
+              comment += 'Based on the title/body, these components may be affected:\n\n';
+
+              for (const comp of components) {
+                const wf = manifest.workflows?.[comp];
+                if (wf) {
+                  comment += `- **${comp}** (ID: \`${wf.id}\`)\n`;
+                  if (wf.calls?.length) {
+                    comment += `  - Calls: ${wf.calls.join(', ')}\n`;
+                  }
+                  if (wf.writes?.length) {
+                    comment += `  - Writes to: ${wf.writes.join(', ')}\n`;
+                  }
+                } else {
+                  comment += `- **${comp}**\n`;
+                }
+              }
+              comment += '\n';
+            }
+
+            if (relatedIssues.length > 0) {
+              comment += '### Related Resolved Issues\n';
+              comment += 'Similar issues were resolved before:\n\n';
+              for (const num of [...new Set(relatedIssues)].slice(0, 5)) {
+                comment += `- #${num}\n`;
+              }
+              comment += '\nCheck [KNOWN_ISSUES.md](../blob/main/docs/KNOWN_ISSUES.md) for root causes and resolutions.\n\n';
+            }
+
+            comment += '---\n';
+            comment += '*This context was auto-generated. See [DEPENDENCY_GRAPH.md](../blob/main/docs/DEPENDENCY_GRAPH.md) for full dependency map.*';
+
+            // Post comment
+            if (isIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: item.number,
+                body: comment
+              });
+            } else {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: item.number,
+                body: comment,
+                event: 'COMMENT'
+              });
+            }
+
+            console.log('Added context comment');
