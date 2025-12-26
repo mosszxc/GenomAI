@@ -30,6 +30,9 @@ All pass = APPROVE
 ## Rules
 1. Market = truth 2. Deterministic+trace 3. ML signals only 4. LLM: transcripts 5. Schema-first
 
+## Git
+Always push after commit. No exceptions.
+
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
 
