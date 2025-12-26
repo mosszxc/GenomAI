@@ -1,6 +1,6 @@
 [project]
 name = "genomai-decision-engine"
-version = "0.1.0"
+version = "1.1.0"
 description = "Autonomous Creative Decision System - Decision Engine Service"
 requires-python = ">=3.11"
 dependencies = [
