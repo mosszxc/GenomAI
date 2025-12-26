@@ -1,0 +1,29 @@
+#!/bin/bash
+# Pre-commit hook: run unit tests before commit
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "Running unit tests before commit..."
+
+# Check if decision-engine-service files changed
+CHANGED_FILES=$(git diff --cached --name-only)
+
+if echo "$CHANGED_FILES" | grep -q "decision-engine-service/"; then
+    echo "Decision Engine files changed, running tests..."
+
+    cd decision-engine-service
+
+    # Run unit tests (fast, ~4 sec)
+    if python -m pytest tests/unit/ -q --tb=line 2>/dev/null; then
+        echo "Unit tests passed"
+    else
+        echo "Unit tests FAILED. Commit aborted."
+        echo "Run: cd decision-engine-service && pytest tests/unit/ -v"
+        exit 1
+    fi
+
+    cd ..
+fi
+
+echo "Pre-commit checks passed"

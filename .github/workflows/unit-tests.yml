@@ -1,0 +1,46 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'decision-engine-service/**'
+      - 'tests/**'
+  pull_request:
+    paths:
+      - 'decision-engine-service/**'
+      - 'tests/**'
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: decision-engine-service
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run unit tests
+        working-directory: decision-engine-service
+        run: |
+          pytest tests/unit/ -v --tb=short
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "Run completed at $(date)" >> $GITHUB_STEP_SUMMARY

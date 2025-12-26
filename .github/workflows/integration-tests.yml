@@ -1,6 +1,14 @@
 name: Integration Tests
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'decision-engine-service/**'
+      - 'infrastructure/migrations/**'
+      - 'infrastructure/contracts/**'
+      - 'tests/**'
+
   pull_request:
     paths:
       - 'decision-engine-service/**'
@@ -45,8 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: contract-validation
 
-    # Only run if we have secrets configured
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    # Run on push/PR to main, manual trigger, or schedule (requires secrets)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Checkout
