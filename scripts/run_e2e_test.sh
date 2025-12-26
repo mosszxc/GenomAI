@@ -12,6 +12,9 @@
 #   ./scripts/run_e2e_test.sh --quick   # Run health checks only
 #   ./scripts/run_e2e_test.sh --step N  # Run specific step (1-10)
 #
+# Environment:
+#   E2E_TRACKER_ID=54321  # Override default tracker_id (99999)
+#
 
 set -e
 

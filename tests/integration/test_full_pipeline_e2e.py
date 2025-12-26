@@ -39,8 +39,8 @@ N8N_WEBHOOK_BASE = os.getenv("N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.clou
 DE_API_URL = os.getenv("DE_API_URL", "https://genomai.onrender.com")
 API_KEY = os.getenv("API_KEY", "")
 
-# Test tracker ID for E2E test
-E2E_TEST_TRACKER_ID = "99999"
+# Test tracker ID for E2E test (override with E2E_TRACKER_ID env var)
+E2E_TEST_TRACKER_ID = os.getenv("E2E_TRACKER_ID", "99999")
 
 
 @pytest.fixture
