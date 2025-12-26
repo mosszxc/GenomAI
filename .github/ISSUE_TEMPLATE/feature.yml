@@ -1,0 +1,124 @@
+name: Feature Request
+description: New feature or enhancement
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Feature Request
+        Describe the feature you want to add.
+
+  - type: dropdown
+    id: sphere
+    attributes:
+      label: Sphere
+      description: Which part of the system?
+      options:
+        - "sphere:ingestion"
+        - "sphere:decomposition"
+        - "sphere:idea-registry"
+        - "sphere:decision-engine"
+        - "sphere:hypothesis-factory"
+        - "sphere:delivery"
+        - "sphere:metrics"
+        - "sphere:outcomes"
+        - "sphere:learning"
+        - "sphere:buyer"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "High - Critical path"
+        - "Medium - Important but not blocking"
+        - "Low - Nice to have"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What should this feature do?
+      placeholder: "As a user, I want to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: How do we know it's done?
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+        - [ ] Tests pass
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Dependencies & Context
+
+  - type: input
+    id: blocked_by
+    attributes:
+      label: Blocked By
+      description: Issues that must be done BEFORE this one
+      placeholder: "#123, #456"
+
+  - type: input
+    id: blocks
+    attributes:
+      label: Blocks
+      description: Issues that are waiting for THIS one
+      placeholder: "#789"
+
+  - type: input
+    id: related
+    attributes:
+      label: Related Issues
+      description: Related but not blocking
+      placeholder: "#111, #222"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Prior Art
+      description: Any previous decisions, discussions, or related work?
+      placeholder: |
+        - See discussion in #100
+        - Related to ADR docs/decisions/001-xxx.md
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## After Implementation (fill when closing)
+
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation Notes
+      description: Summary of what was done (for future reference)
+      placeholder: |
+        - Added X to Y
+        - Changed Z because...
+        - Key files: path/to/file.py
+
+  - type: textarea
+    id: testing_done
+    attributes:
+      label: Testing Done
+      description: How was this tested?
+      placeholder: |
+        - [ ] Unit tests
+        - [ ] Integration test
+        - [ ] Manual testing via workflow

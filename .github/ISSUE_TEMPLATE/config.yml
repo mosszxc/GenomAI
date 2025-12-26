@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/mosszxc/GenomAI/tree/main/docs
+    about: Check existing documentation before creating an issue

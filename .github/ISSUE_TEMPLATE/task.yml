@@ -1,0 +1,122 @@
+name: Task
+description: General task or work item
+title: "[TASK] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Task
+        A general work item that needs to be done.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - "Implementation"
+        - "Refactoring"
+        - "Testing"
+        - "Documentation"
+        - "Research"
+        - "DevOps / Infrastructure"
+        - "Other"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sphere
+    attributes:
+      label: Sphere
+      description: Which part of the system?
+      options:
+        - "sphere:ingestion"
+        - "sphere:decomposition"
+        - "sphere:idea-registry"
+        - "sphere:decision-engine"
+        - "sphere:hypothesis-factory"
+        - "sphere:delivery"
+        - "sphere:metrics"
+        - "sphere:outcomes"
+        - "sphere:learning"
+        - "sphere:buyer"
+        - "n8n"
+        - "Cross-cutting"
+        - "Other"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be done?
+    validations:
+      required: true
+
+  - type: textarea
+    id: done_criteria
+    attributes:
+      label: Definition of Done
+      description: How do we know it's complete?
+      placeholder: |
+        - [ ] Code written
+        - [ ] Tests pass
+        - [ ] Workflow validated
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Dependencies & Context
+
+  - type: input
+    id: blocked_by
+    attributes:
+      label: Blocked By
+      description: Issues that must be done BEFORE this one
+      placeholder: "#123, #456"
+
+  - type: input
+    id: blocks
+    attributes:
+      label: Blocks
+      description: Issues waiting for THIS task
+      placeholder: "#789"
+
+  - type: input
+    id: related
+    attributes:
+      label: Related Issues
+      description: Related but not blocking
+      placeholder: "#111, #222"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Background info, prior discussions, related work
+      placeholder: |
+        - Discussed in #100
+        - Related to feature #50
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Completion Summary (fill when closing)
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What Was Done
+      description: Summary for future reference
+      placeholder: |
+        - Changed X in Y
+        - Key files modified: a.py, b.ts
+        - Notes for future: ...
+
+  - type: input
+    id: pr_link
+    attributes:
+      label: PR
+      description: Link to the PR that resolved this
+      placeholder: "#PR-number"
