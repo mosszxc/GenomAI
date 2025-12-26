@@ -596,7 +596,7 @@ class TestPipelineHealthChecks:
             response = await client.get(f"{DE_API_URL}/health")
             assert response.status_code == 200
             data = response.json()
-            assert data.get("status") == "healthy"
+            assert data.get("status") == "ok"
 
     @pytest.mark.integration
     async def test_supabase_connectivity(self, db: DbAssertions):

@@ -27,6 +27,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "https://ftrerelppsnbdcmtcwya.supabase.
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 N8N_WEBHOOK_BASE = os.getenv("N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook")
 DE_API_URL = os.getenv("DE_API_URL", "https://genomai.onrender.com")
+API_KEY = os.getenv("API_KEY", "")
 
 # Webhook paths
 WEBHOOKS = {
@@ -60,7 +61,10 @@ class TestLearningPipeline:
     async def test_learning_loop_api_health(self):
         """Verify Learning Loop API is reachable."""
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{DE_API_URL}/learning/status")
+            response = await client.get(
+                f"{DE_API_URL}/learning/status",
+                headers={"X-API-Key": API_KEY}
+            )
 
             assert response.status_code == 200
             data = response.json()
@@ -71,7 +75,7 @@ class TestLearningPipeline:
         """Verify raw metrics are being collected."""
         metrics = await db._query(
             "raw_metrics_current",
-            "select=creative_id,clicks,conversions,spend,updated_at&order=updated_at.desc&limit=5"
+            "select=tracker_id,metrics,updated_at&order=updated_at.desc&limit=5"
         )
 
         # Should have some metrics if keitaro_poller is running
@@ -80,8 +84,8 @@ class TestLearningPipeline:
         if metrics:
             # Verify structure
             for m in metrics:
-                assert "creative_id" in m
-                assert "clicks" in m or "conversions" in m
+                assert "tracker_id" in m
+                assert "metrics" in m
 
     @pytest.mark.integration
     async def test_daily_snapshots_exist(self, db: DbAssertions):
@@ -91,7 +95,7 @@ class TestLearningPipeline:
 
         snapshots = await db._query(
             "daily_metrics_snapshot",
-            f"snapshot_date=gte.{yesterday}&select=id,creative_id,snapshot_date&limit=10"
+            f"date=gte.{yesterday}&select=id,tracker_id,date&limit=10"
         )
 
         # Log for debugging
@@ -149,7 +153,7 @@ class TestLearningPipeline:
         """
         versions = await db._query(
             "idea_confidence_versions",
-            "select=idea_id,version,confidence_value,source_outcome_id&order=created_at.desc&limit=10"
+            "select=idea_id,version,confidence_value,source_outcome_id&order=updated_at.desc&limit=10"
         )
 
         if not versions:
@@ -195,7 +199,10 @@ class TestLearningPipeline:
         """
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Get status
-            response = await client.get(f"{DE_API_URL}/learning/status")
+            response = await client.get(
+                f"{DE_API_URL}/learning/status",
+                headers={"X-API-Key": API_KEY}
+            )
             assert response.status_code == 200
 
             # Test process endpoint (dry run with limit=0)
@@ -203,7 +210,7 @@ class TestLearningPipeline:
                 f"{DE_API_URL}/learning/process",
                 json={"limit": 1},
                 headers={
-                    "Authorization": f"Bearer {os.getenv('API_KEY', '')}",
+                    "X-API-Key": API_KEY,
                     "Content-Type": "application/json",
                 }
             )
@@ -254,28 +261,34 @@ class TestLearningPipelineContracts:
     @pytest.mark.integration
     async def test_snapshot_to_outcome_linkage(self, db: DbAssertions):
         """
-        Verify snapshots can be linked to outcomes.
+        Verify snapshots can be linked to outcomes via tracker_id -> creatives -> outcomes.
 
         This tests the data flow integrity.
         """
         # Get a snapshot
         snapshots = await db._query(
             "daily_metrics_snapshot",
-            "select=id,creative_id,snapshot_date&order=created_at.desc&limit=1"
+            "select=id,tracker_id,date&order=created_at.desc&limit=1"
         )
 
         if not snapshots:
             pytest.skip("No snapshots available")
 
         snapshot = snapshots[0]
-        creative_id = snapshot["creative_id"]
+        tracker_id = snapshot["tracker_id"]
+
+        # Find creative by tracker_id
+        creative = await db.get_creative(tracker_id)
+
+        if not creative:
+            pytest.skip(f"No creative found for tracker_id {tracker_id}")
 
         # Check if there's a corresponding outcome
-        outcome = await db.get_outcome(creative_id)
+        outcome = await db.get_outcome(creative["id"])
 
         # Not all snapshots will have outcomes (only if idea+decision exist)
         # But the linkage should be possible
-        print(f"Snapshot {snapshot['id']} -> Creative {creative_id} -> Outcome: {outcome is not None}")
+        print(f"Snapshot {snapshot['id']} -> Tracker {tracker_id} -> Creative {creative['id']} -> Outcome: {outcome is not None}")
 
 
 class TestLearningPipelineRegressions:
@@ -313,7 +326,7 @@ class TestLearningPipelineRegressions:
         """
         events = await db._query(
             "event_log",
-            "event_type=like.learning.*&select=event_type,entity_id,created_at&order=created_at.desc&limit=10"
+            "event_type=like.learning%&select=event_type,entity_id,occurred_at&order=occurred_at.desc&limit=10"
         )
 
         # Log for visibility

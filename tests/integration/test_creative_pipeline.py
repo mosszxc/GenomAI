@@ -71,7 +71,7 @@ class TestCreativePipeline:
 
             assert response.status_code == 200
             data = response.json()
-            assert data.get("status") == "healthy"
+            assert data.get("status") == "ok"
 
     @pytest.mark.integration
     async def test_creative_creation_in_database(self, db: DbAssertions, test_tracker_id: str):
@@ -175,14 +175,14 @@ class TestCreativePipeline:
         # Query last 10 events
         events = await db._query(
             "event_log",
-            "select=event_type,entity_id,created_at&order=created_at.desc&limit=10"
+            "select=event_type,entity_id,occurred_at&order=occurred_at.desc&limit=10"
         )
 
         # Verify events have required fields
         for event in events:
             assert "event_type" in event
             assert "entity_id" in event
-            assert "created_at" in event
+            assert "occurred_at" in event
 
     @pytest.mark.integration
     async def test_no_orphan_decomposed_creatives(self, db: DbAssertions):
