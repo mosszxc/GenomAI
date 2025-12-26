@@ -23,6 +23,10 @@ All pass = APPROVE
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `infrastructure/schemas/` `docs/`
 
+## Schema
+Таблицы: `ideas` (не idea_registry), `decisions` (не decision_log), `decomposed_creatives` (не atoms)
+Полный референс: `docs/SCHEMA_REFERENCE.md`
+
 ## Rules
 1. Market = truth 2. Deterministic+trace 3. ML signals only 4. LLM: transcripts 5. Schema-first
 
