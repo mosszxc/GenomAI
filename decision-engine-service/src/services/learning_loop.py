@@ -483,8 +483,13 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
 
                     # Track component learning updates
                     comp_result = learn_result.get("component_learning")
-                    if comp_result and "components_updated" in comp_result:
-                        result.component_updates += comp_result["components_updated"]
+                    if comp_result:
+                        if "error" in comp_result:
+                            result.errors.append(f"Component learning error: {comp_result['error']}")
+                        elif "errors" in comp_result and comp_result["errors"]:
+                            result.errors.extend(comp_result["errors"])
+                        if "components_updated" in comp_result:
+                            result.component_updates += comp_result["components_updated"]
 
             except Exception as e:
                 result.errors.append(f"Error processing outcome {outcome['id']}: {str(e)}")
