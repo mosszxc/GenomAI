@@ -3,7 +3,7 @@
 Визуализация зависимостей между workflows, API и таблицами БД.
 
 **Auto-generated from:** n8n API
-**Last updated:** 2025-12-26 07:54
+**Last updated:** 2025-12-26 21:56
 
 ---
 
@@ -13,7 +13,7 @@
 flowchart TD
 
     %% Auto-generated from n8n workflows
-    %% Updated: 2025-12-26 07:54
+    %% Updated: 2025-12-26 21:56
 
     subgraph Telegram["Telegram Entry Points"]
         legacyuniairout[legacy___uniai___router_workflow_(imported)]
@@ -52,6 +52,7 @@ flowchart TD
         legacyregistern[legacy___register_new_creative___scan_google_drive_v2]
         legacykeitarome[legacy___keitaro_metrics_daily_sync]
         legacykeitaro30[legacy___keitaro_30d_metrics_sync_(new)]
+        dailyrecommenda[daily_recommendation_generator]
         outcomeingestio[outcome_ingestion_keitaro]
     end
 
@@ -60,11 +61,13 @@ flowchart TD
     keitaropoller --> snapshotcreator
     historicalcreat --> creativetranscr
     historicalcreat --> learningloop
-    outcomeaggregat --> learningloopv2
+    buyerhistorical --> historicalimpor
+    zalivsessionhan --> creativetranscr
+    creativereplyha --> creativetranscr
     buyerhistorical --> historicalimpor
     telegramrouter --> router
-    snapshotcreator --> outcomeprocesso
     snapshotcreator --> outcomeaggregat
+    snapshotcreator --> outcomeprocesso
     telegramcreativ --> ingest
     historicalimpor --> historicalimpor
     idearegistrycre --> 8a0b9e75a8eb449
@@ -72,6 +75,7 @@ flowchart TD
     creativeingesti --> a1b2c3d4e5f6789
     buyeronboarding --> buyerhistorical
     creativedecompo --> idearegistrycre
+    dailyrecommenda --> recommendationd
 ```
 
 ---
