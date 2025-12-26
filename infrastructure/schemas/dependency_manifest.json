@@ -57,12 +57,12 @@
       ],
       "writes": [],
       "reads": [
-        "keitaro_config",
-        "decomposed_creatives"
+        "decomposed_creatives",
+        "keitaro_config"
       ],
       "events_emitted": [
-        "CreativeRegistered",
-        "OutcomeImported"
+        "OutcomeImported",
+        "CreativeRegistered"
       ],
       "external_deps": [
         "Keitaro API"
@@ -77,9 +77,9 @@
       ],
       "writes": [],
       "reads": [
+        "decisions",
         "creative_idea_lookup",
-        "daily_metrics_snapshot",
-        "decisions"
+        "daily_metrics_snapshot"
       ],
       "events_emitted": [
         "OutcomeAggregated"
@@ -117,17 +117,17 @@
       "calls": [],
       "writes": [
         "creatives",
-        "BuyingUsersKey",
-        "performance_data"
+        "performance_data",
+        "BuyingUsersKey"
       ],
       "reads": [
         "KeitaroCampaigns",
+        "buyers",
         "ad_accounts",
-        "BuyingUsersAdaccounts",
         "creatives",
-        "BuyingUsersKey",
         "performance_data",
-        "buyers"
+        "BuyingUsersAdaccounts",
+        "BuyingUsersKey"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -218,8 +218,8 @@
         "creative_ram"
       ],
       "reads": [
-        "creative_ram",
-        "buyers"
+        "buyers",
+        "creative_ram"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -246,8 +246,8 @@
       "trigger": "webhook",
       "calls": [],
       "writes": [
-        "staging_keitaro_metrics_raw",
-        "dwh_performance_daily"
+        "dwh_performance_daily",
+        "staging_keitaro_metrics_raw"
       ],
       "reads": [
         "dwh_performance_daily",
@@ -289,8 +289,8 @@
         "event_log"
       ],
       "reads": [
-        "buyer_states",
-        "buyers"
+        "buyers",
+        "buyer_states"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -340,8 +340,8 @@
       "active": true,
       "trigger": "webhook",
       "calls": [
-        "outcome-aggregator",
-        "outcome-processor"
+        "outcome-processor",
+        "outcome-aggregator"
       ],
       "writes": [
         "daily_metrics_snapshot"
@@ -393,8 +393,8 @@
         "ad_accounts"
       ],
       "reads": [
-        "social_accounts",
-        "ad_accounts"
+        "ad_accounts",
+        "social_accounts"
       ],
       "events_emitted": [],
       "external_deps": []
@@ -432,9 +432,9 @@
         "social_accounts"
       ],
       "reads": [
-        "social_accounts",
         "buyers",
-        "ad_accounts"
+        "ad_accounts",
+        "social_accounts"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -470,9 +470,9 @@
       "calls": [],
       "writes": [],
       "reads": [
-        "keitaro_config",
         "historical_import_queue",
-        "buyers"
+        "buyers",
+        "keitaro_config"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -537,8 +537,8 @@
       "trigger": "webhook",
       "calls": [],
       "writes": [
-        "creatives",
         "transcripts",
+        "creatives",
         "event_log"
       ],
       "reads": [
@@ -596,8 +596,8 @@
         "={{ \"config\" }}"
       ],
       "events_emitted": [
-        "DecisionMade",
-        "DecisionEngineFailed"
+        "DecisionEngineFailed",
+        "DecisionMade"
       ],
       "external_deps": []
     },
@@ -721,8 +721,8 @@
         "creatives"
       ],
       "events_emitted": [
-        "CreativeRegistered",
         "CreativeIngestionRejected",
+        "CreativeRegistered",
         "CreativeReferenceReceived"
       ],
       "external_deps": []
@@ -769,8 +769,8 @@
       "trigger": "telegram",
       "calls": [],
       "writes": [
-        "creatives_test",
-        "buyers"
+        "buyers",
+        "creatives_test"
       ],
       "reads": [
         "buyers"
@@ -789,12 +789,12 @@
         "buyer-historical-loader"
       ],
       "writes": [
-        "buyer_states",
-        "buyers"
+        "buyers",
+        "buyer_states"
       ],
       "reads": [
-        "buyer_states",
-        "buyers"
+        "buyers",
+        "buyer_states"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -838,9 +838,9 @@
         "creative_ram"
       ],
       "reads": [
+        "buyers",
         "creatives",
-        "creative_ram",
-        "buyers"
+        "creative_ram"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -889,9 +889,9 @@
       ],
       "reads": [],
       "events_emitted": [
-        "DecompositionFailed",
+        "CreativeDecomposed",
         "TranscriptCreated",
-        "CreativeDecomposed"
+        "DecompositionFailed"
       ],
       "external_deps": [
         "OpenAI"
@@ -915,8 +915,8 @@
       "trigger": "schedule",
       "calls": [],
       "writes": [
-        "staging_keitaro_metrics_raw",
-        "dwh_performance_daily"
+        "dwh_performance_daily",
+        "staging_keitaro_metrics_raw"
       ],
       "reads": [
         "keitaro_settings",
@@ -967,13 +967,13 @@
         "event_log"
       ],
       "reads": [
-        "={{ \"decisions\" }}",
         "={{ \"event_log\" }}",
-        "={{ \"decomposed_creatives\" }}"
+        "={{ \"decomposed_creatives\" }}",
+        "={{ \"decisions\" }}"
       ],
       "events_emitted": [
-        "HypothesisGenerated",
-        "HypothesisGenerationFailed"
+        "HypothesisGenerationFailed",
+        "HypothesisGenerated"
       ],
       "external_deps": [
         "OpenAI"
@@ -1061,9 +1061,9 @@
       "trigger": "schedule",
       "calls": [],
       "writes": [
+        "event_log",
         "raw_metrics_current",
-        "daily_metrics_snapshot",
-        "event_log"
+        "daily_metrics_snapshot"
       ],
       "reads": [
         "raw_metrics_current",

@@ -3,7 +3,7 @@
 Визуализация зависимостей между workflows, API и таблицами БД.
 
 **Auto-generated from:** n8n API
-**Last updated:** 2025-12-26 07:53
+**Last updated:** 2025-12-26 07:54
 
 ---
 
@@ -13,7 +13,7 @@
 flowchart TD
 
     %% Auto-generated from n8n workflows
-    %% Updated: 2025-12-26 07:53
+    %% Updated: 2025-12-26 07:54
 
     subgraph Telegram["Telegram Entry Points"]
         legacyuniairout[legacy___uniai___router_workflow_(imported)]
@@ -63,8 +63,8 @@ flowchart TD
     outcomeaggregat --> learningloopv2
     buyerhistorical --> historicalimpor
     telegramrouter --> router
-    snapshotcreator --> outcomeaggregat
     snapshotcreator --> outcomeprocesso
+    snapshotcreator --> outcomeaggregat
     telegramcreativ --> ingest
     historicalimpor --> historicalimpor
     idearegistrycre --> 8a0b9e75a8eb449
