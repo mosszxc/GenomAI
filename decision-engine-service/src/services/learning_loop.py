@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from src.utils.errors import SupabaseError
 from src.utils.time_decay import time_decay, days_since
 from src.utils.environment import apply_environment_weight, is_environment_degraded
+from src.services.component_learning import process_component_learnings
 
 
 SCHEMA = "genomai"
@@ -37,6 +38,7 @@ class LearningResult:
     processed_count: int = 0
     updated_ideas: list = None
     new_deaths: list = None
+    component_updates: int = 0
     errors: list = None
 
     def __post_init__(self):
@@ -49,6 +51,7 @@ class LearningResult:
             "processed_count": self.processed_count,
             "updated_ideas": self.updated_ideas,
             "new_deaths": self.new_deaths,
+            "component_updates": self.component_updates,
             "errors": self.errors
         }
 
@@ -97,7 +100,7 @@ async def fetch_unprocessed_outcomes(limit: int = 100) -> list:
             f"?learning_applied=eq.false"
             f"&origin_type=eq.system"
             f"&cpa=not.is.null"
-            f"&select=id,creative_id,cpa,environment_ctx,window_end,decision_id"
+            f"&select=id,creative_id,cpa,spend,environment_ctx,window_end,decision_id"
             f"&limit={limit}",
             headers=headers
         )
@@ -379,7 +382,9 @@ async def process_single_outcome(outcome: dict) -> dict:
     Returns dict with result info or error
     """
     outcome_id = outcome['id']
+    creative_id = outcome.get('creative_id')
     cpa = float(outcome['cpa'])
+    spend = float(outcome.get('spend') or 0)
     env_ctx = outcome.get('environment_ctx')
     window_end = outcome.get('window_end', datetime.now().isoformat())
 
@@ -424,13 +429,27 @@ async def process_single_outcome(outcome: dict) -> dict:
         death_state=death_state
     )
 
+    # Process component learnings (issue #122)
+    component_result = None
+    if creative_id:
+        try:
+            component_result = await process_component_learnings(
+                creative_id=creative_id,
+                cpa=cpa,
+                spend=spend,
+                revenue=0  # Revenue not tracked in outcome_aggregates yet
+            )
+        except Exception as e:
+            component_result = {"error": str(e)}
+
     return {
         "idea_id": idea_id,
         "outcome_id": outcome_id,
         "old_confidence": current_confidence,
         "new_confidence": new_confidence,
         "delta": delta,
-        "death_state": death_state
+        "death_state": death_state,
+        "component_learning": component_result
     }
 
 
@@ -461,6 +480,11 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                             "idea_id": learn_result["idea_id"],
                             "death_state": learn_result["death_state"]
                         })
+
+                    # Track component learning updates
+                    comp_result = learn_result.get("component_learning")
+                    if comp_result and "components_updated" in comp_result:
+                        result.component_updates += comp_result["components_updated"]
 
             except Exception as e:
                 result.errors.append(f"Error processing outcome {outcome['id']}: {str(e)}")
