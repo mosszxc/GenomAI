@@ -66,11 +66,8 @@ class TestLearningPipeline:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
                 f"{DE_API_URL}/learning/status",
-                headers={"X-API-Key": API_KEY}
+                headers={"Authorization": f"Bearer {API_KEY}"}
             )
-
-            if response.status_code == 401:
-                pytest.skip("API_KEY not authorized for learning endpoints")
 
             assert response.status_code == 200
             data = response.json()
@@ -210,20 +207,16 @@ class TestLearningPipeline:
             # Get status
             response = await client.get(
                 f"{DE_API_URL}/learning/status",
-                headers={"X-API-Key": API_KEY}
+                headers={"Authorization": f"Bearer {API_KEY}"}
             )
-
-            if response.status_code == 401:
-                pytest.skip("API_KEY not authorized for learning endpoints")
-
             assert response.status_code == 200
 
-            # Test process endpoint (dry run with limit=0)
+            # Test process endpoint (dry run with limit=1)
             response = await client.post(
                 f"{DE_API_URL}/learning/process",
                 json={"limit": 1},
                 headers={
-                    "X-API-Key": API_KEY,
+                    "Authorization": f"Bearer {API_KEY}",
                     "Content-Type": "application/json",
                 }
             )
