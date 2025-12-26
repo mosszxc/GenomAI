@@ -85,6 +85,18 @@
 | `avatars` | Целевые аватары | Yes | manual |
 | `event_log` | Лог событий | No (append-only) | all workflows |
 
+### Normalization Tables
+
+| Table | Purpose | Mutable | Writer |
+|-------|---------|---------|--------|
+| `geo_lookup` | Нормализация гео (MX, DE, US...) | Yes | manual |
+| `vertical_lookup` | Нормализация вертикалей (POT, WL...) | Yes | manual |
+
+**Функции нормализации:**
+- `normalize_geo(text)` → canonical geo code (e.g., "mexico" → "MX")
+- `normalize_vertical(text)` → canonical vertical code (e.g., "потенция" → "POT")
+- `create_buyer_normalized(...)` → создание баера с автонормализацией
+
 ---
 
 ## SQL Query Templates
