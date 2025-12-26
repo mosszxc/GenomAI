@@ -17,14 +17,16 @@ def death_memory(idea, death_memory=None):
     Returns:
         dict: Check result with 'name', 'result' ('PASSED' or 'FAILED'), and 'details'
     """
-    # MVP: Check idea status
-    if idea.get('status') == 'dead':
+    # Check death_state (soft_dead, hard_dead, permanent_dead)
+    death_state = idea.get('death_state')
+    if death_state is not None:
         return {
             'name': 'death_memory',
             'result': 'FAILED',
             'details': {
                 'reason': 'idea_marked_as_dead',
-                'idea_id': idea.get('id')
+                'idea_id': idea.get('id'),
+                'death_state': death_state
             }
         }
     
