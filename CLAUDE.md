@@ -53,6 +53,26 @@ Always push after commit. No exceptions.
 ## Token Opt
 n8n: `mode:"minimal"` `limit:10` | Supabase: `LIMIT 10` | Grep: `head_limit:10` | Explore: `Task subagent_type:"Explore"`
 
+## Schema-First Coding
+**ПЕРЕД написанием кода, работающего с БД:**
+```sql
+-- Проверить ВСЕ таблицы которые будут использоваться
+SELECT column_name, data_type, is_nullable, is_generated, generation_expression
+FROM information_schema.columns
+WHERE table_schema = 'genomai' AND table_name IN ('table1', 'table2');
+
+-- Проверить constraints
+SELECT conname, pg_get_constraintdef(oid)
+FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
+```
+**Частые ошибки:**
+- Generated columns (win_rate, avg_roi) — нельзя INSERT/UPDATE
+- Отсутствующие колонки (geo в creatives)
+- CHECK constraints (origin_type + decision_id)
+
+## Render Deploy
+Free tier = **3 минуты** на deploy. После push: один `sleep 180`, не несколько коротких.
+
 ## n8n
 Перед работой → `docs/N8N_WORKFLOWS.md`
 Webhook issue: API не регистрирует → добавить → активировать в UI → тестировать
