@@ -217,10 +217,7 @@ async def upsert_component_learning(
             new_spend = float(record.get('total_spend') or 0) + spend
             new_revenue = float(record.get('total_revenue') or 0) + revenue
 
-            # Calculate metrics
-            win_rate = new_wins / new_sample if new_sample > 0 else 0
-            avg_roi = ((new_revenue - new_spend) / new_spend * 100) if new_spend > 0 else 0
-
+            # win_rate and avg_roi are generated columns, don't update them
             response = await client.patch(
                 f"{rest_url}/component_learnings?id=eq.{record['id']}",
                 headers=headers,
@@ -230,18 +227,13 @@ async def upsert_component_learning(
                     "loss_count": new_losses,
                     "total_spend": new_spend,
                     "total_revenue": new_revenue,
-                    "win_rate": round(win_rate, 4),
-                    "avg_roi": round(avg_roi, 2),
                     "updated_at": "now()"
                 }
             )
             response.raise_for_status()
             return response.json()[0] if response.json() else {}
         else:
-            # Insert new record
-            win_rate = 1.0 if was_win else 0.0
-            avg_roi = ((revenue - spend) / spend * 100) if spend > 0 else 0
-
+            # Insert new record (win_rate and avg_roi are generated columns)
             response = await client.post(
                 f"{rest_url}/component_learnings",
                 headers=headers,
@@ -254,9 +246,7 @@ async def upsert_component_learning(
                     "win_count": 1 if was_win else 0,
                     "loss_count": 0 if was_win else 1,
                     "total_spend": spend,
-                    "total_revenue": revenue,
-                    "win_rate": round(win_rate, 4),
-                    "avg_roi": round(avg_roi, 2)
+                    "total_revenue": revenue
                 }
             )
             response.raise_for_status()
