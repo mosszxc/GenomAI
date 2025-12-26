@@ -307,6 +307,109 @@ Authorization: Bearer {API_KEY}
 
 ---
 
+## Outcome Service
+
+### Aggregate Outcome
+
+```
+POST /api/outcomes/aggregate
+Authorization: Bearer {API_KEY}
+Content-Type: application/json
+```
+
+Aggregates outcome metrics from a daily snapshot and triggers Learning Loop.
+
+**Request:**
+```json
+{
+  "snapshot_id": "uuid"
+}
+```
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "outcome": {
+    "id": "uuid",
+    "creative_id": "uuid",
+    "decision_id": "uuid",
+    "window_id": "D1",
+    "window_start": "2025-01-01",
+    "window_end": "2025-01-02",
+    "conversions": 10,
+    "spend": 50.00,
+    "cpa": 5.00,
+    "origin_type": "system",
+    "learning_applied": false
+  },
+  "learning_triggered": true
+}
+```
+
+**Response (no idea found):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "IDEA_NOT_FOUND",
+    "message": "No idea found for tracker abc123"
+  }
+}
+```
+
+**Response (no approved decision):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NO_APPROVED_DECISION",
+    "message": "No APPROVE decision found for idea xyz789"
+  }
+}
+```
+
+### Window ID Calculation
+
+| Window | Days Since Decision | Purpose |
+|--------|---------------------|---------|
+| D1 | 0-1 | Early signal |
+| D3 | 2-3 | Short-term performance |
+| D7 | 4-7 | Week performance |
+| D7+ | 8+ | Long-term performance |
+
+### Business Rules
+
+1. **Only APPROVED ideas** get outcomes aggregated
+2. **Window ID** based on days since decision
+3. **origin_type** distinguishes:
+   - `system` - realtime from Keitaro poller
+   - `historical` - imported historical data
+4. **learning_applied** - set to true by Learning Loop after processing
+5. **CPA calculation**: `spend / conversions` (null if zero conversions)
+
+### Usage from n8n
+
+```json
+{
+  "method": "POST",
+  "url": "https://genomai.onrender.com/api/outcomes/aggregate",
+  "authentication": "predefinedCredentialType",
+  "nodeCredentialType": "httpHeaderAuth",
+  "sendHeaders": true,
+  "headerParameters": {
+    "parameters": [
+      { "name": "Content-Type", "value": "application/json" }
+    ]
+  },
+  "sendBody": true,
+  "specifyBody": "json",
+  "jsonBody": "={{ JSON.stringify({ snapshot_id: $json.body.snapshot_id }) }}"
+}
+```
+
+---
+
 ## Error Responses
 
 All endpoints return errors in this format:
