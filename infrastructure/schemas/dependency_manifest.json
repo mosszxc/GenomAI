@@ -632,9 +632,17 @@
       "active": true,
       "trigger": "schedule",
       "calls": [],
-      "writes": [],
-      "reads": [],
-      "events_emitted": [],
+      "writes": [
+        "historical_import_queue"
+      ],
+      "reads": [
+        "creatives",
+        "buyers",
+        "historical_import_queue"
+      ],
+      "events_emitted": [
+        "PendingVideoReminder"
+      ],
       "external_deps": [
         "Telegram Bot API"
       ]
