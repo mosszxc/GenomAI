@@ -147,22 +147,44 @@ async def get_idea_avatar(idea_id: str) -> Optional[str]:
 
 
 async def get_creative_geo(creative_id: str) -> Optional[str]:
-    """Get geo for a creative via creatives table"""
+    """Get geo for a creative via creatives -> buyer -> geos"""
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/creatives"
-            f"?id=eq.{creative_id}"
-            f"&select=geo",
-            headers=headers
-        )
-        response.raise_for_status()
-        data = response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            # Get buyer_id from creative
+            response = await client.get(
+                f"{rest_url}/creatives"
+                f"?id=eq.{creative_id}"
+                f"&select=buyer_id",
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
 
-        if data and data[0].get('geo'):
-            return data[0]['geo']
+            if not data or not data[0].get('buyer_id'):
+                return None
+
+            buyer_id = data[0]['buyer_id']
+
+            # Get geos from buyer
+            response = await client.get(
+                f"{rest_url}/buyers"
+                f"?id=eq.{buyer_id}"
+                f"&select=geos",
+                headers=headers
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data and data[0].get('geos'):
+                # Return first geo if multiple
+                geos = data[0]['geos']
+                return geos[0] if geos else None
+            return None
+    except Exception:
+        # Geo is optional, don't fail if unavailable
         return None
 
 
