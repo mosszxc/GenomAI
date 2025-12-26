@@ -95,7 +95,29 @@
 **Функции нормализации:**
 - `normalize_geo(text)` → canonical geo code (e.g., "mexico" → "MX")
 - `normalize_vertical(text)` → canonical vertical code (e.g., "потенция" → "POT")
-- `create_buyer_normalized(...)` → создание баера с автонормализацией
+- `normalize_geos(text[])` → normalized array of geo codes
+- `normalize_verticals(text[])` → normalized array of vertical codes
+- `create_buyer_normalized(...)` → создание баера с автонормализацией (поддерживает comma-separated values)
+
+### Buyers Table Structure
+
+```
+buyers
+├── id UUID (PK)
+├── telegram_id TEXT (unique)
+├── name TEXT
+├── geo TEXT           -- DEPRECATED: use geos[]
+├── geos TEXT[]        -- Array of canonical geo codes: {MX, DE, US}
+├── vertical TEXT      -- DEPRECATED: use verticals[]
+├── verticals TEXT[]   -- Array of canonical vertical codes: {POT, WL}
+├── keitaro_source TEXT
+├── status TEXT
+└── created_at, updated_at
+```
+
+**Онбординг поддерживает ввод нескольких значений через запятую:**
+- Гео: "DE, MX, US" → `{DE, MX, US}`
+- Вертикали: "POT, WL" → `{POT, WL}`
 
 ---
 
