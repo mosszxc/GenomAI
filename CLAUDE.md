@@ -30,6 +30,20 @@ All pass = APPROVE
 ## Rules
 1. Market = truth 2. Deterministic+trace 3. ML signals only 4. LLM: transcripts 5. Schema-first
 
+## Issue-First Workflow
+**ПЕРЕД любой задачей:**
+1. Создать issue: `gh issue create` или `scripts/create-issue.sh`
+2. Указать зависимости: `Blocked By`, `Blocks`, `Related`
+3. Добавить sphere label
+
+**ПОСЛЕ изменений:**
+1. Проверить `infrastructure/schemas/dependency_manifest.json` — кто calls/reads/writes затронутые компоненты
+2. Запустить `/valid {affected_process}`
+3. Cascade check: downstream impacts, затронутые workflows
+
+**Автоматизировано:** sync-dependencies (daily), issue-context (on open)
+**Вручную:** создание issue, заполнение зависимостей, cascade check
+
 ## Git
 Always push after commit. No exceptions.
 
