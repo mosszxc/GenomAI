@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "version": "1.0.0",
-  "updated_at": "2025-12-26",
+  "updated_at": "2025-12-27",
   "description": "Auto-generated dependency manifest from n8n",
   "workflows": {
     "legacy___telegram_daily_messages_summary": {
@@ -335,7 +335,8 @@
       "active": true,
       "trigger": "telegram",
       "calls": [
-        "router"
+        "router",
+        "spy-creative"
       ],
       "writes": [
         "event_log",
@@ -349,6 +350,29 @@
       "external_deps": [
         "Telegram Bot API"
       ]
+    },
+    "spy_creative_registration": {
+      "id": "pL6C4j1uiJLfVRIi",
+      "active": true,
+      "trigger": "webhook",
+      "calls": [
+        "creative-transcription",
+        "decompose"
+      ],
+      "writes": [
+        "event_log",
+        "creatives"
+      ],
+      "reads": [
+        "buyers"
+      ],
+      "events_emitted": [
+        "SpyCreativeRegistered"
+      ],
+      "external_deps": [
+        "Telegram Bot API"
+      ],
+      "notes": "Spy creatives from competitors. source_type='spy', tracker_id=null. Issue #165"
     },
     "keep_alive_decision_engine": {
       "id": "ClXUPP2IvWRgu99y",
