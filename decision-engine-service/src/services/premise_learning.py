@@ -1,0 +1,330 @@
+"""
+Premise Learning Service
+
+Updates premise_learnings based on hypothesis outcomes.
+Called by Learning Loop when outcome has premise_id.
+
+Issue: #167
+Pattern: component_learning.py
+"""
+
+import os
+import httpx
+from typing import Optional
+from dataclasses import dataclass
+
+from src.utils.errors import SupabaseError
+
+
+SCHEMA = "genomai"
+
+# Win thresholds (same as component_learning)
+WIN_THRESHOLD_LOW_SPEND = {"max_spend": 50, "max_cpa": 4}
+WIN_THRESHOLD_HIGH_SPEND = {"min_spend": 50, "max_cpa": 5}
+
+
+@dataclass
+class PremiseLearningResult:
+    """Result of premise learning update"""
+    premise_id: str
+    premise_type: str
+    geo: Optional[str]
+    avatar_id: Optional[str]
+    was_win: bool
+    updated: bool
+    error: Optional[str] = None
+
+
+def _get_credentials():
+    """Get Supabase credentials from environment"""
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise SupabaseError("Missing Supabase credentials")
+
+    rest_url = f"{supabase_url}/rest/v1"
+    return rest_url, supabase_key
+
+
+def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
+    """Get headers for Supabase REST API with schema"""
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Accept-Profile": SCHEMA,
+        "Content-Type": "application/json"
+    }
+    if for_write:
+        headers["Content-Profile"] = SCHEMA
+        headers["Prefer"] = "return=representation"
+    return headers
+
+
+def is_win(cpa: float, spend: float) -> bool:
+    """
+    Determine if outcome is a win based on CPA and spend.
+
+    Win conditions (from issue #122):
+    - Low spend (<50): CPA < 4
+    - High spend (>=50): CPA < 5
+    """
+    if spend < WIN_THRESHOLD_LOW_SPEND["max_spend"]:
+        return cpa < WIN_THRESHOLD_LOW_SPEND["max_cpa"]
+    else:
+        return cpa < WIN_THRESHOLD_HIGH_SPEND["max_cpa"]
+
+
+async def get_hypothesis_premise(hypothesis_id: str) -> Optional[dict]:
+    """
+    Get premise info for a hypothesis.
+
+    Returns dict with premise_id, premise_type if hypothesis has premise.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    async with httpx.AsyncClient() as client:
+        # Get hypothesis with premise
+        response = await client.get(
+            f"{rest_url}/hypotheses"
+            f"?id=eq.{hypothesis_id}"
+            f"&select=premise_id,premises(id,premise_type)",
+            headers=headers
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data and data[0].get('premise_id'):
+            hypothesis = data[0]
+            premise = hypothesis.get('premises', {})
+            return {
+                "premise_id": hypothesis['premise_id'],
+                "premise_type": premise.get('premise_type') if premise else None
+            }
+        return None
+
+
+async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
+    """
+    Get hypothesis info for a creative.
+
+    Returns dict with hypothesis_id, premise_id if creative has hypothesis.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    async with httpx.AsyncClient() as client:
+        # Get creative -> hypothesis_id
+        response = await client.get(
+            f"{rest_url}/creatives"
+            f"?id=eq.{creative_id}"
+            f"&select=hypothesis_id",
+            headers=headers
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data and data[0].get('hypothesis_id'):
+            hypothesis_id = data[0]['hypothesis_id']
+
+            # Get hypothesis with premise
+            response = await client.get(
+                f"{rest_url}/hypotheses"
+                f"?id=eq.{hypothesis_id}"
+                f"&select=id,premise_id",
+                headers=headers
+            )
+            response.raise_for_status()
+            hypothesis_data = response.json()
+
+            if hypothesis_data:
+                return hypothesis_data[0]
+        return None
+
+
+async def get_premise_type(premise_id: str) -> Optional[str]:
+    """Get premise_type for a premise_id"""
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{rest_url}/premises"
+            f"?id=eq.{premise_id}"
+            f"&select=premise_type",
+            headers=headers
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data:
+            return data[0].get('premise_type')
+        return None
+
+
+async def upsert_premise_learning(
+    premise_id: str,
+    premise_type: str,
+    geo: Optional[str],
+    avatar_id: Optional[str],
+    was_win: bool,
+    spend: float,
+    revenue: float
+) -> dict:
+    """
+    Upsert premise learning record.
+
+    Updates sample_size, win_count/loss_count, totals.
+    win_rate and avg_roi are generated columns.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    # Build filter for existing record
+    filters = [
+        f"premise_id=eq.{premise_id}",
+    ]
+    if geo:
+        filters.append(f"geo=eq.{geo}")
+    else:
+        filters.append("geo=is.null")
+    if avatar_id:
+        filters.append(f"avatar_id=eq.{avatar_id}")
+    else:
+        filters.append("avatar_id=is.null")
+
+    filter_str = "&".join(filters)
+
+    async with httpx.AsyncClient() as client:
+        # Check if record exists
+        response = await client.get(
+            f"{rest_url}/premise_learnings?{filter_str}",
+            headers=_get_headers(supabase_key)
+        )
+        response.raise_for_status()
+        existing = response.json()
+
+        if existing:
+            # Update existing record
+            record = existing[0]
+            new_sample = (record.get('sample_size') or 0) + 1
+            new_wins = (record.get('win_count') or 0) + (1 if was_win else 0)
+            new_losses = (record.get('loss_count') or 0) + (0 if was_win else 1)
+            new_spend = float(record.get('total_spend') or 0) + spend
+            new_revenue = float(record.get('total_revenue') or 0) + revenue
+
+            # win_rate and avg_roi are generated columns, don't update them
+            response = await client.patch(
+                f"{rest_url}/premise_learnings?id=eq.{record['id']}",
+                headers=headers,
+                json={
+                    "sample_size": new_sample,
+                    "win_count": new_wins,
+                    "loss_count": new_losses,
+                    "total_spend": new_spend,
+                    "total_revenue": new_revenue,
+                    "updated_at": "now()"
+                }
+            )
+            response.raise_for_status()
+            return response.json()[0] if response.json() else {}
+        else:
+            # Insert new record (win_rate and avg_roi are generated columns)
+            response = await client.post(
+                f"{rest_url}/premise_learnings",
+                headers=headers,
+                json={
+                    "premise_id": premise_id,
+                    "premise_type": premise_type,
+                    "geo": geo,
+                    "avatar_id": avatar_id,
+                    "sample_size": 1,
+                    "win_count": 1 if was_win else 0,
+                    "loss_count": 0 if was_win else 1,
+                    "total_spend": spend,
+                    "total_revenue": revenue
+                }
+            )
+            response.raise_for_status()
+            return response.json()[0] if response.json() else {}
+
+
+async def process_premise_learning(
+    creative_id: str,
+    cpa: float,
+    spend: float,
+    revenue: float,
+    geo: Optional[str] = None,
+    avatar_id: Optional[str] = None
+) -> dict:
+    """
+    Main entry point: process premise learning for an outcome.
+
+    1. Get hypothesis for creative
+    2. Check if hypothesis has premise_id
+    3. Get premise_type
+    4. Update premise_learnings (global + per-avatar if available)
+
+    Returns summary of updates.
+    """
+    result = {
+        "creative_id": creative_id,
+        "premise_updated": False,
+        "premise_id": None,
+        "was_win": None,
+        "errors": []
+    }
+
+    # Get hypothesis for creative
+    hypothesis = await get_hypothesis_for_creative(creative_id)
+    if not hypothesis:
+        result["errors"].append(f"No hypothesis found for creative {creative_id}")
+        return result
+
+    premise_id = hypothesis.get('premise_id')
+    if not premise_id:
+        # No premise for this hypothesis - this is normal, not an error
+        return result
+
+    result["premise_id"] = premise_id
+
+    # Get premise_type
+    premise_type = await get_premise_type(premise_id)
+    if not premise_type:
+        result["errors"].append(f"Could not get premise_type for premise {premise_id}")
+        return result
+
+    # Determine win/loss
+    was_win = is_win(cpa, spend)
+    result["was_win"] = was_win
+
+    try:
+        # Global update (avatar_id = NULL)
+        await upsert_premise_learning(
+            premise_id=premise_id,
+            premise_type=premise_type,
+            geo=geo,
+            avatar_id=None,
+            was_win=was_win,
+            spend=spend,
+            revenue=revenue
+        )
+        result["premise_updated"] = True
+
+        # Per-avatar update (if avatar known)
+        if avatar_id:
+            await upsert_premise_learning(
+                premise_id=premise_id,
+                premise_type=premise_type,
+                geo=geo,
+                avatar_id=avatar_id,
+                was_win=was_win,
+                spend=spend,
+                revenue=revenue
+            )
+
+    except Exception as e:
+        result["errors"].append(f"Error updating premise_learnings: {str(e)}")
+
+    return result
