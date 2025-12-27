@@ -1060,13 +1060,14 @@
       "trigger": "webhook",
       "calls": [],
       "writes": [
-        "event_log"
+        "event_log",
+        "hypotheses"
       ],
       "reads": [
-        "premises",
-        "={{ \"event_log\" }}",
-        "={{ \"decisions\" }}",
-        "={{ \"decomposed_creatives\" }}"
+        "decisions",
+        "event_log",
+        "decomposed_creatives",
+        "premises"
       ],
       "events_emitted": [
         "HypothesisGenerated",
@@ -1074,7 +1075,27 @@
       ],
       "external_deps": [
         "OpenAI"
-      ]
+      ],
+      "notes": "Selects premise from premises table for hypothesis generation. Issue #170"
+    },
+    "premise_generator": {
+      "id": "x2Udd72hNe0ODduu",
+      "active": false,
+      "trigger": "webhook",
+      "calls": [],
+      "writes": [
+        "premises"
+      ],
+      "reads": [
+        "premise_learnings"
+      ],
+      "events_emitted": [
+        "PremiseGenerated"
+      ],
+      "external_deps": [
+        "OpenAI"
+      ],
+      "notes": "Generates new premises based on winning patterns. Issue #166"
     },
     "spy_creative_registration": {
       "id": "pL6C4j1uiJLfVRIi",
