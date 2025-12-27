@@ -15,6 +15,7 @@ from src.routes.idea_registry import router as idea_registry_router
 from src.routes.recommendations import router as recommendations_router
 from src.routes.schema import router as schema_router
 from src.routes.outcomes import router as outcomes_router
+from src.routes.premise import router as premise_router
 from src.utils.errors import DecisionEngineError
 
 # Environment variables
@@ -42,6 +43,7 @@ app.include_router(idea_registry_router, prefix="/api/idea-registry", tags=["ide
 app.include_router(recommendations_router, prefix="/recommendations", tags=["recommendations"])
 app.include_router(schema_router, prefix="/api/schema", tags=["schema"])
 app.include_router(outcomes_router, prefix="/api/outcomes", tags=["outcomes"])
+app.include_router(premise_router, prefix="/premise", tags=["premise"])
 
 
 @app.get("/health")

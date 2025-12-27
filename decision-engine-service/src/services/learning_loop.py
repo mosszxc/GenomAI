@@ -20,6 +20,7 @@ from src.utils.errors import SupabaseError
 from src.utils.time_decay import time_decay, days_since
 from src.utils.environment import apply_environment_weight, is_environment_degraded
 from src.services.component_learning import process_component_learnings
+from src.services.premise_learning import process_premise_learning
 
 
 SCHEMA = "genomai"
@@ -39,6 +40,7 @@ class LearningResult:
     updated_ideas: list = None
     new_deaths: list = None
     component_updates: int = 0
+    premise_updates: int = 0
     errors: list = None
 
     def __post_init__(self):
@@ -52,6 +54,7 @@ class LearningResult:
             "updated_ideas": self.updated_ideas,
             "new_deaths": self.new_deaths,
             "component_updates": self.component_updates,
+            "premise_updates": self.premise_updates,
             "errors": self.errors
         }
 
@@ -442,6 +445,19 @@ async def process_single_outcome(outcome: dict) -> dict:
         except Exception as e:
             component_result = {"error": str(e)}
 
+    # Process premise learnings (issue #167)
+    premise_result = None
+    if creative_id:
+        try:
+            premise_result = await process_premise_learning(
+                creative_id=creative_id,
+                cpa=cpa,
+                spend=spend,
+                revenue=0
+            )
+        except Exception as e:
+            premise_result = {"error": str(e)}
+
     return {
         "idea_id": idea_id,
         "outcome_id": outcome_id,
@@ -449,7 +465,8 @@ async def process_single_outcome(outcome: dict) -> dict:
         "new_confidence": new_confidence,
         "delta": delta,
         "death_state": death_state,
-        "component_learning": component_result
+        "component_learning": component_result,
+        "premise_learning": premise_result
     }
 
 
@@ -490,6 +507,16 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                             result.errors.extend(comp_result["errors"])
                         if "components_updated" in comp_result:
                             result.component_updates += comp_result["components_updated"]
+
+                    # Track premise learning updates (issue #167)
+                    prem_result = learn_result.get("premise_learning")
+                    if prem_result:
+                        if "error" in prem_result:
+                            result.errors.append(f"Premise learning error: {prem_result['error']}")
+                        elif "errors" in prem_result and prem_result["errors"]:
+                            result.errors.extend(prem_result["errors"])
+                        if prem_result.get("premise_updated"):
+                            result.premise_updates += 1
 
             except Exception as e:
                 result.errors.append(f"Error processing outcome {outcome['id']}: {str(e)}")
