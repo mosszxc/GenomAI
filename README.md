@@ -248,74 +248,82 @@ Decision Engine
 
 ```
 .
+├── decision-engine-service/           # 🚀 FastAPI Decision Engine
+│   ├── main.py                        # Entry point
+│   ├── src/
+│   │   ├── checks/                    # DE constraint checks
+│   │   │   ├── schema_validity.py
+│   │   │   ├── death_memory.py
+│   │   │   ├── fatigue_constraint.py
+│   │   │   └── risk_budget.py
+│   │   ├── routes/                    # API endpoints
+│   │   │   ├── decision.py
+│   │   │   ├── learning.py
+│   │   │   ├── outcomes.py
+│   │   │   ├── premise.py
+│   │   │   ├── recommendations.py
+│   │   │   └── schema.py
+│   │   ├── services/                  # Business logic
+│   │   │   ├── decision_engine.py
+│   │   │   ├── learning_loop.py
+│   │   │   ├── outcome_service.py
+│   │   │   ├── recommendation.py
+│   │   │   ├── premise_selector.py
+│   │   │   ├── premise_learning.py
+│   │   │   ├── avatar_service.py
+│   │   │   ├── exploration.py
+│   │   │   └── component_learning.py
+│   │   └── utils/                     # Utilities
+│   └── tests/                         # Unit tests
+├── infrastructure/                    # 🗄️ Infrastructure
+│   ├── migrations/                    # 24 SQL migrations
+│   └── schemas/                       # JSON schemas
 ├── docs/                              # 📚 Документация
-│   ├── DEVELOPMENT_ORDER.md           # Порядок разработки системы
-│   ├── README.md                      # Обзор документации
-│   ├── layer-0-doctrine/              # 🟥 Doctrine / Конституция системы
-│   │   ├── README.md
-│   │   ├── ARCHITECTURE_LOCK.md
-│   │   ├── CONCEPT.md
-│   │   └── USAGE_DOCTRINE.md
-│   ├── layer-1-logic/                 # 🟧 System Design / Logical Architecture
-│   │   ├── README.md
-│   │   ├── SYSTEM_ARCHITECTURE.md
-│   │   ├── DOMAIN_MODEL.md
-│   │   ├── ENTITY_LIFECYCLE.md
-│   │   ├── CANONICAL_SCHEMA.md
-│   │   ├── DATA_FLOW.md
-│   │   ├── DECISION_ENGINE.md
-│   │   ├── LEARNING_MEMORY_POLICY.md
-│   │   ├── DATA_CONTRACTS.md
-│   │   ├── LLM_USAGE_POLICY.md
-│   │   └── ENVIRONMENT_CONTEXT.md
-│   ├── layer-2-product/               # 🟨 Product & Integration Specs
-│   │   ├── README.md
-│   │   ├── USER_FLOWS.md
-│   │   ├── TELEGRAM_INTERACTION_MODEL.md
-│   │   ├── INPUT_NORMALIZATION.md
-│   │   ├── OUTPUT_PAYLOADS.md
-│   │   └── MVP_SCOPE.md
+│   ├── N8N_WORKFLOWS.md               # n8n workflow reference
+│   ├── SCHEMA_REFERENCE.md            # DB schema reference
+│   ├── API_REFERENCE.md               # API documentation
+│   ├── SYSTEM_CAPABILITIES.md         # System capabilities
+│   ├── DEPENDENCY_GRAPH.md            # Component dependencies
+│   ├── layer-0-doctrine/              # 🟥 Doctrine
+│   ├── layer-1-logic/                 # 🟧 System Design
+│   ├── layer-2-product/               # 🟨 Product Specs
 │   ├── layer-3-implementation-design/ # 🟩 Implementation Design
-│   │   ├── README.md
-│   │   ├── SERVICE_BOUNDARIES.md
-│   │   ├── EVENT_MODEL.md
-│   │   ├── STORAGE_MODEL.md
-│   │   └── ERROR_HANDLING.md
 │   └── layer-4-implementation-planning/ # 🟦 Implementation Planning
-│       ├── README.md
-│       ├── TECH_DECISIONS.md
-│       ├── DATA_SCHEMAS.md
-│       ├── API_CONTRACTS.md
-│       └── IMPLEMENTATION_CHECKLIST.md
-├── .github/                 # ⚙️ GitHub настройки
-│   ├── workflows/          # GitHub Actions
-│   ├── ISSUE_TEMPLATE.md   # Шаблон для создания Issues
-│   └── PULL_REQUEST_TEMPLATE.md # Шаблон для создания PR
-├── .gitignore              # Игнорируемые файлы
-└── README.md               # 📖 Этот файл
+├── scripts/                           # 🔧 Utility scripts
+│   ├── sync_dependencies.py           # Dependency sync
+│   └── validate_contracts.py          # Contract validation
+├── tests/                             # 🧪 Integration tests
+│   └── integration/                   # E2E pipeline tests
+├── .github/                           # ⚙️ GitHub настройки
+│   └── workflows/                     # GitHub Actions
+└── README.md                          # 📖 Этот файл
 ```
 
 ---
 
 ## 🎯 Статус проекта
 
-**Последнее обновление:** 2025-12-25
+**Последнее обновление:** 2025-12-27
 
 ### 🚀 Реализованная система
 
 | Компонент | Статус | Описание |
 |-----------|--------|----------|
 | **Decision Engine** | ✅ LIVE | FastAPI на Render (genomai.onrender.com:10000) |
-| **n8n Workflows** | ✅ 22 активных | Оркестрация всех процессов |
-| **Supabase DB** | ✅ 22 таблицы | Схема `genomai` |
+| **n8n Workflows** | ✅ 24 активных | Оркестрация всех процессов |
+| **Supabase DB** | ✅ 31 таблица | Схема `genomai` |
 | **Telegram Bot** | ✅ LIVE | Buyer взаимодействие |
 | **Keitaro Integration** | ✅ LIVE | Метрики и трекинг |
 | **Learning Loop** | ✅ LIVE | Обучение на outcomes |
+| **Premise Layer** | ✅ LIVE | Нарративные vehicles для гипотез |
+| **Recommendation System** | ✅ LIVE | Рекомендации компонентов байерам |
+| **Avatar System** | ✅ LIVE | Emergent аватары из креативов |
+| **Exploration System** | ✅ LIVE | 25% exploration budget |
 
 ### 📊 Статистика БД
-- **decisions**: 19 записей
-- **decision_traces**: 18 записей
 - **buyers**: 1 зарегистрирован
+- **historical_import_queue**: 344 кампании в очереди
+- **decisions/ideas/hypotheses**: готово к первому реальному запуску
 
 ### ✅ Выполненные фазы (из 17)
 
@@ -336,13 +344,18 @@ Decision Engine
 
 ### 🆕 Дополнительно реализовано
 
-| Функционал | Workflows |
-|------------|-----------|
-| **Buyer System** | Onboarding, Registration, Stats, Daily Digest |
-| **Historical Import** | Loader, URL Handler, Batch Processing |
-| **Keitaro Polling** | Автоматический сбор метрик |
-| **Telegram Router** | Маршрутизация команд |
+| Функционал | Компоненты |
+|------------|------------|
+| **Buyer System** | Onboarding, Registration, Stats, Daily Digest, Zaliv Session |
+| **Historical Import** | Loader, URL Handler, Batch Processing, Video Handler |
+| **Keitaro Polling** | Автоматический сбор метрик, Snapshot Creator |
+| **Telegram Router** | Маршрутизация команд, Creative Reply Handler |
 | **Test Conclusion** | Автозавершение тестов по spend |
+| **Premise Layer** | Premise Registry, Selector, Learning (#166-#171) |
+| **Recommendation System** | Daily Generator, Delivery, Component Learning |
+| **Avatar System** | Emergent avatars, Avatar Learning |
+| **Exploration System** | Exploration Log, 25% budget allocation |
+| **Spy Creatives** | Spy Creative Registration (конкуренты) |
 
 ### 📋 В разработке
 
@@ -389,8 +402,8 @@ Decision Engine
 **🟦 Layer 4 — Implementation:**
 - ✅ **Decision Engine** - FastAPI на Render ([genomai.onrender.com](https://genomai.onrender.com))
 - ✅ **n8n Workflows** - [N8N_WORKFLOWS.md](./docs/N8N_WORKFLOWS.md)
-- ✅ **Database** - 22 таблицы в схеме `genomai`
-- ✅ **Migrations** - 12 миграций в `infrastructure/migrations/`
+- ✅ **Database** - 31 таблица в схеме `genomai`
+- ✅ **Migrations** - 24 миграции в `infrastructure/migrations/`
 
 ---
 
