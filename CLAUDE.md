@@ -47,6 +47,15 @@ All pass = APPROVE
 ## Git
 Always push after commit. No exceptions.
 
+## Test-After-Change
+После ЛЮБОГО изменения — тестировать. Без исключений. Не писать "готово" без подтверждения.
+| Изменение | Тест |
+|-----------|------|
+| Workflow | `n8n_test_workflow` + SELECT данные в БД |
+| API | `curl` endpoint + проверить response |
+| Migration | SELECT данные + проверить constraints |
+| Python код | Запустить affected endpoint |
+
 ## Post-Task Loop
 Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 1. `/qa-notes/{task}.md` — edge-cases, gotchas, constraints
