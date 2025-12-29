@@ -95,3 +95,25 @@ POST `/api/decision/` | POST `/learning/process` | GET `/learning/status` | GET 
 ## Testing
 Результат = данные в БД. Workflow → SELECT → данные есть = работает.
 Reviewer agent: workflow ID, таблица, поля, `project_id: ftrerelppsnbdcmtcwya, schema: genomai`
+
+## Post-Task Knowledge Loop
+**ПОСЛЕ завершения любой задачи:**
+
+### 1. QA Notes (`/qa-notes/`)
+Для опытных QA, без теории:
+- Edge-cases и неочевидные сценарии
+- Gotchas — где легко ошибиться
+- Важные ограничения
+- Зависимости
+
+### 2. Knowledge Base (`/knowledge/`)
+Полезно через месяц человеку без контекста:
+- Бизнес-контекст
+- Архитектурные решения
+- Рассмотренные альтернативы + причины отказа
+- Инварианты и ограничения
+
+### 3. Summary
+- Что сделано
+- Какие решения приняты
+- Что важно помнить
