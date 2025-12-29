@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "version": "1.0.0",
-  "updated_at": "2025-12-28",
+  "updated_at": "2025-12-29",
   "description": "Auto-generated dependency manifest from n8n",
   "workflows": {
     "keitaro_poller": {
@@ -9,8 +9,8 @@
       "active": true,
       "trigger": "schedule",
       "calls": [
-        "buyer",
-        "snapshot-creator"
+        "snapshot-creator",
+        "buyer"
       ],
       "writes": [
         "raw_metrics_current",
@@ -32,8 +32,8 @@
       "active": true,
       "trigger": "manual",
       "calls": [
-        "creative-transcription",
-        "learning-loop"
+        "learning-loop",
+        "creative-transcription"
       ],
       "writes": [],
       "reads": [
@@ -41,8 +41,8 @@
         "keitaro_config"
       ],
       "events_emitted": [
-        "CreativeRegistered",
-        "OutcomeImported"
+        "OutcomeImported",
+        "CreativeRegistered"
       ],
       "external_deps": [
         "Keitaro API"
@@ -71,16 +71,16 @@
       "reads": [
         "BuyingUsersAdaccounts",
         "buyers",
+        "KeitaroCampaigns",
         "BuyingUsersKey",
-        "performance_data",
         "ad_accounts",
         "creatives",
-        "KeitaroCampaigns"
+        "performance_data"
       ],
       "events_emitted": [],
       "external_deps": [
-        "Telegram Bot API",
-        "Keitaro API"
+        "Keitaro API",
+        "Telegram Bot API"
       ]
     },
     "buyer_test_conclusion_checker": {
@@ -106,12 +106,12 @@
         "={{ \"hypotheses\" }}"
       ],
       "reads": [
-        "={{ \"buyers\" }}",
-        "={{ \"hypotheses\" }}"
+        "={{ \"hypotheses\" }}",
+        "={{ \"buyers\" }}"
       ],
       "events_emitted": [
-        "HypothesisDelivered",
-        "DeliveryFailed"
+        "DeliveryFailed",
+        "HypothesisDelivered"
       ],
       "external_deps": [
         "Telegram Bot API"
@@ -145,8 +145,8 @@
         "historical_import_queue"
       ],
       "reads": [
-        "keitaro_config",
-        "historical_import_queue"
+        "historical_import_queue",
+        "keitaro_config"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -224,8 +224,8 @@
         "event_log"
       ],
       "reads": [
-        "buyers",
-        "buyer_states"
+        "buyer_states",
+        "buyers"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -247,8 +247,8 @@
       "active": true,
       "trigger": "webhook",
       "calls": [
-        "outcome-aggregator",
-        "outcome-processor"
+        "outcome-processor",
+        "outcome-aggregator"
       ],
       "writes": [
         "daily_metrics_snapshot"
@@ -260,6 +260,20 @@
         "DailyMetricsSnapshotCreated"
       ],
       "external_deps": []
+    },
+    "pipeline_health_monitor": {
+      "id": "H1uuOanSy627H4kg",
+      "active": true,
+      "trigger": "schedule",
+      "calls": [],
+      "writes": [
+        "rpc"
+      ],
+      "reads": [],
+      "events_emitted": [],
+      "external_deps": [
+        "Telegram Bot API"
+      ]
     },
     "telegram_creative_ingestion": {
       "id": "O8SPLlixny3MHvxO",
@@ -284,9 +298,9 @@
         "={{ \"recommendations\" }}"
       ],
       "reads": [
-        "={{ \"buyers\" }}",
+        "={{ \"avatars\" }}",
         "={{ \"recommendations\" }}",
-        "={{ \"avatars\" }}"
+        "={{ \"buyers\" }}"
       ],
       "events_emitted": [
         "DeliveryFailed",
@@ -304,13 +318,13 @@
       "writes": [],
       "reads": [
         "buyers",
-        "keitaro_config",
-        "historical_import_queue"
+        "historical_import_queue",
+        "keitaro_config"
       ],
       "events_emitted": [],
       "external_deps": [
-        "Telegram Bot API",
-        "Keitaro API"
+        "Keitaro API",
+        "Telegram Bot API"
       ]
     },
     "historical_import_video_handler": {
@@ -390,8 +404,8 @@
       "writes": [],
       "reads": [
         "config",
-        "creative_idea_lookup",
-        "creatives"
+        "creatives",
+        "creative_idea_lookup"
       ],
       "events_emitted": [
         "HypothesisEvaluated"
@@ -409,10 +423,10 @@
         "decomposed_creatives"
       ],
       "reads": [
-        "decomposed_creatives",
         "buyers",
         "creatives",
         "ideas",
+        "decomposed_creatives",
         "avatars"
       ],
       "events_emitted": [
@@ -428,17 +442,17 @@
         "decompose"
       ],
       "writes": [
-        "creatives",
         "buyer_interactions",
+        "creatives",
         "event_log"
       ],
       "reads": [
         "buyers"
       ],
       "events_emitted": [
+        "BuyerNotRegistered",
         "CreativeIngestionFailed",
-        "CreativeRegistered",
-        "BuyerNotRegistered"
+        "CreativeRegistered"
       ],
       "external_deps": [
         "Telegram Bot API"
@@ -496,13 +510,13 @@
         "rpc"
       ],
       "reads": [
-        "buyers",
-        "buyer_states"
+        "buyer_states",
+        "buyers"
       ],
       "events_emitted": [],
       "external_deps": [
-        "Telegram Bot API",
-        "Keitaro API"
+        "Keitaro API",
+        "Telegram Bot API"
       ]
     },
     "buyer_historical_loader": {
@@ -519,8 +533,8 @@
       ],
       "events_emitted": [],
       "external_deps": [
-        "Telegram Bot API",
-        "Keitaro API"
+        "Keitaro API",
+        "Telegram Bot API"
       ]
     },
     "creative_decomposition_llm": {
@@ -535,9 +549,9 @@
       ],
       "reads": [],
       "events_emitted": [
+        "TranscriptCreated",
         "DecompositionFailed",
-        "CreativeDecomposed",
-        "TranscriptCreated"
+        "CreativeDecomposed"
       ],
       "external_deps": [
         "OpenAI"
@@ -552,10 +566,10 @@
         "event_log"
       ],
       "reads": [
+        "={{ \"decomposed_creatives\" }}",
         "={{ \"decisions\" }}",
-        "premises",
         "={{ \"event_log\" }}",
-        "={{ \"decomposed_creatives\" }}"
+        "premises"
       ],
       "events_emitted": [
         "HypothesisGenerationFailed",
@@ -570,8 +584,8 @@
       "active": true,
       "trigger": "webhook",
       "calls": [
-        "creative-transcription",
-        "decompose"
+        "decompose",
+        "creative-transcription"
       ],
       "writes": [
         "creatives",
@@ -587,6 +601,26 @@
       "external_deps": [
         "Telegram Bot API"
       ]
+    },
+    "genomai___video_transcription": {
+      "id": "pUjbKD9BUJktTdQ6",
+      "active": true,
+      "trigger": "webhook",
+      "calls": [],
+      "writes": [
+        "transcripts",
+        "creatives",
+        "event_log"
+      ],
+      "reads": [
+        "transcripts",
+        "creatives"
+      ],
+      "events_emitted": [
+        "TranscriptionFailed",
+        "TranscriptCreated"
+      ],
+      "external_deps": []
     },
     "buyer_stats_command": {
       "id": "rHuT8dYyIXoiHMAV",
@@ -611,8 +645,8 @@
         "recommendations"
       ],
       "reads": [
-        "component_learnings",
-        "buyers"
+        "buyers",
+        "component_learnings"
       ],
       "events_emitted": [],
       "external_deps": []
@@ -635,8 +669,8 @@
       "trigger": "schedule",
       "calls": [],
       "writes": [
-        "daily_metrics_snapshot",
         "raw_metrics_current",
+        "daily_metrics_snapshot",
         "event_log"
       ],
       "reads": [
@@ -644,8 +678,8 @@
         "keitaro_config"
       ],
       "events_emitted": [
-        "DailyMetricsSnapshotCreated",
-        "RawMetricsObserved"
+        "RawMetricsObserved",
+        "DailyMetricsSnapshotCreated"
       ],
       "external_deps": [
         "Keitaro API"
