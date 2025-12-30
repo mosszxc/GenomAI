@@ -63,7 +63,22 @@ $ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations]
 ### Формат вывода
 
 После выполнения всех проверок, выведи отчёт в формате Phase 8.
-Используй emoji для статусов: ✅ OK, ⚠️ WARNING, ❌ ERROR
+Используй emoji для статусов: ✅ OK, ⚠️ WARNING, ❌ ERROR, ⏭️ SKIP
+
+### Schema Adaptation Rules
+
+**ПЕРЕД выполнением SQL запросов — проверь схему через Phase 0.**
+
+1. **Таблица не существует** → SKIP проверку, статус: ⏭️ SKIP (table missing)
+2. **Колонка не существует** → убрать из SELECT/WHERE, или SKIP если критична
+3. **При ошибке SQL** → записать в отчёт как ⚠️ WARNING (query failed: {error})
+
+### Fallback колонки
+
+| Ожидаемая | Fallback | Если нет обоих |
+|-----------|----------|----------------|
+| updated_at | created_at | SKIP проверку |
+| reasoning | — | Убрать из SELECT (reasoning в decision_traces.checks) |
 
 ---
 
@@ -78,6 +93,30 @@ $ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations]
 /e2e --integrations           # Integration checks (Keitaro, DE API)
 /e2e --regression             # Regression suite
 ```
+
+---
+
+## Phase 0: Schema Discovery (ОБЯЗАТЕЛЬНО ПЕРВЫМ)
+
+**Перед любыми проверками выполни этот запрос:**
+
+```sql
+SELECT table_name, column_name
+FROM information_schema.columns
+WHERE table_schema = 'genomai'
+ORDER BY table_name, ordinal_position;
+```
+
+**Сохрани результат как `SCHEMA_MAP` и используй для:**
+- Проверки существования таблиц перед запросами
+- Проверки существования колонок в SELECT/WHERE
+- Применения fallback колонок (см. Schema Adaptation Rules)
+- Отметки SKIP в отчёте для отсутствующих проверок
+
+**Пример использования:**
+- Если `creatives.updated_at` отсутствует → использовать `created_at`
+- Если `decisions.reasoning` отсутствует → убрать из SELECT
+- Если таблица `premises` отсутствует → SKIP все проверки Phase 2.8
 
 ---
 
@@ -897,13 +936,16 @@ WHERE t.id IS NULL;
 ### 6.3 Known Issue: Stuck Creatives (#79)
 
 ```sql
+-- Note: uses created_at as fallback (updated_at may not exist)
 SELECT COUNT(*) as stuck_creatives
 FROM genomai.creatives c
 WHERE c.status IN ('transcribing', 'decomposing', 'processing')
-  AND c.updated_at < now() - interval '30 minutes';
+  AND c.created_at < now() - interval '30 minutes';
 ```
 
 **Критерии:** count = 0
+
+**Schema Note:** Если `updated_at` существует — использовать его вместо `created_at`
 
 ### 6.4 Known Issue: Duplicate Decisions
 
@@ -961,16 +1003,20 @@ ORDER BY count_24h DESC;
 ### 7.1 Load Creative
 
 ```sql
+-- Note: updated_at may not exist, check SCHEMA_MAP first
 SELECT
   id, tracker_id, video_url, status, source_type, buyer_id,
-  created_at, updated_at
+  created_at
 FROM genomai.creatives
 WHERE tracker_id = '{tracker_id}';
 ```
 
+**Schema Note:** Добавить `updated_at` только если существует в SCHEMA_MAP
+
 ### 7.2 Check Full Chain
 
 ```sql
+-- Note: reasoning не существует в decisions, проверяем через decision_traces.checks
 SELECT
   c.id as creative_id,
   c.status as creative_status,
@@ -991,7 +1037,6 @@ SELECT
 
   dec.id as decision_id,
   dec.decision,
-  dec.reasoning IS NOT NULL as has_reasoning,
   dec.created_at as decision_at,
 
   dt.id as trace_id,
@@ -1025,6 +1070,8 @@ LEFT JOIN genomai.raw_metrics_current rm ON rm.tracker_id = c.tracker_id
 LEFT JOIN genomai.outcome_aggregates oa ON oa.creative_id = c.id
 WHERE c.tracker_id = '{tracker_id}';
 ```
+
+**Schema Note:** Reasoning хранится в `decision_traces.checks`, не в `decisions.reasoning`
 
 ### 7.3 Validate Each Stage
 
@@ -1077,19 +1124,20 @@ ORDER BY timestamp;
 
 ### Executive Summary
 
-| Category | Status | Issues |
-|----------|--------|--------|
-| Services | OK/WARN/FAIL | {count} |
-| Data Quality | OK/WARN/FAIL | {count} |
-| Learning Loop | OK/WARN/FAIL | {count} |
-| Auxiliary Tables | OK/WARN/FAIL | {count} |
-| Integrations | OK/WARN/FAIL | {count} |
-| Relationships | OK/WARN/FAIL | {count} |
-| SLA | OK/WARN/FAIL | {count} |
-| Workflows | OK/WARN/FAIL | {count} |
-| Regression | OK/WARN/FAIL | {count} |
+| Category | Status | Issues | Skipped |
+|----------|--------|--------|---------|
+| Services | OK/WARN/FAIL | {count} | {skip_count} |
+| Data Quality | OK/WARN/FAIL | {count} | {skip_count} |
+| Learning Loop | OK/WARN/FAIL | {count} | {skip_count} |
+| Auxiliary Tables | OK/WARN/FAIL | {count} | {skip_count} |
+| Integrations | OK/WARN/FAIL | {count} | {skip_count} |
+| Relationships | OK/WARN/FAIL | {count} | {skip_count} |
+| SLA | OK/WARN/FAIL | {count} | {skip_count} |
+| Workflows | OK/WARN/FAIL | {count} | {skip_count} |
+| Regression | OK/WARN/FAIL | {count} | {skip_count} |
 
 **Overall: PASS / WARNING / FAIL**
+**Schema Drift:** {count} missing columns detected
 
 ---
 
@@ -1241,6 +1289,17 @@ Total: 2m 00s (SLA: < 10m) OK
 
 ---
 
+### Schema Drift Detected
+
+| Expected Column | Status | Impact |
+|-----------------|--------|--------|
+| creatives.updated_at | MISSING | Phase 6.3 uses created_at fallback |
+| decisions.reasoning | MISSING | Using decision_traces.checks instead |
+
+*(Если все колонки существуют — эту секцию можно пропустить)*
+
+---
+
 ### Issues Summary
 
 **Errors (must fix):**
@@ -1249,6 +1308,9 @@ Total: 2m 00s (SLA: < 10m) OK
 **Warnings (should review):**
 - 2 orphaned ideas (cleanup recommended)
 - 1 stuck hypothesis (check workflow)
+
+**Skipped checks:**
+- *(list any SKIP checks due to missing tables/columns)*
 
 **Info:**
 - 2 transcripts below length threshold (edge case)
@@ -1294,10 +1356,11 @@ All critical checks passed. 2 warnings require attention.
 
 | Level | Meaning | Action |
 |-------|---------|--------|
-| **ERROR** | Critical issue, pipeline broken | Immediate fix required |
-| **WARNING** | Non-critical issue, degraded | Review within 24h |
-| **INFO** | Observation, edge case | Log for analysis |
-| **OK** | All checks passed | No action needed |
+| ❌ **ERROR** | Critical issue, pipeline broken | Immediate fix required |
+| ⚠️ **WARNING** | Non-critical issue, degraded | Review within 24h |
+| ⏭️ **SKIP** | Check skipped (missing table/column) | Review schema drift |
+| ℹ️ **INFO** | Observation, edge case | Log for analysis |
+| ✅ **OK** | All checks passed | No action needed |
 
 ## Thresholds
 
