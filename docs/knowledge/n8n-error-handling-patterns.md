@@ -60,3 +60,76 @@ Mixed literal + expression REQUIRES `=` prefix:
 {type: "addConnection", source: "IF", target: "Success", branch: "true"}
 {type: "addConnection", source: "IF", target: "Error", branch: "false"}
 ```
+
+## Debugging Lessons (Issue #178)
+
+### 1. Системный анализ перед фиксом
+
+**Проблема:** Инкрементальные фиксы создают каскад новых ошибок.
+
+**Правило:** Перед исправлением:
+1. Прочитать весь workflow (`mode: "full"`)
+2. Проверить все целевые endpoints (URL, method, expected payload)
+3. Проверить data flow — какие данные приходят на каждую ноду
+
+### 2. Partial Update сбрасывает параметры
+
+**Проблема:**
+```javascript
+// Обновил только method
+updateNode("Call Transcription", {parameters: {method: "POST"}})
+// Результат: URL стал пустым!
+```
+
+**Правило:** При partial update передавать ВСЕ критичные параметры:
+```javascript
+updateNode("Call Transcription", {
+  parameters: {
+    method: "POST",
+    url: "https://...",  // обязательно!
+    sendBody: true,
+    jsonBody: "..."
+  }
+})
+```
+
+### 3. Проверять output перед написанием expression
+
+**Проблема:**
+```javascript
+$('Insert Spy Creative').first().json[0].id  // предполагал массив
+$('Insert Spy Creative').first().json.id     // реальность — объект
+```
+
+**Правило:** Перед написанием expression — проверить реальный output ноды через execution details.
+
+### 4. Проверять структуру входных данных
+
+**Проблема:**
+```javascript
+routerData.text       // ожидал
+routerData.message.text  // реальность
+```
+
+**Правило:** Смотреть на output предыдущей ноды, не предполагать структуру.
+
+### 5. Проверять целевой endpoint
+
+**Проблема:** Изменил домен, но не проверил:
+- Правильный ли path?
+- Какой HTTP method ожидает webhook?
+
+**Правило:** Перед вызовом webhook — открыть целевой workflow и проверить:
+- Webhook path
+- HTTP method (GET/POST)
+- Ожидаемые headers
+
+### Чеклист перед изменением workflow
+
+```markdown
+- [ ] Прочитал весь workflow (mode: "full")
+- [ ] Проверил output всех upstream нод
+- [ ] Проверил целевые endpoints (path, method)
+- [ ] При partial update передаю ВСЕ критичные параметры
+- [ ] Тестирую после КАЖДОГО изменения
+```
