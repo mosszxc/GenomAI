@@ -51,9 +51,15 @@ Telegram "spy <URL>"
 - `Schema Validation` forces `source_type = 'spy'` when flag is true
 
 ### Webhook URLs
-Current active endpoints:
-- Transcription: `https://kazamaqwe.app.n8n.cloud/webhook/creative-transcription`
-- Decomposition: `https://genomai.app.n8n.cloud/webhook/decompose/creative`
+**IMPORTANT**: All n8n webhooks use workspace `kazamaqwe.app.n8n.cloud`
+
+| Endpoint | URL |
+|----------|-----|
+| Transcription | `https://kazamaqwe.app.n8n.cloud/webhook/creative-transcription` |
+| Decomposition | `https://kazamaqwe.app.n8n.cloud/webhook/decompose/creative` |
+| Idea Registry | `https://kazamaqwe.app.n8n.cloud/webhook/idea-registry-create` |
+
+**WARNING**: `genomai.app.n8n.cloud` is deprecated/non-existent. Always use `kazamaqwe.app.n8n.cloud`.
 
 ## Common Issues
 
