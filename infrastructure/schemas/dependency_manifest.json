@@ -603,26 +603,6 @@
         "Telegram Bot API"
       ]
     },
-    "genomai___video_transcription": {
-      "id": "pUjbKD9BUJktTdQ6",
-      "active": true,
-      "trigger": "webhook",
-      "calls": [],
-      "writes": [
-        "creatives",
-        "transcripts",
-        "event_log"
-      ],
-      "reads": [
-        "creatives",
-        "transcripts"
-      ],
-      "events_emitted": [
-        "TranscriptCreated",
-        "TranscriptionFailed"
-      ],
-      "external_deps": []
-    },
     "buyer_stats_command": {
       "id": "rHuT8dYyIXoiHMAV",
       "active": true,
