@@ -91,7 +91,7 @@ async def _create_decision(idea: dict, decision_type: str, check_results: list, 
     decision = {
         'id': decision_id,
         'idea_id': idea['id'],
-        'decision': decision_type.lower(),
+        'decision': decision_type.upper(),
         'decision_epoch': 1,
         'created_at': timestamp
     }
