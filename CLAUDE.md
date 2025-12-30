@@ -75,7 +75,9 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 **If any unchecked — do it now. No exceptions.**
 
 ## Lessons Learned (on issue close)
-При закрытии ЛЮБОГО issue — записать урок в `docs/KNOWN_ISSUES.md` → секция "Lessons Learned":
+При закрытии issue — **сначала проверить** `docs/KNOWN_ISSUES.md` → "Lessons Learned":
+1. Если похожий урок уже есть → **не дублировать**, можно добавить ссылку на новый issue
+2. Если урок новый → записать по шаблону:
 ```markdown
 ### Short Title (что пошло не так)
 
@@ -85,7 +87,7 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 **Correct Approach:** Как надо было делать
 **Rule:** Короткое правило на будущее
 ```
-Цель: не повторять одни и те же ошибки. Каждый issue = потенциальный урок.
+Цель: не повторять одни и те же ошибки. Один урок = одна запись.
 
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
