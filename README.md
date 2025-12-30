@@ -303,27 +303,30 @@ Decision Engine
 
 ## 🎯 Статус проекта
 
-**Последнее обновление:** 2025-12-27
+**Последнее обновление:** 2025-12-30
 
 ### 🚀 Реализованная система
 
 | Компонент | Статус | Описание |
 |-----------|--------|----------|
 | **Decision Engine** | ✅ LIVE | FastAPI на Render (genomai.onrender.com:10000) |
-| **n8n Workflows** | ✅ 24 активных | Оркестрация всех процессов |
-| **Supabase DB** | ✅ 31 таблица | Схема `genomai` |
-| **Telegram Bot** | ✅ LIVE | Buyer взаимодействие |
+| **n8n Workflows** | ✅ 31 активный | Оркестрация всех процессов |
+| **Supabase DB** | ✅ 30 таблиц | Схема `genomai` |
+| **Telegram Bot** | ✅ LIVE | Buyer взаимодействие + Zaliv сессии |
 | **Keitaro Integration** | ✅ LIVE | Метрики и трекинг |
 | **Learning Loop** | ✅ LIVE | Обучение на outcomes |
 | **Premise Layer** | ✅ LIVE | Нарративные vehicles для гипотез |
 | **Recommendation System** | ✅ LIVE | Рекомендации компонентов байерам |
 | **Avatar System** | ✅ LIVE | Emergent аватары из креативов |
 | **Exploration System** | ✅ LIVE | 25% exploration budget |
+| **Spy Creatives** | ✅ LIVE | Анализ креативов конкурентов |
+| **Pipeline Health Monitor** | ✅ LIVE | Автомониторинг и алерты |
 
 ### 📊 Статистика БД
 - **buyers**: 1 зарегистрирован
-- **historical_import_queue**: 344 кампании в очереди
-- **decisions/ideas/hypotheses**: готово к первому реальному запуску
+- **creatives**: 16 креативов
+- **historical_import_queue**: 337 кампаний в очереди
+- **decisions/ideas/hypotheses**: 3/3/активно
 
 ### ✅ Выполненные фазы (из 17)
 
@@ -401,8 +404,8 @@ Decision Engine
 
 **🟦 Layer 4 — Implementation:**
 - ✅ **Decision Engine** - FastAPI на Render ([genomai.onrender.com](https://genomai.onrender.com))
-- ✅ **n8n Workflows** - [N8N_WORKFLOWS.md](./docs/N8N_WORKFLOWS.md)
-- ✅ **Database** - 31 таблица в схеме `genomai`
+- ✅ **n8n Workflows** - 31 активный workflow ([N8N_WORKFLOWS.md](./docs/N8N_WORKFLOWS.md))
+- ✅ **Database** - 30 таблиц в схеме `genomai`
 - ✅ **Migrations** - 24 миграции в `infrastructure/migrations/`
 
 ---
