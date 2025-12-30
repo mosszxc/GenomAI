@@ -260,7 +260,54 @@ ORDER BY created_at DESC;
 
 ---
 
+## Medium Priority Issues (continued)
+
+### #183: Double-encoded JSON payload in decomposed_creatives
+
+**Component:** `creative_decomposition_llm` (mv6diVtqnuwr7qev)
+**Root Cause:** `Persist Decomposed Creative` node used `JSON.stringify()` on payload field. Supabase node already serializes objects to JSONB, causing double-encoding.
+
+**Symptoms:** `jsonb_typeof(payload) = 'string'` instead of `'object'`
+
+**Resolution:**
+1. Removed `JSON.stringify()` wrapper from payload expression
+2. Fixed corrupted data: `SET payload = (payload #>> '{}')::jsonb`
+
+**Detection Query:**
+```sql
+SELECT id, jsonb_typeof(payload) as payload_type
+FROM genomai.decomposed_creatives
+WHERE jsonb_typeof(payload) != 'object';
+```
+
+**Prevention:**
+- Never use `JSON.stringify()` when passing objects to Supabase n8n node JSONB fields
+- Node handles serialization automatically
+
+---
+
 ## Lessons Learned
+
+### Don't Double-Serialize JSONB
+
+**Context:** E2E quality check found `invalid_payload_type` in decomposed_creatives (Issue #183).
+
+**Mistake:** Used `JSON.stringify()` on payload object before passing to Supabase node JSONB field.
+
+**Reality:** Supabase n8n node automatically serializes objects to JSONB. Adding `JSON.stringify()` creates a JSON string inside JSONB: `'"{\\"key\\":\\"value\\"}"'`.
+
+**Correct Approach:**
+```javascript
+// WRONG - double-encoded
+"fieldValue": "={{ JSON.stringify(myObject) }}"
+
+// CORRECT - direct object
+"fieldValue": "={{ myObject }}"
+```
+
+**Rule:** Never use `JSON.stringify()` for Supabase node JSONB fields. The node handles serialization.
+
+---
 
 ### Always Measure, Never Assume
 
