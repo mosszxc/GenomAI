@@ -100,4 +100,9 @@ $('Insert Spy Creative').first().json.id
 
 ### 401 Unauthorized в Fetch Transcript
 **Cause**: Отсутствует apikey header при запросе к Supabase.
-**Fix**: Добавить headers `apikey` и `Authorization` с anon key.
+**Fix**: Добавить headers (уже исправлено в workflow):
+```
+apikey: <anon_key>
+Authorization: Bearer <anon_key>
+Accept-Profile: genomai
+```
