@@ -376,6 +376,27 @@ curl -w "Time: %{time_total}s" --max-time 120 https://genomai.onrender.com/healt
 
 ---
 
+### Check DB Constraints Before Code Fix
+
+**Context:** Issue #189 - Decision values saved as lowercase instead of uppercase.
+
+**Mistake:** Fixed code (`decision_type.lower()` → `.upper()`) without checking if DB constraint would block the new values.
+
+**Reality:** `decisions_decision_check` constraint required lowercase values: `CHECK (decision IN ('approve', 'reject', 'defer'))`. Code fix would have failed at runtime.
+
+**Correct Approach:**
+```sql
+-- Before any data format change, check constraints:
+SELECT conname, pg_get_constraintdef(oid)
+FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
+
+-- Then create migration that updates constraint + data together
+```
+
+**Rule:** Data format changes require checking constraints. Code fix + constraint migration must be applied together.
+
+---
+
 ### n8n "Success" Doesn't Mean Complete
 
 **Context:** Keitaro Poller показывал status "success" но данные не записывались (Issue #186).
