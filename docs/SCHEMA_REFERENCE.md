@@ -126,6 +126,27 @@ created_at  TIMESTAMP      -- When snapshot was created
 - `normalize_verticals(text[])` → normalized array of vertical codes
 - `create_buyer_normalized(...)` → создание баера с автонормализацией (поддерживает comma-separated values)
 
+### Creatives Table Structure
+
+```
+creatives
+├── id UUID (PK)
+├── tracker_id TEXT
+├── video_url TEXT
+├── buyer_id UUID          FK → buyers.id
+├── source_type TEXT       -- user | spy | system
+├── tracking_status TEXT   -- pending | tracking | completed
+├── test_budget NUMERIC
+├── target_vertical TEXT   -- Target vertical (from buyer.verticals[0] at registration)
+├── target_geo TEXT        -- Target geo (from buyer.geos[0] at registration)
+├── status TEXT
+└── created_at, updated_at
+```
+
+**target_vertical/target_geo** — контекст для какой вертикали/гео был создан креатив.
+Значения берутся из `buyer.verticals[0]` и `buyer.geos[0]` в момент регистрации.
+Для spy креативов может быть null если баер не имеет verticals/geos.
+
 ### Buyers Table Structure
 
 ```
@@ -361,7 +382,11 @@ outcome_recorded_at     TIMESTAMPTZ
 
 ## Schema Version
 
-Current: genomai schema v1.1.0 (Release 2025-12-30)
+Current: genomai schema v1.2.0 (Release 2025-12-30)
+
+**Changes in v1.2.0:**
+- `creatives`: Added `target_vertical` and `target_geo` columns (#193)
+- Index `idx_creatives_target` on (target_vertical, target_geo)
 
 **Changes in v1.1.0:**
 - `raw_metrics_current`: Changed to tracker_id (PK), date, metrics (JSONB), updated_at
