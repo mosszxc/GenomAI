@@ -376,6 +376,26 @@ curl -w "Time: %{time_total}s" --max-time 120 https://genomai.onrender.com/healt
 
 ---
 
+### n8n "Success" Doesn't Mean Complete
+
+**Context:** Keitaro Poller показывал status "success" но данные не записывались (Issue #186).
+
+**Mistake:** Доверял статусу execution "success" без проверки executedNodes count.
+
+**Reality:** Broken connection (`"type": "0"` вместо `"type": "main"`) заставил n8n пропустить узел. Workflow завершился успешно, но Loop Over Campaigns → Get Campaign Metrics никогда не выполнялся.
+
+**Correct Approach:**
+```javascript
+// При анализе execution всегда проверять:
+// 1. executedNodes count == expected nodes
+// 2. Все critical nodes в списке executed
+// 3. Данные в БД после успешного execution
+```
+
+**Rule:** Workflow execution "success" != все узлы выполнились. Всегда проверяй executedNodes count и данные в БД.
+
+---
+
 ## Adding New Issues
 
 При закрытии issue, обновите этот файл:
