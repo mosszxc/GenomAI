@@ -53,11 +53,11 @@ Telegram "spy <URL>"
 ### Webhook URLs
 **IMPORTANT**: All n8n webhooks use workspace `kazamaqwe.app.n8n.cloud`
 
-| Endpoint | URL |
-|----------|-----|
-| Transcription | `https://kazamaqwe.app.n8n.cloud/webhook/creative-transcription` |
-| Decomposition | `https://kazamaqwe.app.n8n.cloud/webhook/decompose/creative` |
-| Idea Registry | `https://kazamaqwe.app.n8n.cloud/webhook/idea-registry-create` |
+| Endpoint | Workflow | Path | Full URL |
+|----------|----------|------|----------|
+| Transcription | GenomAI - Creative Transcription | `genomai-transcribe` | `https://kazamaqwe.app.n8n.cloud/webhook/genomai-transcribe` |
+| Decomposition | creative_decomposition_llm | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` | `https://kazamaqwe.app.n8n.cloud/webhook/a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| Idea Registry | idea_registry_create | `idea-registry-create` | `https://kazamaqwe.app.n8n.cloud/webhook/idea-registry-create` |
 
 **WARNING**: `genomai.app.n8n.cloud` is deprecated/non-existent. Always use `kazamaqwe.app.n8n.cloud`.
 
