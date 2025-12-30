@@ -70,15 +70,10 @@ $ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations]
 **ПЕРЕД выполнением SQL запросов — проверь схему через Phase 0.**
 
 1. **Таблица не существует** → SKIP проверку, статус: ⏭️ SKIP (table missing)
-2. **Колонка не существует** → убрать из SELECT/WHERE, или SKIP если критична
+2. **Колонка не существует** → SKIP проверку или убрать из SELECT если некритична
 3. **При ошибке SQL** → записать в отчёт как ⚠️ WARNING (query failed: {error})
 
-### Fallback колонки
-
-| Ожидаемая | Fallback | Если нет обоих |
-|-----------|----------|----------------|
-| updated_at | created_at | SKIP проверку |
-| reasoning | — | Убрать из SELECT (reasoning в decision_traces.checks) |
+**Не используй fallback колонки** — лучше явный SKIP чем неправильные данные.
 
 ---
 
@@ -110,12 +105,11 @@ ORDER BY table_name, ordinal_position;
 **Сохрани результат как `SCHEMA_MAP` и используй для:**
 - Проверки существования таблиц перед запросами
 - Проверки существования колонок в SELECT/WHERE
-- Применения fallback колонок (см. Schema Adaptation Rules)
 - Отметки SKIP в отчёте для отсутствующих проверок
 
 **Пример использования:**
-- Если `creatives.updated_at` отсутствует → использовать `created_at`
-- Если `decisions.reasoning` отсутствует → убрать из SELECT
+- Если `creatives.updated_at` отсутствует → SKIP проверку Phase 6.3
+- Если `decisions.reasoning` отсутствует → убрать из SELECT (некритичная)
 - Если таблица `premises` отсутствует → SKIP все проверки Phase 2.8
 
 ---
@@ -936,16 +930,16 @@ WHERE t.id IS NULL;
 ### 6.3 Known Issue: Stuck Creatives (#79)
 
 ```sql
--- Note: uses created_at as fallback (updated_at may not exist)
+-- SKIP если updated_at не существует в SCHEMA_MAP
 SELECT COUNT(*) as stuck_creatives
 FROM genomai.creatives c
 WHERE c.status IN ('transcribing', 'decomposing', 'processing')
-  AND c.created_at < now() - interval '30 minutes';
+  AND c.updated_at < now() - interval '30 minutes';
 ```
 
 **Критерии:** count = 0
 
-**Schema Note:** Если `updated_at` существует — использовать его вместо `created_at`
+**Schema Note:** Если `updated_at` не существует → ⏭️ SKIP эту проверку
 
 ### 6.4 Known Issue: Duplicate Decisions
 
@@ -1003,15 +997,11 @@ ORDER BY count_24h DESC;
 ### 7.1 Load Creative
 
 ```sql
--- Note: updated_at may not exist, check SCHEMA_MAP first
 SELECT
-  id, tracker_id, video_url, status, source_type, buyer_id,
-  created_at
+  id, tracker_id, video_url, status, source_type, buyer_id, created_at
 FROM genomai.creatives
 WHERE tracker_id = '{tracker_id}';
 ```
-
-**Schema Note:** Добавить `updated_at` только если существует в SCHEMA_MAP
 
 ### 7.2 Check Full Chain
 
@@ -1293,8 +1283,8 @@ Total: 2m 00s (SLA: < 10m) OK
 
 | Expected Column | Status | Impact |
 |-----------------|--------|--------|
-| creatives.updated_at | MISSING | Phase 6.3 uses created_at fallback |
-| decisions.reasoning | MISSING | Using decision_traces.checks instead |
+| creatives.updated_at | MISSING | Phase 6.3 SKIPPED |
+| decisions.reasoning | MISSING | Removed from Phase 7.2 SELECT |
 
 *(Если все колонки существуют — эту секцию можно пропустить)*
 
