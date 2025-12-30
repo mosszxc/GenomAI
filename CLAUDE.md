@@ -70,8 +70,22 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 - [ ] `dependency_manifest.json` checked (if workflow/API changed)
 - [ ] `/valid {process}` run (if workflow changed)
 - [ ] Git commit + push
+- [ ] **Lesson learned** recorded (if issue closed, see below)
 
 **If any unchecked — do it now. No exceptions.**
+
+## Lessons Learned (on issue close)
+При закрытии ЛЮБОГО issue — записать урок в `docs/KNOWN_ISSUES.md` → секция "Lessons Learned":
+```markdown
+### Short Title (что пошло не так)
+
+**Context:** Что делали, какой issue
+**Mistake:** В чём была ошибка
+**Reality:** Что оказалось на самом деле
+**Correct Approach:** Как надо было делать
+**Rule:** Короткое правило на будущее
+```
+Цель: не повторять одни и те же ошибки. Каждый issue = потенциальный урок.
 
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
