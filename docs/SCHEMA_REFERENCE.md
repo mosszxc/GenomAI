@@ -2,7 +2,7 @@
 
 Единый источник истины для схемы БД GenomAI.
 
-**Last updated:** 2025-12-26
+**Last updated:** 2025-12-30
 
 ---
 
@@ -54,9 +54,26 @@
 
 | Table | Purpose | Mutable | Writer |
 |-------|---------|---------|--------|
-| `raw_metrics_current` | Текущие метрики | Yes (update) | keitaro_poller |
+| `raw_metrics_current` | Текущие метрики | Yes (upsert) | keitaro_poller |
 | `daily_metrics_snapshot` | Daily snapshots | No (append-only) | snapshot_creator |
 | `outcome_aggregates` | Агрегированные outcomes | Yes (learning_applied) | outcome_aggregator |
+
+#### raw_metrics_current (актуальная схема)
+```
+tracker_id  TEXT      PK   -- Keitaro tracker ID
+date        DATE           -- Date of metrics
+metrics     JSONB          -- Raw metrics (impressions, clicks, leads, revenue, spend)
+updated_at  TIMESTAMP      -- Last update time
+```
+
+#### daily_metrics_snapshot (актуальная схема)
+```
+id          UUID      PK   -- Auto-generated
+tracker_id  TEXT           -- Keitaro tracker ID
+date        DATE           -- Snapshot date
+metrics     JSONB          -- Metrics snapshot
+created_at  TIMESTAMP      -- When snapshot was created
+```
 
 ### Learning Tables
 
@@ -84,6 +101,16 @@
 | `keitaro_config` | Keitaro credentials | Yes | manual |
 | `avatars` | Целевые аватары | Yes | manual |
 | `event_log` | Лог событий | No (append-only) | all workflows |
+
+### Recommendation & Exploration Tables
+
+| Table | Purpose | Mutable | Writer |
+|-------|---------|---------|--------|
+| `recommendations` | Рекомендации для баеров | Yes (status) | recommendation_generator |
+| `exploration_log` | Лог exploration решений | Yes (outcome) | exploration_tracker |
+| `premises` | Narrative vehicles для гипотез | Yes (status) | premise_generator |
+| `premise_learnings` | Learnings по premises | Yes | Learning Loop |
+| `reminder_log` | Лог напоминаний | No (append-only) | reminder_workflow |
 
 ### Normalization Tables
 
@@ -219,24 +246,97 @@ GROUP BY status;
 creatives
     └── transcripts.creative_id
     └── decomposed_creatives.creative_id
-            └── ideas.id (via decomposed_creatives.idea_id)
-                    └── decisions.idea_id
-                    │       └── decision_traces.decision_id
-                    │       └── hypotheses.decision_id
-                    └── hypotheses.idea_id
-                    │       └── deliveries.idea_id
-                    └── outcome_aggregates.decision_id
-                    └── idea_confidence_versions.idea_id
-                    └── fatigue_state_versions.idea_id
+    │       └── ideas.id (via decomposed_creatives.idea_id)
+    │               └── decisions.idea_id
+    │               │       └── decision_traces.decision_id
+    │               │       └── hypotheses.decision_id
+    │               └── hypotheses.idea_id
+    │               │       └── deliveries.idea_id
+    │               └── outcome_aggregates.decision_id
+    │               └── idea_confidence_versions.idea_id
+    │               └── fatigue_state_versions.idea_id
+    │               └── exploration_log.idea_id
+    └── recommendations.creative_id (when recommendation executed)
 
 buyers
     └── creatives.buyer_id
     └── hypotheses.buyer_id
     └── historical_import_queue.buyer_id
+    └── recommendations.buyer_id
+    └── reminder_log.buyer_id
 
 avatars
     └── ideas.avatar_id
     └── avatar_learnings.avatar_id
+    └── component_learnings.avatar_id
+    └── exploration_log.avatar_id
+    └── recommendations.avatar_id
+    └── premise_learnings.avatar_id
+
+premises
+    └── hypotheses.premise_id
+    └── premise_learnings.premise_id
+```
+
+---
+
+## Detailed Table Structures
+
+### recommendations
+```
+id                    UUID      PK
+buyer_id              UUID      FK → buyers.id
+avatar_id             UUID      FK → avatars.id
+geo                   TEXT
+vertical              TEXT
+recommended_components JSONB    -- Components to use
+mode                  TEXT      -- exploitation | exploration
+exploration_type      TEXT
+description           TEXT
+status                TEXT      -- pending | sent | accepted | rejected | executed | expired
+creative_id           UUID      FK → creatives.id (when executed)
+was_successful        BOOLEAN
+outcome_cpa           NUMERIC
+confidence_scores     JSONB
+telegram_message_id   TEXT
+created_at            TIMESTAMPTZ
+expires_at            TIMESTAMPTZ DEFAULT now() + 7 days
+```
+
+### premises
+```
+id                UUID      PK
+premise_type      TEXT      -- method | discovery | confession | secret | ingredient | mechanism | breakthrough | transformation
+name              TEXT
+description       TEXT
+origin_story      TEXT
+mechanism_claim   TEXT
+source            TEXT      -- manual | llm_generated | extracted
+status            TEXT      -- active | emerging | fatigued | dead
+vertical          TEXT
+geo               TEXT
+created_at        TIMESTAMPTZ
+updated_at        TIMESTAMPTZ
+```
+
+### exploration_log
+```
+id                      UUID      PK
+exploration_type        TEXT      -- new_avatar | new_component | mutation | random
+idea_id                 UUID      FK → ideas.id
+avatar_id               UUID      FK → avatars.id
+component_type          TEXT
+component_value         TEXT
+geo                     TEXT
+exploration_score       NUMERIC
+exploitation_score      NUMERIC
+sample_size_at_decision INT
+was_successful          BOOLEAN
+outcome_cpa             NUMERIC
+outcome_spend           NUMERIC
+outcome_revenue         NUMERIC
+created_at              TIMESTAMPTZ
+outcome_recorded_at     TIMESTAMPTZ
 ```
 
 ---
@@ -261,4 +361,10 @@ avatars
 
 ## Schema Version
 
-Current: genomai schema v1.0.0 (Release 2025-12-26)
+Current: genomai schema v1.1.0 (Release 2025-12-30)
+
+**Changes in v1.1.0:**
+- `raw_metrics_current`: Changed to tracker_id (PK), date, metrics (JSONB), updated_at
+- `daily_metrics_snapshot`: Changed to tracker_id, date, metrics (JSONB), created_at
+- Added tables: `recommendations`, `premises`, `premise_learnings`, `exploration_log`, `reminder_log`
+- Updated FK relationships for new tables
