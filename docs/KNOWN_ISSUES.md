@@ -333,6 +333,49 @@ curl -w "Time: %{time_total}s" --max-time 120 https://genomai.onrender.com/healt
 
 ---
 
+### Supabase Node useCustomSchema Ignored via API
+
+**Context:** Issue #185 - Buyer State Cleanup workflow не находил таблицу buyer_states.
+
+**Mistake:** Использовал Supabase node с `options.useCustomSchema: true` и `options.schema: "genomai"`, обновляя через n8n API.
+
+**Reality:** Supabase node при обновлении через API игнорирует `options.useCustomSchema`. Active version workflow получает `useCustomSchema: false` → ищет таблицу в public schema.
+
+**Correct Approach:**
+```javascript
+// WRONG - Supabase node через API
+{
+  "type": "n8n-nodes-base.supabase",
+  "parameters": {
+    "operation": "getAll",
+    "tableId": "buyer_states",
+    "options": { "useCustomSchema": true, "schema": "genomai" }
+  }
+}
+
+// CORRECT - HTTP Request с headers
+{
+  "type": "n8n-nodes-base.httpRequest",
+  "parameters": {
+    "method": "GET",
+    "url": "https://PROJECT.supabase.co/rest/v1/table_name",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+      "parameters": [
+        { "name": "Content-Profile", "value": "genomai" },
+        { "name": "Accept-Profile", "value": "genomai" }
+      ]
+    }
+  }
+}
+```
+
+**Rule:** Для работы с custom schema через API — используй HTTP Request с headers `Content-Profile` и `Accept-Profile` вместо Supabase node.
+
+---
+
 ## Adding New Issues
 
 При закрытии issue, обновите этот файл:
