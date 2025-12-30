@@ -260,6 +260,32 @@ ORDER BY created_at DESC;
 
 ---
 
+## Lessons Learned
+
+### Always Measure, Never Assume
+
+**Context:** Pipeline Health Monitor отправлял ложные "DE is DOWN" алерты из-за cold start.
+
+**Mistake:** Поставил wait = 45s "на глаз" / по документации Render, не измерив реальное время.
+
+**Reality:** Cold start занял 85 секунд. Workflow проверял здоровье до того как DE запустился.
+
+**Correct Approach:**
+```bash
+# 1. Измерить реальное значение
+curl -w "Time: %{time_total}s" --max-time 120 https://genomai.onrender.com/health
+# Результат: 85s
+
+# 2. Добавить запас 10-20%
+# Wait = 90-100s
+
+# 3. Тестировать в реальных условиях (после того как сервис "уснёт")
+```
+
+**Rule:** Для любых таймаутов, интервалов, лимитов — сначала измерь реальные значения, потом добавь запас. Не полагайся на документацию или предположения.
+
+---
+
 ## Adding New Issues
 
 При закрытии issue, обновите этот файл:
