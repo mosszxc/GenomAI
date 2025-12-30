@@ -62,6 +62,17 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 2. `/knowledge/{topic}.md` — create or update relevant notes
 3. Summary в конце ответа
 
+## Post-Task Checklist (MANDATORY)
+**STOP before saying "done". Check ALL:**
+- [ ] Test-After-Change executed (see table above)
+- [ ] `qa-notes/{task}.md` created
+- [ ] `knowledge/{topic}.md` created/updated
+- [ ] `dependency_manifest.json` checked (if workflow/API changed)
+- [ ] `/valid {process}` run (if workflow changed)
+- [ ] Git commit + push
+
+**If any unchecked — do it now. No exceptions.**
+
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
 
