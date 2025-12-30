@@ -4,10 +4,16 @@
 Автоматический сброс buyer_states после 15 минут AFK.
 
 ## Workflow Details
-- **ID:** 5tJA4rinnJgd1LFO
-- **Name:** Buyer State Cleanup
-- **Schedule:** Every 5 minutes
+
+### Current (Integrated)
+- **ID:** H1uuOanSy627H4kg (Pipeline Health Monitor)
+- **Schedule:** Every 6 hours
 - **Timeout:** 15 minutes AFK
+- **Nodes:** Check Buyer States → Filter AFK States → Reset Buyer State
+
+### Deprecated
+- **ID:** 5tJA4rinnJgd1LFO (Buyer State Cleanup standalone)
+- **Status:** DEACTIVATE IN UI - functionality moved to Pipeline Health Monitor
 
 ## Edge Cases & Gotchas
 
@@ -46,5 +52,9 @@ ALTER TABLE genomai.buyer_states ENABLE TRIGGER trigger_buyer_states_updated;
 | DB update | Reset triggered | state=idle, context={} | state=idle, context={} | PASS |
 
 ## Monitoring
-- Pipeline Health Monitor уже отслеживает stuck buyer_states
-- Buyer State Cleanup автоматически исправляет их каждые 5 минут
+- Pipeline Health Monitor отслеживает stuck buyer_states И автоматически сбрасывает их каждые 6 часов
+
+## Integration Notes
+- Buyer state cleanup интегрирован в Pipeline Health Monitor для уменьшения количества executions
+- Три новых ноды работают параллельно с основной health check логикой
+- Filter AFK States корректно пропускает idle/completed/failed states
