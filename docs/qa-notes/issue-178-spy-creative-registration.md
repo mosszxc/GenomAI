@@ -21,7 +21,12 @@ Workflow `Spy Creative Registration` (pL6C4j1uiJLfVRIi) now:
 
 ## Edge Cases Discovered
 1. **Telegram parse entities error** - If error message contains unescaped markdown, Telegram API returns 400
-2. **404 from Call Transcription** - Webhook URL points to wrong n8n workspace (`genomai.app.n8n.cloud` vs `kazamaqwe.app.n8n.cloud`)
+2. **404 from Call Transcription** - Multiple issues fixed:
+   - Wrong workspace: `genomai.app.n8n.cloud` → `kazamaqwe.app.n8n.cloud`
+   - Wrong path: `creative-transcription` → `genomai-transcribe`
+   - Wrong method: GET → POST
+3. **Parse Message не находит текст** - Входные данные `body.message.text`, а не `body.text`
+4. **JSON parameter invalid** - Выражение `$json[0].id` неверно, должно быть `$json.id`
 
 ## Related Workflows
 - `Spy Creative Registration` (pL6C4j1uiJLfVRIi)

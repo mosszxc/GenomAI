@@ -70,3 +70,34 @@ Telegram "spy <URL>"
 ### Telegram Parse Error
 **Cause**: Unescaped markdown in error messages.
 **Fix**: Use `parseMode: "None"` in Telegram nodes for error messages.
+
+### 404 from Call Transcription
+**Cause**: Wrong workspace URL or webhook path.
+**Fix**:
+- Use `kazamaqwe.app.n8n.cloud` (NOT `genomai.app.n8n.cloud`)
+- Use correct path `genomai-transcribe` (NOT `creative-transcription`)
+- Use POST method (NOT GET)
+
+### Parse Message не находит текст
+**Cause**: Входящие данные имеют структуру `body.message.text`, а не `body.text`.
+**Fix**: Добавить fallback в Parse Message:
+```javascript
+const messageText = routerData.raw?.message?.text || routerData.message?.text || routerData.text || '';
+const chatId = routerData.message?.chat?.id || routerData.chat_id;
+const userId = routerData.message?.from?.id?.toString() || routerData.telegram_id;
+```
+
+### "JSON parameter needs to be valid JSON" в Call Transcription
+**Cause**: Неверное выражение `$json[0].id` вместо `$json.id`.
+**Fix**: Supabase с `return=representation` возвращает объект напрямую:
+```javascript
+// Неверно
+$('Insert Spy Creative').first().json[0].id
+
+// Верно
+$('Insert Spy Creative').first().json.id
+```
+
+### 401 Unauthorized в Fetch Transcript
+**Cause**: Отсутствует apikey header при запросе к Supabase.
+**Fix**: Добавить headers `apikey` и `Authorization` с anon key.
