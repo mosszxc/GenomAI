@@ -162,8 +162,10 @@ async def find_or_create_avatar(
         - status: 'existing', 'new', or None if no avatar
     """
     # Compute avatar hash - returns None if required fields missing
+    # Issue #194: geo now included in avatar hash for geo-specific avatars
     avatar_hash = compute_avatar_hash(
         vertical=vertical,
+        geo=geo,
         deep_desire_type=deep_desire_type,
         primary_trigger=primary_trigger,
         awareness_level=awareness_level

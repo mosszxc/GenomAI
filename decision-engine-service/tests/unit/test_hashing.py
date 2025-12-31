@@ -161,6 +161,7 @@ class TestAvatarHash:
 
         result = compute_avatar_hash(
             vertical='nutra',
+            geo='RU',
             deep_desire_type='health',
             primary_trigger='pain',
             awareness_level='problem_aware'
@@ -174,8 +175,8 @@ class TestAvatarHash:
         """Same inputs should always produce same hash"""
         from src.utils.hashing import compute_avatar_hash
 
-        hash1 = compute_avatar_hash('nutra', 'health', 'pain', 'aware')
-        hash2 = compute_avatar_hash('nutra', 'health', 'pain', 'aware')
+        hash1 = compute_avatar_hash('nutra', 'RU', 'health', 'pain', 'aware')
+        hash2 = compute_avatar_hash('nutra', 'RU', 'health', 'pain', 'aware')
 
         assert hash1 == hash2
 
@@ -183,22 +184,23 @@ class TestAvatarHash:
         """
         Test parity with JavaScript implementation.
 
-        JS code:
-        const avatarHashInput = [vertical, deepDesireType, primaryTrigger, awarenessLevel].join('|');
+        JS code (Issue #194: geo added):
+        const avatarHashInput = [vertical, geo, deepDesireType, primaryTrigger, awarenessLevel].join('|');
         crypto.createHash('md5').update(avatarHashInput).digest('hex');
         """
         from src.utils.hashing import compute_avatar_hash
 
         vertical = 'nutra'
+        geo = 'RU'
         deep_desire_type = 'health_improvement'
         primary_trigger = 'pain_relief'
         awareness_level = 'solution_aware'
 
-        # Expected: "nutra|health_improvement|pain_relief|solution_aware"
-        expected_input = f"{vertical}|{deep_desire_type}|{primary_trigger}|{awareness_level}"
+        # Expected: "nutra|RU|health_improvement|pain_relief|solution_aware"
+        expected_input = f"{vertical}|{geo}|{deep_desire_type}|{primary_trigger}|{awareness_level}"
         expected_hash = hashlib.md5(expected_input.encode()).hexdigest()
 
-        result = compute_avatar_hash(vertical, deep_desire_type, primary_trigger, awareness_level)
+        result = compute_avatar_hash(vertical, geo, deep_desire_type, primary_trigger, awareness_level)
 
         assert result == expected_hash
 
@@ -206,8 +208,8 @@ class TestAvatarHash:
         """Different inputs should produce different hashes"""
         from src.utils.hashing import compute_avatar_hash
 
-        hash1 = compute_avatar_hash('nutra', 'health', 'pain', 'aware')
-        hash2 = compute_avatar_hash('crypto', 'wealth', 'fomo', 'unaware')
+        hash1 = compute_avatar_hash('nutra', 'RU', 'health', 'pain', 'aware')
+        hash2 = compute_avatar_hash('crypto', 'KZ', 'wealth', 'fomo', 'unaware')
 
         assert hash1 != hash2
 
@@ -215,13 +217,13 @@ class TestAvatarHash:
         """Should return None if any required field is missing/None"""
         from src.utils.hashing import compute_avatar_hash
 
-        # All None
-        assert compute_avatar_hash(None, None, None, None) is None
+        # All None (vertical and geo can be None, but deep_desire, trigger, awareness required)
+        assert compute_avatar_hash(None, None, None, None, None) is None
 
-        # Some None
-        assert compute_avatar_hash('nutra', None, 'pain', 'aware') is None
-        assert compute_avatar_hash('nutra', 'health', None, 'aware') is None
-        assert compute_avatar_hash('nutra', 'health', 'pain', None) is None
+        # Some None - deep_desire, trigger, awareness are required
+        assert compute_avatar_hash('nutra', 'RU', None, 'pain', 'aware') is None
+        assert compute_avatar_hash('nutra', 'RU', 'health', None, 'aware') is None
+        assert compute_avatar_hash('nutra', 'RU', 'health', 'pain', None) is None
 
     def test_avatar_hash_empty_strings(self):
         """Empty strings should be treated as valid values"""
@@ -230,8 +232,30 @@ class TestAvatarHash:
         # Empty strings are falsy in JS but we might want to handle differently
         # Based on JS: if (deepDesireType && primaryTrigger && awarenessLevel)
         # Empty string is falsy, so should return None
-        result = compute_avatar_hash('nutra', '', 'pain', 'aware')
+        result = compute_avatar_hash('nutra', 'RU', '', 'pain', 'aware')
         assert result is None
+
+    def test_avatar_hash_geo_affects_hash(self):
+        """Different geo should produce different hash (Issue #194)"""
+        from src.utils.hashing import compute_avatar_hash
+
+        hash_ru = compute_avatar_hash('nutra', 'RU', 'health', 'pain', 'aware')
+        hash_kz = compute_avatar_hash('nutra', 'KZ', 'health', 'pain', 'aware')
+
+        assert hash_ru != hash_kz
+
+    def test_avatar_hash_unknown_geo(self):
+        """None geo should default to 'unknown'"""
+        from src.utils.hashing import compute_avatar_hash
+
+        # None geo defaults to 'unknown'
+        hash_none = compute_avatar_hash('nutra', None, 'health', 'pain', 'aware')
+
+        # Expected: "nutra|unknown|health|pain|aware"
+        expected_input = "nutra|unknown|health|pain|aware"
+        expected_hash = hashlib.md5(expected_input.encode()).hexdigest()
+
+        assert hash_none == expected_hash
 
 
 class TestHashingParity:

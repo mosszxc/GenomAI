@@ -79,6 +79,7 @@ def compute_canonical_hash(payload: dict) -> str:
 
 def compute_avatar_hash(
     vertical: Optional[str],
+    geo: Optional[str],
     deep_desire_type: Optional[str],
     primary_trigger: Optional[str],
     awareness_level: Optional[str]
@@ -86,11 +87,12 @@ def compute_avatar_hash(
     """
     Compute MD5 hash for avatar deduplication.
 
-    Port of JavaScript implementation:
+    Port of JavaScript implementation (Issue #194: includes geo):
     ```js
     if (deepDesireType && primaryTrigger && awarenessLevel) {
       const avatarHashInput = [
         vertical,
+        geo,
         deepDesireType,
         primaryTrigger,
         awarenessLevel
@@ -101,6 +103,7 @@ def compute_avatar_hash(
 
     Args:
         vertical: Buyer vertical (e.g., 'nutra', 'crypto')
+        geo: Buyer geo (e.g., 'RU', 'KZ') - included in hash for geo-specific avatars
         deep_desire_type: Avatar deep desire type
         primary_trigger: Avatar primary trigger
         awareness_level: Avatar awareness level
@@ -113,9 +116,9 @@ def compute_avatar_hash(
     if not deep_desire_type or not primary_trigger or not awareness_level:
         return None
 
-    # Build hash input: "vertical|deep_desire_type|primary_trigger|awareness_level"
-    # Note: vertical can be 'unknown' (default from JS), but we still include it
-    avatar_hash_input = f"{vertical or 'unknown'}|{deep_desire_type}|{primary_trigger}|{awareness_level}"
+    # Build hash input: "vertical|geo|deep_desire_type|primary_trigger|awareness_level"
+    # Note: vertical and geo can be 'unknown' (default from JS), but we still include them
+    avatar_hash_input = f"{vertical or 'unknown'}|{geo or 'unknown'}|{deep_desire_type}|{primary_trigger}|{awareness_level}"
 
     # MD5 hash
     return hashlib.md5(avatar_hash_input.encode('utf-8')).hexdigest()
