@@ -19,8 +19,8 @@
 
 **Large Files (5 creatives):**
 - Real Google Drive files exceeding 50MB
-- OpenAI Whisper API has 25MB limit (we handle up to 50MB with compression)
-- Files larger than 50MB cannot be processed
+- **Internal workflow limit:** 50MB (node `Check File Size`)
+- **Note:** AssemblyAI API supports up to 5GB - limit is our choice, not API restriction
 - Resolution: Workflow correctly marks them as `skipped_large_file`
 
 ### Workflow Behavior (Expected)
@@ -63,9 +63,9 @@ WHERE status = 'skipped_large_file';
 ## Prevention
 1. Regular cleanup of test data in staging
 2. Document 50MB file size limit in buyer onboarding
-3. Consider adding file size pre-check before upload
+3. Consider increasing limit (AssemblyAI supports up to 5GB)
 
 ## Related
 - Workflow: `Creative Transcription` (WMnFHqsFh8i7ddjV)
-- OpenAI Whisper API: 25MB hard limit
-- Project compression threshold: 50MB
+- Transcription API: **AssemblyAI** (not Whisper)
+- Internal limit: 50MB (configurable in node `Check File Size`)
