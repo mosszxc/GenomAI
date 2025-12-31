@@ -34,6 +34,47 @@ HTTP Request (SELECT where video_url=X AND tracker_id=Y)
 
 **Trade-off:** +1 запрос, но точнее определяет дубликат.
 
+## Anti-Pattern: Supabase GET → If → Create (AVOID!)
+
+**Проблема:** Supabase GET возвращает 0 items когда запись не найдена → If node не получает данные → workflow останавливается без ошибки.
+
+```
+Supabase (GET) → If Not Exists → Create
+                     ↑
+          0 items = workflow stops silently!
+```
+
+**Правильный паттерн: UPSERT через HTTP Request**
+
+```
+HTTP Request (UPSERT)
+    URL: https://PROJECT.supabase.co/rest/v1/table_name
+    Method: POST
+    Headers:
+        Content-Profile: genomai
+        Prefer: resolution=merge-duplicates,return=representation
+    → Normalize Response (Code node)
+    → Continue flow
+```
+
+**Normalize Response (Code node):**
+```javascript
+const response = $input.first().json;
+const item = Array.isArray(response) ? response[0] : response;
+return [{ json: item }];
+```
+
+**Преимущества UPSERT:**
+- Всегда возвращает данные (insert или update)
+- Одна операция вместо Check→If→Create
+- Атомарность (нет race conditions)
+- Workflow не останавливается при "not found"
+
+**Когда использовать:**
+- Таблица имеет UNIQUE constraint
+- Нужно "create if not exists, update if exists"
+- Downstream nodes зависят от созданной/обновлённой записи
+
 ## Expression Format
 
 Mixed literal + expression REQUIRES `=` prefix:
