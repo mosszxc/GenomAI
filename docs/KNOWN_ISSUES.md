@@ -262,6 +262,31 @@ ORDER BY created_at DESC;
 
 ## Medium Priority Issues (continued)
 
+### #178: Spy Creative Registration - Invalid creative_id to Decomposition
+
+**Component:** `Spy Creative Registration` (pL6C4j1uiJLfVRIi)
+**Root Cause:** Node `Call Decomposition` made GET request without body instead of POST with `{creative_id, transcript_text, is_spy}`
+**Symptoms:** `creative_decomposition_llm` received empty/undefined creative_id, causing UUID validation error
+
+**Resolution:**
+1. Changed method GET → POST
+2. Added body with proper structure:
+```json
+{
+  "creative_id": "$('Insert Spy Creative').first().json.id",
+  "transcript_text": "from Fetch Transcript or fallback",
+  "is_spy": true
+}
+```
+
+**Prevention:**
+- When calling webhooks that expect data, always verify: method=POST, sendBody=true, jsonBody set
+- Run `n8n_validate_workflow` before closing issue
+
+**Related:** #197 (incomplete fix), `creative_decomposition_llm` (mv6diVtqnuwr7qev)
+
+---
+
 ### #183: Double-encoded JSON payload in decomposed_creatives
 
 **Component:** `creative_decomposition_llm` (mv6diVtqnuwr7qev)
