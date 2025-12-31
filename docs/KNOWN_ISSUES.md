@@ -417,6 +417,26 @@ FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
 
 ---
 
+### Verify Fix Before Closing Issue
+
+**Context:** Issue #178 was closed but fix was incomplete (Issue #197).
+
+**Mistake:** Issue #178 "Spy Creative Registration URL fix" was marked closed without testing that the HTTP Request node actually worked.
+
+**Reality:** Only `jsonBody` was set, but `url`, `method`, `sendHeaders`, `sendBody` were missing. Workflow validation would have caught: `Required property 'URL' cannot be empty`.
+
+**Correct Approach:**
+```bash
+# Before closing ANY workflow issue:
+1. n8n_validate_workflow - check for errors
+2. n8n_test_workflow - execute and verify
+3. Check DB for expected records
+```
+
+**Rule:** Never close workflow issue without: (1) validation passing, (2) test execution, (3) DB verification.
+
+---
+
 ## Adding New Issues
 
 При закрытии issue, обновите этот файл:
