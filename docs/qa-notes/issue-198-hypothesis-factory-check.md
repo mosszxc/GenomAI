@@ -1,5 +1,26 @@
 # QA Notes: Issue #198 - Hypothesis Factory Check
 
+## Test Confirmation (Dec 31)
+
+**Workflow tested and PASSED:**
+```
+POST /webhook/hypothesis-factory-trigger
+{
+  "idea_id": "80aeb676-ed02-4d4a-a1f6-3970b1d9472a",
+  "decision": "approve",
+  "decision_id": "5dedc328-6e9f-425f-9782-3ceaa1bb3e58"
+}
+
+Response: {"success": true, "hypothesis_id": "..."}
+```
+
+**Database verification:**
+- Hypothesis created with premise_id ✅
+- Status: ready_for_launch ✅
+- Content: 224 chars ✅
+
+---
+
 ## Issue
 **bug: Hypothesis Factory not generating hypotheses (0 hypotheses for 4 APPROVE decisions)**
 
