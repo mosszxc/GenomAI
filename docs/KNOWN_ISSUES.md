@@ -2,7 +2,7 @@
 
 Документация известных проблем и их решений для предотвращения регрессий.
 
-**Последнее обновление:** 2025-12-30
+**Последнее обновление:** 2025-12-31
 
 ---
 
@@ -287,6 +287,41 @@ ORDER BY created_at DESC;
 
 ---
 
+### #202: Learning Loop Not Populating - Supabase GET Empty Array
+
+**Component:** `Snapshot Creator` (Gii8l2XwnX43Wqr4)
+**Root Cause:** `Check Snapshot Exists` (Supabase GET) returns 0 items when no record found → `If Not Exists` node never receives data → workflow stops silently
+**Symptoms:**
+- `daily_metrics_snapshot`: 0 records
+- `outcome_aggregates`: 0 records
+- `component_learnings`: 0 records
+- Keitaro Poller shows 85+ `RawMetricsObserved` events but no downstream processing
+
+**Resolution:**
+1. Removed: `Check Snapshot Exists`, `If Not Exists`, `Skip Existing`, `Create Daily Snapshot`
+2. Added: `Upsert Snapshot` (HTTP Request with `Prefer: resolution=merge-duplicates`)
+3. Added: `Normalize Response` (Code node to extract first item from array)
+4. Updated all downstream expression references
+5. Added retry to Outcome Aggregator (3 attempts, 5s wait)
+
+**Prevention:**
+- Use UPSERT pattern instead of Check→If→Create
+- Or use HTTP Request instead of Supabase node for empty array handling
+- Always test with data that triggers the "not found" path
+
+**Detection Query:**
+```sql
+-- Check if Snapshot Creator is working
+SELECT COUNT(*) as snapshots, MAX(created_at) as latest
+FROM genomai.daily_metrics_snapshot;
+
+-- Compare with Keitaro Poller events
+SELECT COUNT(*) as events FROM genomai.event_log
+WHERE event_type = 'RawMetricsObserved';
+```
+
+---
+
 ### #183: Double-encoded JSON payload in decomposed_creatives
 
 **Component:** `creative_decomposition_llm` (mv6diVtqnuwr7qev)
@@ -459,6 +494,29 @@ FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
 ```
 
 **Rule:** Never close workflow issue without: (1) validation passing, (2) test execution, (3) DB verification.
+
+---
+
+### Supabase GET Empty = Workflow Stops Silently
+
+**Context:** Issue #202 - Learning Loop not populating tables despite Keitaro Poller working.
+
+**Mistake:** Used pattern `Supabase GET → If (id not exists) → Create`. When GET returns 0 items, If node receives no data and workflow silently stops.
+
+**Reality:** Supabase node GET operation returns **empty array** (not null/undefined) when no records found. n8n passes 0 items to next node → workflow ends without error.
+
+**Correct Approach:**
+```javascript
+// WRONG - Check→If pattern with Supabase GET
+Supabase GET → If Not Exists → Create
+// Silent failure when record doesn't exist!
+
+// CORRECT - UPSERT pattern with HTTP Request
+HTTP Request (POST with Prefer: resolution=merge-duplicates) → Normalize Response → Continue
+// Always returns data, handles insert/update automatically
+```
+
+**Rule:** For "create if not exists" logic, use UPSERT via HTTP Request instead of Check→If→Create with Supabase node. This anti-pattern is already documented above but keeps recurring.
 
 ---
 
