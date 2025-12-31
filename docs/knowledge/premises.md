@@ -77,4 +77,43 @@ VALUES
 ## Workflow Integration
 
 - **Hypothesis Factory** (`oxG1DqxtkTGCqLZi`): Uses Supabase node to load active premises
+- **Premise Generator** (`x2Udd72hNe0ODduu`): Generates new premises via LLM (requires premise_learnings data)
 - `hypotheses.premise_id` links to selected premise
+
+## Seed Premises (11 total)
+
+Migration 021 seeds these premises:
+
+| Type | Name | Status |
+|------|------|--------|
+| method | Метод лимонной косточки | active |
+| method | Метод гуавы | active |
+| secret | Техника монахов | active |
+| method | Домашний метод | active |
+| discovery | Случайное открытие ученого | active |
+| confession | Признание врача | active |
+| ingredient | Один ингредиент | active |
+| mechanism | Скрытая причина | active |
+| secret | Tibetan Monks Secret | active |
+| discovery | Hollywood Elite Method | active |
+| breakthrough | Suppressed Stanford Study | active |
+
+## Premise Generator Workflow
+
+Workflow `x2Udd72hNe0ODduu` generates new premises based on winning examples.
+
+**Requirements:**
+- `premise_learnings` with `sample_size >= 5` must exist
+- Called via webhook: `POST /webhook/premise-generate`
+
+**Request body:**
+```json
+{
+  "premise_type": "method",
+  "vertical": "nutra",
+  "geo": "RU",
+  "count": 3
+}
+```
+
+**Note:** Until Learning Loop populates `premise_learnings`, workflow returns error "No winning premises found".
