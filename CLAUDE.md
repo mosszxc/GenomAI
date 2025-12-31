@@ -47,17 +47,36 @@ All pass = APPROVE
 ## Git
 Always push after commit. No exceptions.
 
-## Test-After-Change (BLOCKING)
-**НЕЛЬЗЯ помечать todo как completed или закрывать issue без выполнения теста.**
+## ⛔ TEST-AFTER-CHANGE (BLOCKING)
+**СТОП. Читай это ПЕРЕД закрытием issue или todo.**
 
-| Изменение | Тест | Что проверить |
-|-----------|------|---------------|
-| Workflow | `n8n_test_workflow` | Execution success + данные в БД |
-| API | `curl` endpoint | Response 200 + правильный body |
-| Migration | `execute_sql` SELECT | Данные есть + constraints работают |
-| Python код | Запустить endpoint | Нет ошибок + правильный output |
+### Правило
+```
+НЕТ ТЕСТА = НЕТ ЗАКРЫТИЯ
+```
+Validation (структура) ≠ Test (реальный запуск). `n8n_validate_workflow` — это НЕ тест.
 
-**Validation ≠ Test.** `n8n_validate_workflow` проверяет структуру. `n8n_test_workflow` запускает реально.
+### Обязательные тесты по типу изменения
+| Изменение | Тест | Критерий успеха |
+|-----------|------|-----------------|
+| Workflow | `n8n_test_workflow` | ✅ Execution SUCCESS + данные в БД |
+| API | `curl` endpoint | ✅ HTTP 200 + правильный body |
+| Migration | `execute_sql` SELECT | ✅ Данные есть + constraints |
+| Python | Запустить endpoint | ✅ Нет ошибок + output |
+
+### Before Closing Issue — MANDATORY
+1. **RUN THE TEST** (см. таблицу выше)
+2. **VERIFY RESULT** (execution success? данные в БД?)
+3. **SCREENSHOT/LOG** в qa-notes если нужно
+4. Только потом → close issue
+
+### Self-Check
+Перед словом "готово" спроси себя:
+- [ ] Я ЗАПУСТИЛ тест (не validate, а test)?
+- [ ] Я ВИДЕЛ результат (execution log, данные в БД)?
+- [ ] Если workflow — был `n8n_test_workflow`?
+
+**Если хоть один ответ "нет" — СТОП, сначала тест.**
 
 ## Post-Task Loop
 Always run Post-Task Knowledge Loop after completing any task. No exceptions.
@@ -67,7 +86,8 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 
 ## Post-Task Checklist (MANDATORY)
 **STOP before saying "done". Check ALL:**
-- [ ] Test-After-Change executed (see table above)
+- [ ] ⛔ **TEST EXECUTED** (n8n_test_workflow / curl / execute_sql) — ПЕРВЫЙ ПУНКТ
+- [ ] ⛔ **TEST PASSED** (execution success + данные в БД)
 - [ ] `qa-notes/{task}.md` created
 - [ ] `knowledge/{topic}.md` created/updated
 - [ ] `dependency_manifest.json` checked (if workflow/API changed)
@@ -75,7 +95,7 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 - [ ] Git commit + push
 - [ ] **Lesson learned** recorded (if issue closed, see below)
 
-**If any unchecked — do it now. No exceptions.**
+**Первые два пункта — БЛОКИРУЮЩИЕ. Без них остальное не имеет смысла.**
 
 ## Lessons Learned (on issue close)
 При закрытии issue — **сначала проверить** `docs/KNOWN_ISSUES.md` → "Lessons Learned":
