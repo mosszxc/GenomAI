@@ -3,7 +3,7 @@
 Визуализация зависимостей между workflows, API и таблицами БД.
 
 **Auto-generated from:** n8n API
-**Last updated:** 2025-12-31 01:28
+**Last updated:** 2026-01-01 01:47
 
 ---
 
@@ -13,7 +13,7 @@
 flowchart TD
 
     %% Auto-generated from n8n workflows
-    %% Updated: 2025-12-31 01:28
+    %% Updated: 2026-01-01 01:47
 
     subgraph Telegram["Telegram Entry Points"]
         buyerhistorical[buyer_historical_url_handler]
