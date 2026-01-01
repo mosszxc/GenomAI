@@ -2,11 +2,49 @@
 
 Документация известных проблем и их решений для предотвращения регрессий.
 
-**Последнее обновление:** 2025-12-31
+**Последнее обновление:** 2026-01-01
 
 ---
 
-## Critical Issues
+## Currently Open Issues
+
+### Critical (Data Pipeline Broken)
+
+| Issue | Title | Component | Status |
+|-------|-------|-----------|--------|
+| #209 | High error rates on idea_registry and decomposition workflows | n8n | OPEN |
+| #199 | Decomposition→Idea pipeline breaks - creatives stuck without idea linking | n8n | OPEN |
+| #204 | Decomposed creative missing idea_id link | DB | OPEN |
+| #184 | 2 creatives stuck in transcribed status without decomposition | n8n | OPEN |
+
+### High (Data Integrity)
+
+| Issue | Title | Component | Status |
+|-------|-------|-----------|--------|
+| #207 | Decision without decision_trace record | DB | OPEN |
+| #205 | Avatars with invalid canonical_hash length | DB | OPEN |
+| #203 | Decision values case mismatch: APPROVE vs approve | DB | OPEN |
+
+### Medium (Metrics & Delivery)
+
+| Issue | Title | Component | Status |
+|-------|-------|-----------|--------|
+| #208 | 2 stuck hypothesis deliveries | n8n | OPEN |
+| #206 | Keitaro Poller metrics 11h stale | n8n | OPEN |
+| #200 | 337 campaigns stuck in historical_import_queue with pending_video | n8n | OPEN |
+
+### Pending Implementation
+
+| Issue | Title | Component | Status |
+|-------|-------|-----------|--------|
+| #192 | Use verticals[]/geos[] arrays instead of single values | API | OPEN |
+| #174 | Create n8n Premise Generator workflow | n8n | OPEN |
+| #172 | End-to-end Premise Layer validation | Test | OPEN |
+| #166 | Create migration 021_premise_registry.sql | DB | OPEN |
+
+---
+
+## Critical Issues (Resolved)
 
 ### #91: Decision Engine Cold Start (503 Error)
 
