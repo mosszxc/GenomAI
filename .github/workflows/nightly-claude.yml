@@ -1,0 +1,66 @@
+name: Nightly Claude
+
+on:
+  schedule:
+    # Каждый день в 3:00 UTC (6:00 MSK)
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Ручной запуск для тестирования
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd decision-engine-service
+          pip install -r requirements.txt || true
+
+      - name: Run Claude Nightly Tasks
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are running as a nightly automation. Complete these tasks:
+
+            ## 1. Run Tests
+            - Run pytest in decision-engine-service/
+            - If any tests fail, analyze and fix them
+
+            ## 2. Code Review
+            - Scan for obvious bugs, security issues, TODO/FIXME comments
+            - If critical issues found, create a GitHub issue
+
+            ## 3. Documentation
+            - Check if docs/ are in sync with code
+            - Update outdated documentation
+
+            ## 4. Commit Changes
+            - If you made any fixes, commit with message "chore(nightly): auto-fixes [skip ci]"
+            - Push changes
+
+            Be concise. Only fix obvious issues, don't refactor.
+          allowed_tools: |
+            Read,Edit,Write,Glob,Grep,
+            Bash(pytest:*),Bash(python:*),
+            Bash(git add:*),Bash(git commit:*),Bash(git push:*),
+            Bash(gh issue create:*)
+          max_turns: 20
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Nightly Run Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Time: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "See logs above for details" >> $GITHUB_STEP_SUMMARY
