@@ -1,0 +1,735 @@
+{
+  "name": "premise_generator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1],
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekly Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "premise-generator",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 520],
+      "webhookId": "premise-generator-webhook",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine trigger source and set defaults\nconst items = $input.all();\nconst triggerNode = $execution.customData?.parentNodeName || '';\n\nlet triggerType = 'schedule';\nlet requestData = {};\n\n// Check if this came from webhook\nif (items[0]?.json?.body) {\n  triggerType = 'webhook';\n  requestData = items[0].json.body;\n}\n\n// Defaults\nconst premise_type = requestData.premise_type || null; // null = auto-select\nconst vertical = requestData.vertical || 'nutra';\nconst geo = requestData.geo || 'RU';\nconst count = requestData.count || (triggerType === 'schedule' ? 3 : 1);\n\nreturn [{\n  json: {\n    trigger_type: triggerType,\n    premise_type: premise_type,\n    vertical: vertical,\n    geo: geo,\n    count: count,\n    auto_select_type: premise_type === null\n  }\n}];"
+      },
+      "id": "merge-triggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/rpc/get_underexplored_premise_type",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Profile",
+              "value": "genomai"
+            },
+            {
+              "name": "Accept-Profile",
+              "value": "genomai"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {}
+      },
+      "id": "get-underexplored-type",
+      "name": "Get Underexplored Type",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "RNItSRYOCypd9H1a",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/premises?select=premise_type&vertical=eq.{{ $json.vertical }}&order=premise_type",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "genomai"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "count-by-type-fallback",
+      "name": "Count By Type Fallback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 500],
+      "credentials": {
+        "supabaseApi": {
+          "id": "RNItSRYOCypd9H1a",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine final premise_type\nconst items = $input.all();\nconst inputData = $('Merge Triggers').first().json;\n\nconst VALID_TYPES = ['method', 'discovery', 'confession', 'secret', 'ingredient', 'mechanism', 'breakthrough', 'transformation'];\n\nlet targetType = inputData.premise_type;\n\nif (inputData.auto_select_type) {\n  // Try to get from RPC result first\n  const rpcResult = items.find(i => i.json?.premise_type);\n  if (rpcResult) {\n    targetType = rpcResult.json.premise_type;\n  } else {\n    // Fallback: count premises by type from raw data\n    const premises = items.filter(i => i.json?.premise_type && VALID_TYPES.includes(i.json.premise_type));\n    const typeCounts = {};\n    VALID_TYPES.forEach(t => typeCounts[t] = 0);\n    premises.forEach(p => {\n      if (typeCounts[p.json.premise_type] !== undefined) {\n        typeCounts[p.json.premise_type]++;\n      }\n    });\n    \n    // Find type with minimum count\n    let minCount = Infinity;\n    VALID_TYPES.forEach(t => {\n      if (typeCounts[t] < minCount) {\n        minCount = typeCounts[t];\n        targetType = t;\n      }\n    });\n  }\n}\n\n// Validate type\nif (!VALID_TYPES.includes(targetType)) {\n  targetType = 'method'; // Safe default\n}\n\nreturn [{\n  json: {\n    premise_type: targetType,\n    vertical: inputData.vertical,\n    geo: inputData.geo,\n    count: inputData.count,\n    trigger_type: inputData.trigger_type\n  }\n}];"
+      },
+      "id": "determine-target-type",
+      "name": "Determine Target Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/premises?select=name,description,origin_story,mechanism_claim&premise_type=eq.{{ $json.premise_type }}&vertical=eq.{{ $json.vertical }}&status=eq.active&limit=5",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "genomai"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "load-winning-premises",
+      "name": "Load Winning Premises",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400],
+      "credentials": {
+        "supabaseApi": {
+          "id": "RNItSRYOCypd9H1a",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format LLM prompt\nconst targetData = $('Determine Target Type').first().json;\n\n// Try to get winning premises, but handle case where node returned empty\nlet winningPremises = [];\ntry {\n  winningPremises = $('Load Winning Premises').all().map(i => i.json).filter(p => p && p.name);\n} catch (e) {\n  // Node may not have executed or returned empty\n  winningPremises = [];\n}\n\nconst TYPE_DEFINITIONS = {\n  method: 'A specific technique or ritual (e.g., \"lemon seed method\", \"2-minute morning routine\")',\n  discovery: 'A revelation or finding (e.g., \"ancient Tibetan discovery\", \"accidental lab finding\")',\n  confession: 'An insider admission (e.g., \"doctor\\'s confession\", \"pharma whistleblower\")',\n  secret: 'Hidden information (e.g., \"suppressed remedy\", \"what they don\\'t want you to know\")',\n  ingredient: 'A specific compound (e.g., \"single kitchen ingredient\", \"forgotten herb\")',\n  mechanism: 'Root cause explanation (e.g., \"hidden trigger\", \"real reason behind...\")',\n  breakthrough: 'New research/science (e.g., \"Stanford study\", \"Nobel prize discovery\")',\n  transformation: 'Change narrative (e.g., \"one simple change\", \"before/after secret\")'\n};\n\n// Format existing premises for context\nlet existingContext = 'None available yet.';\nif (winningPremises && winningPremises.length > 0) {\n  existingContext = winningPremises\n    .filter(p => p.name)\n    .map(p => `- ${p.name}: ${p.description || 'No description'}`)\n    .join('\\n');\n}\n\nconst prompt = `You are a creative copywriter specializing in direct response advertising for health/nutra products.\n\nGenerate ${targetData.count} new unique PREMISE concepts of type \"${targetData.premise_type}\" for ${targetData.vertical} vertical targeting ${targetData.geo} audience.\n\nA premise is a narrative vehicle that makes the product story believable and memorable.\n\nType definition for \"${targetData.premise_type}\":\n${TYPE_DEFINITIONS[targetData.premise_type]}\n\nAll type definitions for reference:\n${Object.entries(TYPE_DEFINITIONS).map(([k, v]) => `- ${k}: ${v}`).join('\\n')}\n\nExisting premises of this type (avoid duplicates and similar concepts):\n${existingContext}\n\nFor each premise, provide:\n1. name: Short memorable name (5-8 words max, in the language appropriate for ${targetData.geo})\n2. origin_story: Where/how this was discovered (2-3 sentences)\n3. mechanism_claim: Why this works (1-2 sentences)\n4. description: Brief description for internal use (in English)\n\nIMPORTANT: \n- Make each premise unique and distinct from existing ones\n- Names should be catchy and memorable\n- For RU geo, names and origin_story should be in Russian\n- Description and mechanism_claim can be in English\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"premises\": [\n    {\n      \"name\": \"...\",\n      \"origin_story\": \"...\",\n      \"mechanism_claim\": \"...\",\n      \"description\": \"...\"\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    prompt: prompt,\n    premise_type: targetData.premise_type,\n    vertical: targetData.vertical,\n    geo: targetData.geo,\n    count: targetData.count,\n    trigger_type: targetData.trigger_type\n  }\n}];"
+      },
+      "id": "format-llm-prompt",
+      "name": "Format LLM Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "chatModel": "gpt-4o-mini",
+        "prompt": {
+          "messages": [
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 2000
+        },
+        "requestOptions": {}
+      },
+      "id": "call-openai",
+      "name": "Call OpenAI",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
+      "position": [1560, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "vFHcY9MP1O9TrhKV",
+          "name": "UniGPT"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse LLM response\nconst llmResponse = $input.first().json;\nconst context = $('Format LLM Prompt').first().json;\n\nlet content = llmResponse.message?.content || llmResponse.content || '';\n\n// Try to parse JSON\nlet premises = [];\ntry {\n  // Handle if content is already an object\n  if (typeof content === 'object' && content.premises) {\n    premises = content.premises;\n  } else {\n    // Parse string content\n    const parsed = JSON.parse(content);\n    premises = parsed.premises || [];\n  }\n} catch (e) {\n  // Try to extract JSON from text\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    try {\n      const parsed = JSON.parse(jsonMatch[0]);\n      premises = parsed.premises || [];\n    } catch (e2) {\n      return [{\n        json: {\n          error: 'Failed to parse LLM response',\n          raw_content: content,\n          context: context\n        }\n      }];\n    }\n  }\n}\n\n// Validate and enrich each premise\nconst validPremises = premises\n  .filter(p => p.name && p.name.trim().length > 0)\n  .map(p => ({\n    name: p.name.trim(),\n    description: p.description || null,\n    origin_story: p.origin_story || null,\n    mechanism_claim: p.mechanism_claim || null,\n    premise_type: context.premise_type,\n    vertical: context.vertical,\n    geo: context.geo,\n    source: 'llm_generated',\n    status: 'emerging'\n  }));\n\nif (validPremises.length === 0) {\n  return [{\n    json: {\n      error: 'No valid premises generated',\n      raw_premises: premises,\n      context: context\n    }\n  }];\n}\n\nreturn validPremises.map(p => ({ json: p }));"
+      },
+      "id": "parse-response",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-parse-success",
+      "name": "Check Parse Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-premises",
+      "name": "Loop Premises",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/premises?select=id&name=eq.{{ encodeURIComponent($json.name) }}&vertical=eq.{{ $json.vertical }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept-Profile",
+              "value": "genomai"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-unique",
+      "name": "Check Unique",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "RNItSRYOCypd9H1a",
+          "name": "Supabase account"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if premise is unique\nconst premise = $('Loop Premises').item.json;\nconst checkResult = $input.first().json;\n\n// HTTP returns array - if empty, premise is unique\nconst existingPremises = Array.isArray(checkResult) ? checkResult : [];\nconst isUnique = existingPremises.length === 0;\n\nreturn [{\n  json: {\n    ...premise,\n    is_unique: isUnique\n  }\n}];"
+      },
+      "id": "process-unique-check",
+      "name": "Process Unique Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-unique",
+              "leftValue": "={{ $json.is_unique }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-unique",
+      "name": "Is Unique?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/premises",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Profile",
+              "value": "genomai"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"premise_type\": \"{{ $('Loop Premises').item.json.premise_type }}\",\n  \"name\": {{ JSON.stringify($('Loop Premises').item.json.name) }},\n  \"description\": {{ $('Loop Premises').item.json.description ? JSON.stringify($('Loop Premises').item.json.description) : 'null' }},\n  \"origin_story\": {{ $('Loop Premises').item.json.origin_story ? JSON.stringify($('Loop Premises').item.json.origin_story) : 'null' }},\n  \"mechanism_claim\": {{ $('Loop Premises').item.json.mechanism_claim ? JSON.stringify($('Loop Premises').item.json.mechanism_claim) : 'null' }},\n  \"source\": \"llm_generated\",\n  \"status\": \"emerging\",\n  \"vertical\": \"{{ $('Loop Premises').item.json.vertical }}\",\n  \"geo\": \"{{ $('Loop Premises').item.json.geo }}\"\n}",
+        "options": {}
+      },
+      "id": "insert-premise",
+      "name": "Insert Premise",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3100, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "RNItSRYOCypd9H1a",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/event_log",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Profile",
+              "value": "genomai"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ event_type: 'PremiseGenerated', entity_type: 'premise', entity_id: String($json[0]?.id || $json.id || ''), payload: { premise_type: $json[0]?.premise_type || $json.premise_type, name: $json[0]?.name || $json.name, vertical: $json[0]?.vertical || $json.vertical, geo: $json[0]?.geo || $json.geo, source: 'llm_generated' } }) }}",
+        "options": {}
+      },
+      "id": "emit-premise-generated",
+      "name": "Emit PremiseGenerated",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3320, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "RNItSRYOCypd9H1a",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Track created premise ID for response\nconst insertedPremise = $('Insert Premise').first().json;\nreturn [{\n  json: {\n    created_id: insertedPremise[0]?.id || insertedPremise.id,\n    name: insertedPremise[0]?.name || insertedPremise.name,\n    premise_type: insertedPremise[0]?.premise_type || insertedPremise.premise_type,\n    status: 'created'\n  }\n}];"
+      },
+      "id": "track-created",
+      "name": "Track Created",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3540, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Track skipped (duplicate) premise\nconst premise = $('Loop Premises').item.json;\nreturn [{\n  json: {\n    name: premise.name,\n    premise_type: premise.premise_type,\n    status: 'skipped_duplicate'\n  }\n}];"
+      },
+      "id": "track-skipped",
+      "name": "Track Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3100, 400]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "include": "allFields",
+        "options": {}
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [3760, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build response\nconst results = $input.first().json.results || [];\n\nconst created = results.filter(r => r.status === 'created');\nconst skipped = results.filter(r => r.status === 'skipped_duplicate');\n\nconst response = {\n  success: true,\n  created_count: created.length,\n  skipped_count: skipped.length,\n  created_ids: created.map(r => r.created_id),\n  created_premises: created.map(r => ({\n    id: r.created_id,\n    name: r.name,\n    premise_type: r.premise_type\n  })),\n  skipped_premises: skipped.map(r => r.name)\n};\n\nreturn [{ json: response }];"
+      },
+      "id": "build-response",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3980, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [4200, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"{{ $json.error }}\",\n  \"details\": \"Failed to parse LLM response or no valid premises generated\"\n}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2220, 520]
+    },
+    {
+      "parameters": {},
+      "id": "noop-back-to-loop",
+      "name": "Back to Loop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [3760, 200]
+    }
+  ],
+  "connections": {
+    "Weekly Schedule": {
+      "main": [
+        [
+          {
+            "node": "Merge Triggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Merge Triggers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Triggers": {
+      "main": [
+        [
+          {
+            "node": "Get Underexplored Type",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Count By Type Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Underexplored Type": {
+      "main": [
+        [
+          {
+            "node": "Determine Target Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count By Type Fallback": {
+      "main": [
+        [
+          {
+            "node": "Determine Target Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Target Type": {
+      "main": [
+        [
+          {
+            "node": "Load Winning Premises",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format LLM Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Winning Premises": {
+      "main": [[]]
+    },
+    "Format LLM Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          {
+            "node": "Check Parse Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Parse Success": {
+      "main": [
+        [
+          {
+            "node": "Loop Premises",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Premises": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Unique",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Unique": {
+      "main": [
+        [
+          {
+            "node": "Process Unique Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Unique Check": {
+      "main": [
+        [
+          {
+            "node": "Is Unique?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Unique?": {
+      "main": [
+        [
+          {
+            "node": "Insert Premise",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Track Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Premise": {
+      "main": [
+        [
+          {
+            "node": "Emit PremiseGenerated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emit PremiseGenerated": {
+      "main": [
+        [
+          {
+            "node": "Track Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Created": {
+      "main": [
+        [
+          {
+            "node": "Back to Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Skipped": {
+      "main": [
+        [
+          {
+            "node": "Back to Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Back to Loop": {
+      "main": [
+        [
+          {
+            "node": "Loop Premises",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": []
+}
