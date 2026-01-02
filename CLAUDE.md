@@ -30,19 +30,48 @@ All pass = APPROVE
 ## Rules
 1. Market = truth 2. Deterministic+trace 3. ML signals only 4. LLM: transcripts 5. Schema-first
 
-## Issue-First Workflow
-**ПЕРЕД любой задачей:**
-1. Создать issue: `gh issue create` или `scripts/create-issue.sh`
-2. Указать зависимости: `Blocked By`, `Blocks`, `Related`
-3. Добавить sphere label
+## /idea Workflow (Recommended)
+Быстрый старт задачи с изоляцией:
+```
+/idea описание задачи
+```
+Автоматически: issue → worktree → Cursor
 
-**ПОСЛЕ изменений:**
-1. Проверить `infrastructure/schemas/dependency_manifest.json` — кто calls/reads/writes затронутые компоненты
-2. Запустить `/valid {affected_process}`
-3. Cascade check: downstream impacts, затронутые workflows
+### Полный цикл
+```
+1. /idea "описание"           # создаёт issue + worktree + открывает Cursor
+2. [работа в изолированном worktree]
+3. TEST (обязательно!)
+4. qa-notes/issue-XXX-*.md
+5. git commit + push (в worktree)
+6. ./scripts/task-done.sh XXX --process {process}
+   ↓
+   ╔═══════════════════════════════════════╗
+   ║      VERIFICATION CHECKPOINT          ║
+   ║  1. /rw {process} ...                 ║
+   ║  2. /valid {process}                  ║
+   ║  ✓ qa-notes found                     ║
+   ╚═══════════════════════════════════════╝
+   ↓
+7. [y] → PR → merge → cleanup
+```
 
-**Автоматизировано:** sync-dependencies (daily), issue-context (on open)
-**Вручную:** создание issue, заполнение зависимостей, cascade check
+### task-done.sh флаги
+| Флаг | Назначение |
+|------|------------|
+| `--process <name>` | Подставить процесс в /rw и /valid |
+| `--skip-verify` | Пропустить checkpoint (после паузы) |
+| `--no-pr` | Только push, без PR |
+
+**Процессы:** decision-engine, learning-loop, hypothesis-factory, video-ingestion, keitaro-poller
+
+### Альтернатива (без /idea)
+```bash
+gh issue create -t "title" -l enhancement
+./scripts/task-start.sh <issue-number>
+# ... работа ...
+./scripts/task-done.sh <issue-number>
+```
 
 ## Git
 Always push after commit. No exceptions.
