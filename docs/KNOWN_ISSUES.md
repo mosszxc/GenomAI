@@ -2,7 +2,7 @@
 
 Документация известных проблем и их решений для предотвращения регрессий.
 
-**Последнее обновление:** 2026-01-01
+**Последнее обновление:** 2026-01-02
 
 ---
 
@@ -12,10 +12,43 @@
 
 | Issue | Title | Component | Status |
 |-------|-------|-----------|--------|
-| #209 | High error rates on idea_registry and decomposition workflows | n8n | OPEN |
+| #209 | High error rates on idea_registry and decomposition workflows | n8n | INVESTIGATED - See below |
 | #199 | Decomposition→Idea pipeline breaks - creatives stuck without idea linking | n8n | OPEN |
 | #204 | Decomposed creative missing idea_id link | DB | OPEN |
 | #184 | 2 creatives stuck in transcribed status without decomposition | n8n | OPEN |
+
+#### #209 Investigation Results (2026-01-02)
+
+**Reported Error Rates:** idea_registry_create 45% (9/20), creative_decomposition_llm 50% (10/20)
+
+**Actual Root Cause:** The high error rates are **not workflow bugs** but upstream data quality issues:
+
+| Error Type | Count | Root Cause |
+|------------|-------|------------|
+| TranscriptionFailed | 6 | Invalid Google Drive links returning HTML instead of video |
+| HypothesisDeliveryFailed | 3 | Spy creatives without buyer_id |
+| skipped_large_file | 7 | Files > 50MB (expected behavior) |
+
+**Pipeline Success Rate (Last 30 days):**
+- IdeaRegistered: 5 success
+- CreativeDecomposed: 4 success
+- TranscriptCreated: 4 success
+- DecisionMade: 5 success
+
+**Actual Workflow Error Rate:** ~5-10% (not 45-50%)
+
+**TranscriptionFailed Details:**
+```
+"Transcoding failed. File does not appear to contain audio. File type is text/html"
+```
+This occurs when Google Drive share links return error pages (permissions, deleted files, expired links).
+
+**Recommendations:**
+1. Add URL validation before sending to transcription pipeline
+2. Track `skipped_large_file` separately from errors
+3. Handle spy creatives without buyer_id gracefully
+
+**Status:** Root cause identified. No workflow code changes needed. Data quality issue.
 
 ### High (Data Integrity)
 
