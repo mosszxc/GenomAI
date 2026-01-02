@@ -31,7 +31,7 @@
 |-------|-------|-----------|--------|
 | #208 | 2 stuck hypothesis deliveries | n8n | OPEN |
 | #206 | Keitaro Poller metrics 11h stale | n8n | OPEN |
-| #200 | 337 campaigns stuck in historical_import_queue with pending_video | n8n | OPEN |
+| #200 | 337 campaigns stuck in historical_import_queue with pending_video | DB | RESOLVED |
 
 ### Pending Implementation
 
@@ -196,6 +196,28 @@ ORDER BY created_at DESC;
 ---
 
 ## Medium Priority Issues
+
+### #200: 337 Campaigns Stuck in historical_import_queue (RESOLVED)
+
+**Component:** `historical_import_queue` table, Historical Import pipeline
+**Root Cause:** Historical campaigns from Keitaro had metrics but no video URLs. Without video, the full pipeline (creative → transcript → decomposition → idea → decision) cannot run.
+**Symptoms:** 337 campaigns stuck with `pending_video` status for 3-6 days
+
+**Resolution:**
+1. Added `expired` status to `historical_import_queue_status_check` constraint (migration 023)
+2. Updated 336 old campaigns (>5 days) to `expired` status
+3. Preserved metrics data in expired records for potential future use
+
+**Prevention:**
+- Pipeline Health Monitor should auto-expire pending_video campaigns older than 7 days
+- Consider filtering out campaigns without video during Historical Loader
+
+**Detection Query:**
+```sql
+SELECT status, COUNT(*) FROM genomai.historical_import_queue GROUP BY status;
+```
+
+---
 
 ### #58: $env Blocked in n8n Cloud
 
