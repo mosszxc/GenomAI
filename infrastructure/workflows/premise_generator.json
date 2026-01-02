@@ -164,9 +164,9 @@
     {
       "parameters": {
         "resource": "chat",
-        "model": "gpt-4o-mini",
-        "messages": {
-          "values": [
+        "chatModel": "gpt-4o-mini",
+        "prompt": {
+          "messages": [
             {
               "content": "={{ $json.prompt }}"
             }
@@ -174,14 +174,14 @@
         },
         "options": {
           "temperature": 0.8,
-          "maxTokens": 2000,
-          "responseFormat": "json_object"
-        }
+          "maxTokens": 2000
+        },
+        "requestOptions": {}
       },
       "id": "call-openai",
       "name": "Call OpenAI",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 1.8,
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
       "position": [1560, 400],
       "credentials": {
         "openAiApi": {
@@ -271,7 +271,19 @@
           "id": "RNItSRYOCypd9H1a",
           "name": "Supabase account"
         }
-      }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if premise is unique\nconst premise = $('Loop Premises').item.json;\nconst checkResult = $input.first().json;\n\n// HTTP returns array - if empty, premise is unique\nconst existingPremises = Array.isArray(checkResult) ? checkResult : [];\nconst isUnique = existingPremises.length === 0;\n\nreturn [{\n  json: {\n    ...premise,\n    is_unique: isUnique\n  }\n}];"
+      },
+      "id": "process-unique-check",
+      "name": "Process Unique Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 300]
     },
     {
       "parameters": {
@@ -284,10 +296,10 @@
           "conditions": [
             {
               "id": "is-unique",
-              "leftValue": "={{ $json.length }}",
-              "rightValue": 0,
+              "leftValue": "={{ $json.is_unique }}",
+              "rightValue": true,
               "operator": {
-                "type": "number",
+                "type": "boolean",
                 "operation": "equals"
               }
             }
@@ -300,7 +312,7 @@
       "name": "Is Unique?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [2660, 300]
+      "position": [2880, 300]
     },
     {
       "parameters": {
@@ -330,7 +342,7 @@
       "name": "Insert Premise",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2880, 200],
+      "position": [3100, 200],
       "credentials": {
         "supabaseApi": {
           "id": "RNItSRYOCypd9H1a",
@@ -355,14 +367,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"event_type\": \"PremiseGenerated\",\n  \"entity_type\": \"premise\",\n  \"entity_id\": \"{{ $json[0].id }}\",\n  \"payload\": {\n    \"premise_type\": \"{{ $json[0].premise_type }}\",\n    \"name\": {{ JSON.stringify($json[0].name) }},\n    \"vertical\": \"{{ $json[0].vertical }}\",\n    \"geo\": \"{{ $json[0].geo }}\",\n    \"source\": \"llm_generated\"\n  }\n}",
+        "jsonBody": "={{ JSON.stringify({ event_type: 'PremiseGenerated', entity_type: 'premise', entity_id: String($json[0]?.id || $json.id || ''), payload: { premise_type: $json[0]?.premise_type || $json.premise_type, name: $json[0]?.name || $json.name, vertical: $json[0]?.vertical || $json.vertical, geo: $json[0]?.geo || $json.geo, source: 'llm_generated' } }) }}",
         "options": {}
       },
       "id": "emit-premise-generated",
       "name": "Emit PremiseGenerated",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3100, 200],
+      "position": [3320, 200],
       "credentials": {
         "supabaseApi": {
           "id": "RNItSRYOCypd9H1a",
@@ -378,7 +390,7 @@
       "name": "Track Created",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3320, 200]
+      "position": [3540, 200]
     },
     {
       "parameters": {
@@ -388,7 +400,7 @@
       "name": "Track Skipped",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2880, 400]
+      "position": [3100, 400]
     },
     {
       "parameters": {
@@ -401,7 +413,7 @@
       "name": "Aggregate Results",
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
-      "position": [3540, 300]
+      "position": [3760, 300]
     },
     {
       "parameters": {
@@ -411,7 +423,7 @@
       "name": "Build Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3760, 300]
+      "position": [3980, 300]
     },
     {
       "parameters": {
@@ -423,7 +435,7 @@
       "name": "Respond Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [3980, 300]
+      "position": [4200, 300]
     },
     {
       "parameters": {
@@ -445,7 +457,7 @@
       "name": "Back to Loop",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [3540, 200]
+      "position": [3760, 200]
     }
   ],
   "connections": {
@@ -598,6 +610,17 @@
       ]
     },
     "Check Unique": {
+      "main": [
+        [
+          {
+            "node": "Process Unique Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Unique Check": {
       "main": [
         [
           {
