@@ -4,9 +4,9 @@
       "type": "http",
       "url": "https://mcp.supabase.com/mcp"
     },
-    "context7": {
+    "n8n-mcp": {
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+      "args": ["-y", "n8n-mcp"]
     }
   }
 }
