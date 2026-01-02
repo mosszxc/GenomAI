@@ -47,28 +47,28 @@ async def make_decision(input_data: dict) -> dict:
     schema_check = schema_validity(idea)
     check_results.append(schema_check)
     if schema_check['result'] == 'FAILED':
-        return await _create_decision(idea, 'REJECT', check_results, 'schema_invalid')
+        return await _create_decision(idea, 'reject', check_results, 'schema_invalid')
     
     # CHECK 2: Death Memory
     death_check = death_memory(idea, death_memory_data)
     check_results.append(death_check)
     if death_check['result'] == 'FAILED':
-        return await _create_decision(idea, 'REJECT', check_results, 'idea_dead')
+        return await _create_decision(idea, 'reject', check_results, 'idea_dead')
     
     # CHECK 3: Fatigue Constraint (MVP: заглушка)
     fatigue_check = fatigue_constraint(idea, fatigue_state)
     check_results.append(fatigue_check)
     if fatigue_check['result'] == 'FAILED':
-        return await _create_decision(idea, 'REJECT', check_results, 'fatigue_constraint')
+        return await _create_decision(idea, 'reject', check_results, 'fatigue_constraint')
     
     # CHECK 4: Risk Budget
     risk_check = risk_budget(idea, system_state)
     check_results.append(risk_check)
     if risk_check['result'] == 'FAILED':
-        return await _create_decision(idea, 'DEFER', check_results, 'risk_budget_exceeded')
+        return await _create_decision(idea, 'defer', check_results, 'risk_budget_exceeded')
     
     # All checks passed → APPROVE
-    return await _create_decision(idea, 'APPROVE', check_results, None)
+    return await _create_decision(idea, 'approve', check_results, None)
 
 
 async def _create_decision(idea: dict, decision_type: str, check_results: list, failed_check: str | None) -> dict:
@@ -77,7 +77,7 @@ async def _create_decision(idea: dict, decision_type: str, check_results: list, 
     
     Args:
         idea: Idea object
-        decision_type: Decision type (APPROVE, REJECT, DEFER)
+        decision_type: Decision type (approve, reject, defer)
         check_results: List of check results
         failed_check: Name of failed check (if any)
         
@@ -91,7 +91,7 @@ async def _create_decision(idea: dict, decision_type: str, check_results: list, 
     decision = {
         'id': decision_id,
         'idea_id': idea['id'],
-        'decision': decision_type.upper(),
+        'decision': decision_type,
         'decision_epoch': 1,
         'created_at': timestamp
     }
