@@ -124,7 +124,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/premises?select=name,description,origin_story,mechanism_claim&premise_type=eq.{{ $json.premise_type }}&vertical=eq.{{ $json.vertical }}&status=in.(winning,validated)&limit=5",
+        "url": "=https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/premises?select=name,description,origin_story,mechanism_claim&premise_type=eq.{{ $json.premise_type }}&vertical=eq.{{ $json.vertical }}&status=eq.active&limit=5",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
@@ -153,7 +153,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Format LLM prompt\nconst targetData = $('Determine Target Type').first().json;\nconst winningPremises = $('Load Winning Premises').all().map(i => i.json);\n\nconst TYPE_DEFINITIONS = {\n  method: 'A specific technique or ritual (e.g., \"lemon seed method\", \"2-minute morning routine\")',\n  discovery: 'A revelation or finding (e.g., \"ancient Tibetan discovery\", \"accidental lab finding\")',\n  confession: 'An insider admission (e.g., \"doctor\\'s confession\", \"pharma whistleblower\")',\n  secret: 'Hidden information (e.g., \"suppressed remedy\", \"what they don\\'t want you to know\")',\n  ingredient: 'A specific compound (e.g., \"single kitchen ingredient\", \"forgotten herb\")',\n  mechanism: 'Root cause explanation (e.g., \"hidden trigger\", \"real reason behind...\")',\n  breakthrough: 'New research/science (e.g., \"Stanford study\", \"Nobel prize discovery\")',\n  transformation: 'Change narrative (e.g., \"one simple change\", \"before/after secret\")'\n};\n\n// Format existing premises for context\nlet existingContext = 'None available yet.';\nif (winningPremises && winningPremises.length > 0) {\n  existingContext = winningPremises\n    .filter(p => p.name)\n    .map(p => `- ${p.name}: ${p.description || 'No description'}`)\n    .join('\\n');\n}\n\nconst prompt = `You are a creative copywriter specializing in direct response advertising for health/nutra products.\n\nGenerate ${targetData.count} new unique PREMISE concepts of type \"${targetData.premise_type}\" for ${targetData.vertical} vertical targeting ${targetData.geo} audience.\n\nA premise is a narrative vehicle that makes the product story believable and memorable.\n\nType definition for \"${targetData.premise_type}\":\n${TYPE_DEFINITIONS[targetData.premise_type]}\n\nAll type definitions for reference:\n${Object.entries(TYPE_DEFINITIONS).map(([k, v]) => `- ${k}: ${v}`).join('\\n')}\n\nExisting premises of this type (avoid duplicates and similar concepts):\n${existingContext}\n\nFor each premise, provide:\n1. name: Short memorable name (5-8 words max, in the language appropriate for ${targetData.geo})\n2. origin_story: Where/how this was discovered (2-3 sentences)\n3. mechanism_claim: Why this works (1-2 sentences)\n4. description: Brief description for internal use (in English)\n\nIMPORTANT: \n- Make each premise unique and distinct from existing ones\n- Names should be catchy and memorable\n- For RU geo, names and origin_story should be in Russian\n- Description and mechanism_claim can be in English\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"premises\": [\n    {\n      \"name\": \"...\",\n      \"origin_story\": \"...\",\n      \"mechanism_claim\": \"...\",\n      \"description\": \"...\"\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    prompt: prompt,\n    premise_type: targetData.premise_type,\n    vertical: targetData.vertical,\n    geo: targetData.geo,\n    count: targetData.count,\n    trigger_type: targetData.trigger_type\n  }\n}];"
+        "jsCode": "// Format LLM prompt\nconst targetData = $('Determine Target Type').first().json;\n\n// Try to get winning premises, but handle case where node returned empty\nlet winningPremises = [];\ntry {\n  winningPremises = $('Load Winning Premises').all().map(i => i.json).filter(p => p && p.name);\n} catch (e) {\n  // Node may not have executed or returned empty\n  winningPremises = [];\n}\n\nconst TYPE_DEFINITIONS = {\n  method: 'A specific technique or ritual (e.g., \"lemon seed method\", \"2-minute morning routine\")',\n  discovery: 'A revelation or finding (e.g., \"ancient Tibetan discovery\", \"accidental lab finding\")',\n  confession: 'An insider admission (e.g., \"doctor\\'s confession\", \"pharma whistleblower\")',\n  secret: 'Hidden information (e.g., \"suppressed remedy\", \"what they don\\'t want you to know\")',\n  ingredient: 'A specific compound (e.g., \"single kitchen ingredient\", \"forgotten herb\")',\n  mechanism: 'Root cause explanation (e.g., \"hidden trigger\", \"real reason behind...\")',\n  breakthrough: 'New research/science (e.g., \"Stanford study\", \"Nobel prize discovery\")',\n  transformation: 'Change narrative (e.g., \"one simple change\", \"before/after secret\")'\n};\n\n// Format existing premises for context\nlet existingContext = 'None available yet.';\nif (winningPremises && winningPremises.length > 0) {\n  existingContext = winningPremises\n    .filter(p => p.name)\n    .map(p => `- ${p.name}: ${p.description || 'No description'}`)\n    .join('\\n');\n}\n\nconst prompt = `You are a creative copywriter specializing in direct response advertising for health/nutra products.\n\nGenerate ${targetData.count} new unique PREMISE concepts of type \"${targetData.premise_type}\" for ${targetData.vertical} vertical targeting ${targetData.geo} audience.\n\nA premise is a narrative vehicle that makes the product story believable and memorable.\n\nType definition for \"${targetData.premise_type}\":\n${TYPE_DEFINITIONS[targetData.premise_type]}\n\nAll type definitions for reference:\n${Object.entries(TYPE_DEFINITIONS).map(([k, v]) => `- ${k}: ${v}`).join('\\n')}\n\nExisting premises of this type (avoid duplicates and similar concepts):\n${existingContext}\n\nFor each premise, provide:\n1. name: Short memorable name (5-8 words max, in the language appropriate for ${targetData.geo})\n2. origin_story: Where/how this was discovered (2-3 sentences)\n3. mechanism_claim: Why this works (1-2 sentences)\n4. description: Brief description for internal use (in English)\n\nIMPORTANT: \n- Make each premise unique and distinct from existing ones\n- Names should be catchy and memorable\n- For RU geo, names and origin_story should be in Russian\n- Description and mechanism_claim can be in English\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"premises\": [\n    {\n      \"name\": \"...\",\n      \"origin_story\": \"...\",\n      \"mechanism_claim\": \"...\",\n      \"description\": \"...\"\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    prompt: prompt,\n    premise_type: targetData.premise_type,\n    vertical: targetData.vertical,\n    geo: targetData.geo,\n    count: targetData.count,\n    trigger_type: targetData.trigger_type\n  }\n}];"
       },
       "id": "format-llm-prompt",
       "name": "Format LLM Prompt",
@@ -185,8 +185,8 @@
       "position": [1560, 400],
       "credentials": {
         "openAiApi": {
-          "id": "yJNmL2SdGLcPFXuY",
-          "name": "OpenAI account"
+          "id": "vFHcY9MP1O9TrhKV",
+          "name": "UniGPT"
         }
       },
       "retryOnFail": true,
@@ -516,13 +516,7 @@
             "node": "Load Winning Premises",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Load Winning Premises": {
-      "main": [
-        [
+          },
           {
             "node": "Format LLM Prompt",
             "type": "main",
@@ -530,6 +524,9 @@
           }
         ]
       ]
+    },
+    "Load Winning Premises": {
+      "main": [[]]
     },
     "Format LLM Prompt": {
       "main": [
