@@ -63,3 +63,6 @@ Thumbs.db
 *.temp
 .cache/
 
+# Git worktrees for parallel task execution
+.worktrees/
+
