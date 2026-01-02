@@ -14,6 +14,17 @@
 ❌ **При активном Task/Explore агенте**
 ❌ **Без конкретного завершённого результата**
 
+### Cosmetic Exclusions (Token Optimization)
+
+**SKIP /rw для:**
+- Node position changes в workflow JSON
+- Documentation updates (*.md files)
+- Comments/formatting only changes
+- CLAUDE.md rules updates
+- Typo fixes
+
+**Причина:** /rw тратит 5-10k токенов. Для cosmetic changes нет DB writes → нечего верифицировать.
+
 ## Формат
 
 ```

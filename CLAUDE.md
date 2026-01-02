@@ -115,8 +115,62 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
 
-## Token Opt
+## Token Optimization
+
+### Workflow Editing (CRITICAL)
+```
+❌ Несколько Edit для node positions — каждый Edit = 14k tokens
+✅ Один batch Edit для всех positions — 15k tokens total
+✅ Используй scripts/workflow_tools.py для batch операций
+```
+**Правило:** Один Edit = одна логическая операция. Cosmetic fixes (positions) — batch.
+
+### n8n Deploy Cycle
+```
+1. Изменить JSON локально
+2. validate_workflow с profile:"strict"
+3. Fix all errors ЛОКАЛЬНО
+4. ТОЛЬКО ПОТОМ deploy
+5. Один deploy на задачу
+```
+**Экономия:** ~9k tokens (избегаем redeploy)
+
+### MCP Tools
+
+**claude-mem:**
+```
+❌ search() → get_observations([all_ids])
+✅ search() → timeline(anchor=id) → get_observations([filtered_ids])
+```
+
+**vibe-kanban (смешанный режим):**
+```
+❌ list_tasks() каждый раз
+❌ update_task() если статус уже изменён в UI
+✅ list_tasks(limit:10) один раз в начале
+✅ Не дублировать UI действия через MCP
+```
+
+**n8n-mcp:**
+```
+❌ get_node(detail:"full") — 3-8k tokens
+✅ get_node(detail:"minimal") — ~200 tokens
+✅ validate_workflow ПЕРЕД deploy
+```
+
+**Общие лимиты:**
 n8n: `mode:"minimal"` `limit:10` | Supabase: `LIMIT 10` | Grep: `head_limit:10` | Explore: `Task subagent_type:"Explore"`
+
+### /rw Exclusions
+Skip /rw для:
+- Node position changes (cosmetic)
+- Documentation updates
+- Comments/formatting only
+
+Run /rw для:
+- DB writes (INSERT/UPDATE)
+- Workflow logic changes
+- API modifications
 
 ## Schema-First Coding
 **ПЕРЕД написанием кода, работающего с БД:**

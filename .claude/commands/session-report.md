@@ -50,7 +50,19 @@ git log --oneline -5
 - Какие файлы изменены
 - Связь с issue (если упоминался номер issue в разговоре)
 
-### 4. Сформируй отчёт
+### 4. Собери token metrics из claude-mem
+
+```
+mcp__plugin_claude-mem_mcp-search__search(query="", project="GenomAI", limit=50)
+```
+
+Агрегируй `discovery_tokens` по категориям:
+- Workflow edits (files_modified содержит .json)
+- Research/Discovery (type=discovery)
+- Bugfixes (type=bugfix)
+- Changes (type=change)
+
+### 5. Сформируй отчёт
 
 ```markdown
 ## Session Report
@@ -66,6 +78,16 @@ git log --oneline -5
 ### Ключевые изменения
 Что сделано и почему (2-3 предложения)
 
+### Token Usage
+| Категория | Токены | % |
+|-----------|--------|---|
+| Workflow edits | Xk | X% |
+| Research | Xk | X% |
+| Bugfixes | Xk | X% |
+| **Total** | **Xk** | 100% |
+
+**Оптимизация:** [если были batch edits или избежали redeploy — отметить]
+
 ### Next Steps
 - что осталось (если есть)
 
@@ -73,7 +95,7 @@ git log --oneline -5
 *Session report by Claude Code*
 ```
 
-### 5. Отправка в GitHub
+### 6. Отправка в GitHub
 
 - Если $ARGUMENTS указан — используй этот номер issue
 - Если в разговоре упоминался конкретный issue — предложи его
