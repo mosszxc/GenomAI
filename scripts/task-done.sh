@@ -1,16 +1,50 @@
 #!/bin/bash
-# Finish task: create PR, merge, cleanup worktree
-# Usage: ./scripts/task-done.sh <issue-number> [--no-pr]
+# Finish task: verify, create PR, merge, cleanup worktree
+# Usage: ./scripts/task-done.sh <issue-number> [--process <name>] [--no-pr] [--skip-verify]
 
 set -e
 
-ISSUE_NUM="$1"
-NO_PR="$2"
+# Parse arguments
+ISSUE_NUM=""
+PROCESS=""
+NO_PR=""
+SKIP_VERIFY=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --process)
+            PROCESS="$2"
+            shift 2
+            ;;
+        --no-pr)
+            NO_PR="true"
+            shift
+            ;;
+        --skip-verify)
+            SKIP_VERIFY="true"
+            shift
+            ;;
+        *)
+            if [ -z "$ISSUE_NUM" ]; then
+                ISSUE_NUM="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREES_DIR="$PROJECT_ROOT/.worktrees"
 
 if [ -z "$ISSUE_NUM" ]; then
-    echo "Usage: $0 <issue-number> [--no-pr]"
+    echo "Usage: $0 <issue-number> [--process <name>] [--no-pr] [--skip-verify]"
+    echo ""
+    echo "Options:"
+    echo "  --process <name>  Process to verify with /rw and /valid"
+    echo "  --no-pr           Skip PR creation"
+    echo "  --skip-verify     Skip verification step (not recommended)"
+    echo ""
+    echo "Processes: decision-engine, learning-loop, hypothesis-factory, video-ingestion, keitaro-poller"
     echo ""
     echo "Active worktrees:"
     git worktree list
@@ -57,8 +91,53 @@ echo ""
 echo "Pushing branch..."
 git push -u origin "$BRANCH_NAME"
 
+# === VERIFICATION STEP ===
+if [ "$SKIP_VERIFY" != "true" ]; then
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                    VERIFICATION CHECKPOINT                     ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "Before merging, complete the verification cycle in Claude:"
+    echo ""
+
+    if [ -n "$PROCESS" ]; then
+        echo "  1. /rw $PROCESS --max-iterations 3 --completion-promise 'VERIFIED'"
+        echo "  2. /valid $PROCESS"
+    else
+        echo "  1. /rw {process} --max-iterations 3 --completion-promise 'VERIFIED'"
+        echo "  2. /valid {process}"
+        echo ""
+        echo "  Hint: use --process <name> to auto-fill commands"
+    fi
+
+    echo ""
+    echo "  3. Check qa-notes/issue-${ISSUE_NUM}-*.md exists"
+    echo "  4. Update knowledge/{topic}.md if needed"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Check for qa-notes
+    QA_NOTE=$(find "$WORKTREE_PATH/qa-notes" -name "*${ISSUE_NUM}*" 2>/dev/null | head -1)
+    if [ -n "$QA_NOTE" ]; then
+        echo "✓ qa-notes found: $(basename "$QA_NOTE")"
+    else
+        echo "⚠ qa-notes NOT found for issue #$ISSUE_NUM"
+    fi
+
+    echo ""
+    read -p "Verification complete? Continue to PR? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "Paused. Run verification, then re-run:"
+        echo "  ./scripts/task-done.sh $ISSUE_NUM --skip-verify"
+        exit 0
+    fi
+fi
+
 # Create PR if not --no-pr
-if [ "$NO_PR" != "--no-pr" ]; then
+if [ "$NO_PR" != "true" ]; then
     echo ""
     echo "Creating PR..."
     PR_URL=$(gh pr create --title "Closes #$ISSUE_NUM" --body "Closes #$ISSUE_NUM" --head "$BRANCH_NAME" 2>/dev/null || echo "")
