@@ -633,6 +633,32 @@ mcp__n8n-mcp__tools_documentation()  # Получить полный списо�
 
 ---
 
+### Hypothesis Factory Missing buyer_id Propagation
+
+**Context:** Issue #222 - hypothesis застрял в delivery с reason "No buyer_id assigned".
+
+**Mistake:** Workflow `hypothesis_factory_generate` создаёт hypothesis без buyer_id, хотя он есть в creative chain.
+
+**Reality:** buyer_id хранится в `creatives.buyer_id`, но не копируется через цепочку:
+```
+creative.buyer_id → decomposed_creative → idea → hypothesis
+```
+
+**Correct Approach:**
+```sql
+-- В Hypothesis Factory добавить lookup:
+SELECT c.buyer_id
+FROM genomai.creatives c
+JOIN genomai.decomposed_creatives dc ON c.id = dc.creative_id
+WHERE dc.idea_id = :idea_id
+```
+
+**Rule:** При создании downstream записей (hypothesis, recommendation) всегда проверять что buyer_id propagates из source (creative).
+
+**Related:** Issue #226 (fix pending)
+
+---
+
 ### Test = Run Now, Not Check Old Results
 
 **Context:** Issue #218 - проверял "работает ли workflow" глядя на старые результаты вместо запуска нового теста.
