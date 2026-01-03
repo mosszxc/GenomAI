@@ -88,10 +88,12 @@ Validation (структура) ≠ Test (реальный запуск). `n8n_v
 ### Обязательные тесты по типу изменения
 | Изменение | Тест | Критерий успеха |
 |-----------|------|-----------------|
-| Workflow | `n8n_test_workflow` | ✅ Execution SUCCESS + данные в БД |
+| Workflow | WebFetch webhook + `execute_sql` SELECT | ✅ HTTP 200 + данные в БД |
 | API | `curl` endpoint | ✅ HTTP 200 + правильный body |
 | Migration | `execute_sql` SELECT | ✅ Данные есть + constraints |
 | Python | Запустить endpoint | ✅ Нет ошибок + output |
+
+**Примечание:** `n8n_test_workflow` недоступен — используй WebFetch на webhook URL.
 
 ### Before Closing Issue — MANDATORY
 1. **RUN THE TEST** (см. таблицу выше)
@@ -103,7 +105,7 @@ Validation (структура) ≠ Test (реальный запуск). `n8n_v
 Перед словом "готово" спроси себя:
 - [ ] Я ЗАПУСТИЛ тест (не validate, а test)?
 - [ ] Я ВИДЕЛ результат (execution log, данные в БД)?
-- [ ] Если workflow — был `n8n_test_workflow`?
+- [ ] Если workflow — был WebFetch на webhook + проверка данных в БД?
 
 **Если хоть один ответ "нет" — СТОП, сначала тест.**
 
@@ -115,7 +117,7 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 
 ## Post-Task Checklist (MANDATORY)
 **STOP before saying "done". Check ALL:**
-- [ ] ⛔ **TEST EXECUTED** (n8n_test_workflow / curl / execute_sql) — ПЕРВЫЙ ПУНКТ
+- [ ] ⛔ **TEST EXECUTED** (WebFetch webhook / curl / execute_sql) — ПЕРВЫЙ ПУНКТ
 - [ ] ⛔ **TEST PASSED** (execution success + данные в БД)
 - [ ] `qa-notes/{task}.md` created
 - [ ] `knowledge/{topic}.md` created/updated
@@ -180,12 +182,30 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 ✅ Не дублировать UI действия через MCP
 ```
 
-**n8n-mcp:**
+**n8n-mcp (ТОЛЬКО ЛОКАЛЬНЫЕ ИНСТРУМЕНТЫ):**
 ```
-❌ get_node(detail:"full") — 3-8k tokens
-✅ get_node(detail:"minimal") — ~200 tokens
-✅ validate_workflow ПЕРЕД deploy
+⚠️ n8n API tools НЕДОСТУПНЫ (n8n_get_workflow, n8n_test_workflow и т.д.)
+⚠️ Только документация и валидация — НЕ live API
 ```
+
+**Доступные инструменты:**
+| Инструмент | Назначение |
+|------------|------------|
+| `tools_documentation` | Документация по инструментам |
+| `search_nodes` | Поиск нод по ключевому слову |
+| `get_node` | Информация о ноде (minimal/standard/full) |
+| `validate_node` | Валидация конфига ноды |
+| `get_template` | Получить шаблон по ID |
+| `search_templates` | Поиск шаблонов |
+| `validate_workflow` | Валидация структуры workflow JSON |
+
+**Недоступно (требует N8N_API_URL + N8N_API_KEY):**
+- `n8n_get_workflow`, `n8n_list_workflows`, `n8n_test_workflow`, `n8n_executions` — ❌
+
+**Как тестировать workflows без API:**
+- WebFetch на webhook URL
+- Проверка результатов через `mcp__supabase__execute_sql`
+- Логи через `mcp__supabase__get_logs`
 
 **Общие лимиты:**
 n8n: `mode:"minimal"` `limit:10` | Supabase: `LIMIT 10` | Grep: `head_limit:10` | Explore: `Task subagent_type:"Explore"`
