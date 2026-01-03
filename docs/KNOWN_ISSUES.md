@@ -613,6 +613,49 @@ HTTP Request (POST with Prefer: resolution=merge-duplicates) → Normalize Respo
 
 ---
 
+### Check MCP Capabilities Before Asserting
+
+**Context:** Пользователь спросил про запуск n8n workflow. Я ответил что нет инструмента для запуска.
+
+**Mistake:** Видел частичный список MCP инструментов в системном промпте (search_nodes, validate_workflow, etc.) и предположил что это полный список.
+
+**Reality:** n8n MCP имеет 19 инструментов, включая 13 n8n API tools. `n8n_test_workflow` существует и позволяет запускать workflows.
+
+**Correct Approach:**
+```bash
+# Перед утверждением о capabilities MCP сервера:
+mcp__n8n-mcp__tools_documentation()  # Получить полный список
+
+# Только после этого утверждать что есть/нет
+```
+
+**Rule:** Не делать выводы о capabilities MCP без вызова `tools_documentation()`. Системный промпт показывает только часть инструментов.
+
+---
+
+### External Service Domain Changes Break Silently
+
+**Context:** Issue #218 - Keitaro Poller не работал 3+ дней, метрики устарели.
+
+**Mistake:** Домен Keitaro (`uniaffburan.com`) изменился на `uniaffzhb.com`, но конфигурация в `genomai.keitaro_config` не была обновлена.
+
+**Reality:** API возвращал 401 Unauthorized на старый домен. Workflow запускался по расписанию, получал ошибку, но система не алертила о проблеме.
+
+**Correct Approach:**
+```bash
+# 1. При 401/403/5xx от внешних API - сначала проверить базовую доступность
+curl -s -w "HTTP:%{http_code}" "https://domain.com/api/endpoint" -H "Api-Key: xxx"
+
+# 2. Если домен недоступен - проверить актуальный домен у провайдера
+
+# 3. Обновить конфиг в БД и протестировать
+UPDATE genomai.keitaro_config SET domain = 'https://new-domain.com' WHERE is_active = true;
+```
+
+**Rule:** При ошибках авторизации внешних API - сначала проверить что домен не изменился. Добавить health check для external dependencies в Pipeline Health Monitor.
+
+---
+
 ## Adding New Issues
 
 При закрытии issue, обновите этот файл:
