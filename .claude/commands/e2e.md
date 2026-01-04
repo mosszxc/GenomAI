@@ -570,10 +570,10 @@ FROM genomai.raw_metrics_current;
 ```
 
 **Критерии:**
-- `staleness < interval '2 hours'` (Keitaro Poller runs every 30 min)
+- `staleness < interval '25 hours'` (Keitaro Poller runs daily at midnight)
 - `stale_count / total_trackers < 0.5` (< 50% stale = OK)
 
-**Severity:** staleness > 2h = WARNING, > 6h = ERROR
+**Severity:** staleness > 25h = WARNING, > 48h = ERROR
 
 ### 2C.2 Keitaro Config Active
 
@@ -1363,7 +1363,7 @@ All critical checks passed. 2 warnings require attention.
 | Orphaned records | < 5 | 5-20 | > 20 |
 | Learning applied rate | > 90% | 70-90% | < 70% |
 | Stale pending outcomes | 0 | 1-5 | > 5 |
-| Keitaro metrics staleness | < 2h | 2-6h | > 6h |
+| Keitaro metrics staleness | < 25h | 25-48h | > 48h |
 | Daily snapshots gap | ≤ 1 day | 2-3 days | > 3 days |
 | Stuck buyer states | 0 | 1-5 | > 5 |
 | Stuck historical import | < 10 | 10-50 | > 50 |
