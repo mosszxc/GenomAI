@@ -110,25 +110,34 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
     Get hypothesis info for a creative.
 
     Returns dict with hypothesis_id, premise_id if creative has hypothesis.
+
+    Lookup order:
+    1. creatives.hypothesis_id (direct link)
+    2. creatives.idea_id → hypotheses.idea_id (via idea)
     """
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
     async with httpx.AsyncClient() as client:
-        # Get creative -> hypothesis_id
+        # Get creative -> hypothesis_id and idea_id
         response = await client.get(
             f"{rest_url}/creatives"
             f"?id=eq.{creative_id}"
-            f"&select=hypothesis_id",
+            f"&select=hypothesis_id,idea_id",
             headers=headers
         )
         response.raise_for_status()
         data = response.json()
 
-        if data and data[0].get('hypothesis_id'):
-            hypothesis_id = data[0]['hypothesis_id']
+        if not data:
+            return None
 
-            # Get hypothesis with premise
+        creative = data[0]
+        hypothesis_id = creative.get('hypothesis_id')
+        idea_id = creative.get('idea_id')
+
+        # Path 1: Direct hypothesis_id link
+        if hypothesis_id:
             response = await client.get(
                 f"{rest_url}/hypotheses"
                 f"?id=eq.{hypothesis_id}"
@@ -137,9 +146,23 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
             )
             response.raise_for_status()
             hypothesis_data = response.json()
-
             if hypothesis_data:
                 return hypothesis_data[0]
+
+        # Path 2: Via idea_id → hypotheses.idea_id
+        if idea_id:
+            response = await client.get(
+                f"{rest_url}/hypotheses"
+                f"?idea_id=eq.{idea_id}"
+                f"&select=id,premise_id"
+                f"&limit=1",
+                headers=headers
+            )
+            response.raise_for_status()
+            hypothesis_data = response.json()
+            if hypothesis_data:
+                return hypothesis_data[0]
+
         return None
 
 
