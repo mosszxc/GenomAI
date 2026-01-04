@@ -2,7 +2,7 @@
 
 Документация известных проблем и их решений для предотвращения регрессий.
 
-**Последнее обновление:** 2026-01-02
+**Последнее обновление:** 2026-01-04
 
 ---
 
@@ -16,6 +16,7 @@
 | #199 | Decomposition→Idea pipeline breaks - creatives stuck without idea linking | n8n | OPEN |
 | #204 | Decomposed creative missing idea_id link | DB | OPEN |
 | #184 | 2 creatives stuck in transcribed status without decomposition | n8n | OPEN |
+| #223 | Telegram Hypothesis Delivery workflow inactive | n8n | INVESTIGATED |
 
 #### #209 Investigation Results (2026-01-02)
 
@@ -49,6 +50,37 @@ This occurs when Google Drive share links return error pages (permissions, delet
 3. Handle spy creatives without buyer_id gracefully
 
 **Status:** Root cause identified. No workflow code changes needed. Data quality issue.
+
+#### #223 Investigation Results (2026-01-04)
+
+**Reported:** Missing `CreativeRegistered`, `TranscriptCreated`, `HypothesisDelivered` events.
+
+**Actual Root Causes:**
+
+| Event Type | Reported | Reality |
+|------------|----------|---------|
+| `CreativeRegistered` | Missing | Uses `SpyCreativeRegistered` — **not a bug** |
+| `TranscriptCreated` | Missing | Exists (3), no new videos since 2025-12-30 — **not a bug** |
+| `HypothesisDelivered` | Missing | `HypothesisDeliveryFailed` (3) — **workflow inactive** |
+
+**HypothesisDeliveryFailed Analysis:**
+
+| hypothesis_id | buyer_id in DB | Status |
+|---------------|----------------|--------|
+| `4d813753...` | ✅ Has buyer_id | Failed — workflow bug |
+| `1556b288...` | ✅ Has buyer_id | Failed — workflow bug |
+| `ef95307d...` | NULL | Failed — spy creative, expected |
+
+**Two Issues Found:**
+1. Workflow `Telegram Hypothesis Delivery` is **inactive** (webhook returns 404)
+2. Workflow checks `idea.buyer_id` instead of `hypotheses.buyer_id` (ideas table has no buyer_id column)
+
+**Fix Required:**
+1. Activate workflow in n8n UI
+2. Fix buyer_id lookup: `$json.hypothesis.buyer_id` instead of `$json.idea.buyer_id`
+3. Retry failed hypotheses with buyer_id
+
+**Related:** #222, #226
 
 ### High (Data Integrity)
 
