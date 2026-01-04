@@ -487,12 +487,13 @@ WHERE status = 'pending_video'
 ### 2B.4 Avatars Quality
 
 ```sql
+-- Note: avatars use MD5 hash (32 chars), ideas use SHA-256 (64 chars)
 SELECT
   COUNT(*) as total,
   COUNT(*) FILTER (WHERE name IS NULL OR name = '') as missing_name,
   COUNT(*) FILTER (WHERE vertical IS NULL) as missing_vertical,
   COUNT(*) FILTER (WHERE status NOT IN ('emerging', 'validated', 'dead') AND status IS NOT NULL) as invalid_status,
-  COUNT(*) FILTER (WHERE canonical_hash IS NOT NULL AND LENGTH(canonical_hash) != 64) as invalid_hash
+  COUNT(*) FILTER (WHERE canonical_hash IS NOT NULL AND LENGTH(canonical_hash) != 32) as invalid_hash
 FROM genomai.avatars;
 ```
 
