@@ -41,6 +41,7 @@ class LearningResult:
     new_deaths: list = None
     component_updates: int = 0
     premise_updates: int = 0
+    fatigue_updates: int = 0  # Issue #237: track fatigue versioning
     errors: list = None
 
     def __post_init__(self):
@@ -55,6 +56,7 @@ class LearningResult:
             "new_deaths": self.new_deaths,
             "component_updates": self.component_updates,
             "premise_updates": self.premise_updates,
+            "fatigue_updates": self.fatigue_updates,
             "errors": self.errors
         }
 
@@ -179,6 +181,34 @@ async def get_current_confidence(idea_id: str) -> tuple[float, int]:
 
         if data:
             return float(data[0]['confidence_value']), int(data[0]['version'])
+
+        return 0.0, 0
+
+
+async def get_current_fatigue(idea_id: str) -> tuple[float, int]:
+    """
+    Get current fatigue value and version for an idea.
+
+    MVP: fatigue_value = exposure count (number of outcomes processed)
+    Returns (fatigue_value, version) or (0.0, 0) if no history
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{rest_url}/fatigue_state_versions"
+            f"?idea_id=eq.{idea_id}"
+            f"&select=fatigue_value,version"
+            f"&order=version.desc"
+            f"&limit=1",
+            headers=headers
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data:
+            return float(data[0]['fatigue_value']), int(data[0]['version'])
 
         return 0.0, 0
 
@@ -314,6 +344,35 @@ async def insert_confidence_version(
         return response.json()[0]
 
 
+async def insert_fatigue_version(
+    idea_id: str,
+    fatigue_value: float,
+    version: int,
+    outcome_id: str
+) -> dict:
+    """
+    Insert new fatigue version.
+
+    MVP: fatigue_value = exposure count (incremented by 1 for each outcome)
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{rest_url}/fatigue_state_versions",
+            headers=headers,
+            json={
+                "idea_id": idea_id,
+                "fatigue_value": fatigue_value,
+                "version": version,
+                "source_outcome_id": outcome_id
+            }
+        )
+        response.raise_for_status()
+        return response.json()[0]
+
+
 async def update_idea_death_state(idea_id: str, death_state: str) -> dict:
     """Update idea death state"""
     rest_url, supabase_key = _get_credentials()
@@ -412,6 +471,19 @@ async def process_single_outcome(outcome: dict) -> dict:
         outcome_id=outcome_id
     )
 
+    # Update fatigue versioning (issue #237)
+    # MVP: fatigue_value = exposure count (incremented by 1 for each outcome)
+    current_fatigue, fatigue_version = await get_current_fatigue(idea_id)
+    new_fatigue = current_fatigue + 1.0  # Simple exposure count
+    new_fatigue_version = fatigue_version + 1
+
+    await insert_fatigue_version(
+        idea_id=idea_id,
+        fatigue_value=new_fatigue,
+        version=new_fatigue_version,
+        outcome_id=outcome_id
+    )
+
     # Check death conditions
     recent_outcomes = await get_recent_outcomes_for_idea(idea_id)
     death_state = check_death_condition(recent_outcomes)
@@ -464,6 +536,8 @@ async def process_single_outcome(outcome: dict) -> dict:
         "old_confidence": current_confidence,
         "new_confidence": new_confidence,
         "delta": delta,
+        "old_fatigue": current_fatigue,
+        "new_fatigue": new_fatigue,
         "death_state": death_state,
         "component_learning": component_result,
         "premise_learning": premise_result
@@ -517,6 +591,10 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                             result.errors.extend(prem_result["errors"])
                         if prem_result.get("premise_updated"):
                             result.premise_updates += 1
+
+                    # Track fatigue versioning updates (issue #237)
+                    if learn_result.get("new_fatigue") is not None:
+                        result.fatigue_updates += 1
 
             except Exception as e:
                 result.errors.append(f"Error processing outcome {outcome['id']}: {str(e)}")
