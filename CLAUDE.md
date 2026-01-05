@@ -73,6 +73,90 @@ gh issue create -t "title" -l enhancement
 ./scripts/task-done.sh <issue-number>
 ```
 
+## Issue Workflow (7 Phases)
+
+**Правило: ВСЕГДА создавать worktree. Даже для мелких фиксов.**
+
+### Phase 1: STARTUP
+```
+User: "Работай над issue #123"
+
+1. mcp__github__get_issue(123)     # понять задачу
+2. ./scripts/task-start.sh 123     # создать worktree (ОБЯЗАТЕЛЬНО)
+3. TodoWrite                        # инициализировать tracking
+```
+
+### Phase 2: UNDERSTANDING (READ-ONLY)
+```
+1. Read issue body + comments
+2. Grep/Glob связанные файлы
+3. execute_sql - проверить схему БД (Schema-First!)
+4. Read docs/KNOWN_ISSUES.md - прошлые уроки
+5. Read qa-notes/* - похожие задачи
+
+Output: Requirements, Affected Files, DB Tables, Risks
+```
+
+### Phase 3: PLANNING
+```
+1. Разбить на 3-7 шагов (TodoWrite)
+2. Определить test strategy для каждого шага
+3. EnterPlanMode если сложная задача (много файлов/подходов)
+
+Критерий выхода: TodoWrite initialized + test plan defined
+```
+
+### Phase 4: IMPLEMENTATION
+```
+For each TodoWrite item:
+  1. Mark in_progress
+  2. Write failing test (if applicable)
+  3. Implement change
+  4. Verify locally
+  5. Mark completed
+  6. git commit + push СРАЗУ (short-lived branches!)
+```
+
+### Phase 5: TESTING (BLOCKING!)
+```
+| Change Type | Test                    | Verify               |
+|-------------|-------------------------|----------------------|
+| Workflow    | WebFetch webhook        | execute_sql SELECT   |
+| API         | curl endpoint           | Response body        |
+| Migration   | execute_sql             | Schema + data        |
+| Python      | curl /health            | No errors            |
+
+Self-check:
+- [ ] Я ЗАПУСТИЛ тест (не validate)?
+- [ ] Я ВИДЕЛ результат (данные в БД, HTTP 200)?
+- [ ] Если workflow — WebFetch webhook + проверка данных?
+
+⛔ БЕЗ ПРОХОЖДЕНИЯ ЭТОЙ ФАЗЫ — НЕ ПЕРЕХОДИТЬ К PHASE 6
+```
+
+### Phase 6: DOCUMENTATION
+```
+1. qa-notes/issue-{N}-*.md - edge cases, gotchas, test commands
+2. knowledge/*.md - если новые архитектурные знания
+3. KNOWN_ISSUES.md - если lesson learned
+```
+
+### Phase 7: COMPLETION
+```
+1. ./scripts/task-done.sh {N} --process {process}
+2. /rw {process} - verification loop
+3. /valid {process} - process validation
+4. Create PR → Merge → Cleanup
+```
+
+### Quick Reference
+```
+/task start 123    → Phase 1
+/task plan 123     → Phase 3 template
+/task test 123     → Phase 5 checklist
+/task done 123     → Phase 7
+```
+
 ## Git
 Always push after commit. No exceptions.
 
@@ -182,30 +266,26 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 ✅ Не дублировать UI действия через MCP
 ```
 
-**n8n-mcp (ТОЛЬКО ЛОКАЛЬНЫЕ ИНСТРУМЕНТЫ):**
+**n8n-mcp (ПОЛНЫЙ ДОСТУП):**
 ```
-⚠️ n8n API tools НЕДОСТУПНЫ (n8n_get_workflow, n8n_test_workflow и т.д.)
-⚠️ Только документация и валидация — НЕ live API
+✅ n8n API ПОЛНОСТЬЮ ДОСТУПЕН
+✅ N8N_API_URL и N8N_API_KEY настроены в ~/.claude.json
 ```
 
 **Доступные инструменты:**
-| Инструмент | Назначение |
-|------------|------------|
-| `tools_documentation` | Документация по инструментам |
-| `search_nodes` | Поиск нод по ключевому слову |
-| `get_node` | Информация о ноде (minimal/standard/full) |
-| `validate_node` | Валидация конфига ноды |
-| `get_template` | Получить шаблон по ID |
-| `search_templates` | Поиск шаблонов |
-| `validate_workflow` | Валидация структуры workflow JSON |
+| Категория | Инструменты |
+|-----------|-------------|
+| Документация | `tools_documentation`, `search_nodes`, `get_node`, `search_templates`, `get_template` |
+| Валидация | `validate_node`, `validate_workflow`, `n8n_validate_workflow`, `n8n_autofix_workflow` |
+| Workflows | `n8n_list_workflows`, `n8n_get_workflow`, `n8n_create_workflow`, `n8n_update_full_workflow`, `n8n_update_partial_workflow`, `n8n_delete_workflow` |
+| Execution | `n8n_test_workflow`, `n8n_executions` |
+| Deploy | `n8n_deploy_template`, `n8n_workflow_versions` |
+| Health | `n8n_health_check` |
 
-**Недоступно (требует N8N_API_URL + N8N_API_KEY):**
-- `n8n_get_workflow`, `n8n_list_workflows`, `n8n_test_workflow`, `n8n_executions` — ❌
-
-**Как тестировать workflows без API:**
-- WebFetch на webhook URL
+**Тестирование workflows:**
+- `n8n_test_workflow` — прямой запуск через API
+- WebFetch на webhook URL — альтернатива
 - Проверка результатов через `mcp__supabase__execute_sql`
-- Логи через `mcp__supabase__get_logs`
 
 **Общие лимиты:**
 n8n: `mode:"minimal"` `limit:10` | Supabase: `LIMIT 10` | Grep: `head_limit:10` | Explore: `Task subagent_type:"Explore"`

@@ -117,12 +117,32 @@ if [ "$SKIP_VERIFY" != "true" ]; then
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    # Check for qa-notes
-    QA_NOTE=$(find "$WORKTREE_PATH/qa-notes" -name "*${ISSUE_NUM}*" 2>/dev/null | head -1)
+    # Check for qa-notes (BLOCKING!)
+    QA_NOTE=$(find "$PROJECT_ROOT/qa-notes" -name "*issue-${ISSUE_NUM}*" 2>/dev/null | head -1)
+    if [ -z "$QA_NOTE" ]; then
+        # Also check in worktree
+        QA_NOTE=$(find "$WORKTREE_PATH/qa-notes" -name "*${ISSUE_NUM}*" 2>/dev/null | head -1)
+    fi
+
     if [ -n "$QA_NOTE" ]; then
         echo "✓ qa-notes found: $(basename "$QA_NOTE")"
     else
-        echo "⚠ qa-notes NOT found for issue #$ISSUE_NUM"
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║  ⛔ BLOCKED: qa-notes/issue-${ISSUE_NUM}-*.md NOT FOUND      ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "Create qa-notes before completing task:"
+        echo "  qa-notes/issue-${ISSUE_NUM}-description.md"
+        echo ""
+        echo "Template:"
+        echo "  # Issue #${ISSUE_NUM}: Title"
+        echo "  ## Problem"
+        echo "  ## Solution"
+        echo "  ## Test Commands"
+        echo "  ## Edge Cases"
+        echo ""
+        exit 1
     fi
 
     echo ""
