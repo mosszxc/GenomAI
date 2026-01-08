@@ -29,8 +29,11 @@ from temporal.client import get_temporal_client
 
 # Import workflows
 from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
+from temporal.workflows.keitaro_polling import KeitaroPollerWorkflow
+from temporal.workflows.metrics_processing import MetricsProcessingWorkflow
+from temporal.workflows.learning_loop import LearningLoopWorkflow
 
-# Import activities
+# Import activities - Supabase
 from temporal.activities.supabase import (
     get_creative,
     get_idea,
@@ -40,6 +43,8 @@ from temporal.activities.supabase import (
     update_creative_status,
     emit_event,
 )
+
+# Import activities - Decision Engine
 from temporal.activities.decision_engine import make_decision
 from temporal.activities.transcription import (
     transcribe_audio,
@@ -58,6 +63,32 @@ from temporal.activities.telegram import (
     get_buyer_chat_id,
     update_hypothesis_delivery_status,
     emit_delivery_event,
+)
+
+# Import activities - Keitaro
+from temporal.activities.keitaro import (
+    get_all_trackers,
+    get_tracker_metrics,
+    get_batch_metrics,
+)
+
+# Import activities - Metrics
+from temporal.activities.metrics import (
+    upsert_raw_metrics,
+    create_daily_snapshot,
+    check_snapshot_exists,
+    process_outcome,
+    get_unprocessed_snapshots,
+    emit_metrics_event,
+)
+
+# Import activities - Learning
+from temporal.activities.learning import (
+    process_learning_batch,
+    get_unprocessed_outcomes,
+    process_single_outcome,
+    check_death_conditions,
+    emit_learning_event,
 )
 
 
@@ -127,12 +158,9 @@ async def run_all_workers():
     """
     Run all workers concurrently.
 
-    Currently runs:
+    Runs:
     - Creative Pipeline worker (creative-pipeline queue)
-
-    Future workers to add:
-    - Telegram worker (telegram queue)
-    - Metrics worker (metrics queue)
+    - Metrics worker (metrics queue) - Keitaro, Metrics, Learning
     """
 
     logger.info("Starting GenomAI Temporal Workers")
@@ -172,18 +200,44 @@ async def run_all_workers():
         ],
     )
 
-    # TODO: Add more workers as we migrate more workflows
-    # telegram_worker = Worker(...)
-    # metrics_worker = Worker(...)
+    # Metrics Worker (Keitaro + Metrics + Learning)
+    metrics_worker = Worker(
+        client,
+        task_queue=settings.temporal.TASK_QUEUE_METRICS,
+        workflows=[
+            KeitaroPollerWorkflow,
+            MetricsProcessingWorkflow,
+            LearningLoopWorkflow,
+        ],
+        activities=[
+            # Keitaro activities
+            get_all_trackers,
+            get_tracker_metrics,
+            get_batch_metrics,
+            # Metrics activities
+            upsert_raw_metrics,
+            create_daily_snapshot,
+            check_snapshot_exists,
+            process_outcome,
+            get_unprocessed_snapshots,
+            emit_metrics_event,
+            # Learning activities
+            process_learning_batch,
+            get_unprocessed_outcomes,
+            process_single_outcome,
+            check_death_conditions,
+            emit_learning_event,
+        ],
+    )
 
     logger.info("Workers configured:")
     logger.info(f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
+    logger.info(f"  - Metrics & Learning: {settings.temporal.TASK_QUEUE_METRICS}")
 
     # Run all workers concurrently
     await asyncio.gather(
         creative_worker.run(),
-        # telegram_worker.run(),
-        # metrics_worker.run(),
+        metrics_worker.run(),
     )
 
 
