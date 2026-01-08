@@ -16,7 +16,8 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 # Fixed prompt version for reproducibility
-PROMPT_VERSION = "v1"
+# v4: Added variables denormalization from decomposed_creatives
+PROMPT_VERSION = "v4"
 
 # Number of hypotheses to generate
 NUM_HYPOTHESES = 3
@@ -201,6 +202,7 @@ async def save_hypotheses(
     idea_id: str,
     decision_id: str,
     prompt_version: str,
+    variables: Optional[dict] = None,
 ) -> List[dict]:
     """
     Save generated hypotheses to Supabase.
@@ -210,6 +212,7 @@ async def save_hypotheses(
         idea_id: Idea UUID
         decision_id: Decision UUID
         prompt_version: Version of prompt used
+        variables: Decomposed payload variables for denormalization
 
     Returns:
         List of created hypothesis records
@@ -244,6 +247,7 @@ async def save_hypotheses(
                 "prompt_version": prompt_version,
                 "content": content,
                 "created_at": now,
+                "variables": variables,
             }
 
             response = await client.post(

@@ -259,13 +259,14 @@ class CreativePipelineWorkflow:
                     retry_policy=default_retry,
                 )
 
-                # Save hypotheses
+                # Save hypotheses with variables from decomposition
                 saved_hypotheses = await workflow.execute_activity(
                     save_hypotheses,
                     hypothesis_result["hypotheses"],
                     self._idea_id,
                     decision_result.decision_id,
                     hypothesis_result["prompt_version"],
+                    decomposition_payload,  # Pass variables for denormalization
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
