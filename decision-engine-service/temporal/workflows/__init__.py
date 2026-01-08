@@ -14,6 +14,8 @@ from temporal.workflows.recommendation import (
     SingleRecommendationDeliveryWorkflow,
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow
+from temporal.workflows.buyer_onboarding import BuyerOnboardingWorkflow
+from temporal.workflows.historical_import import HistoricalImportWorkflow, CreativeRegistrationWorkflow
 
 __all__ = [
     "CreativePipelineWorkflow",
@@ -23,4 +25,7 @@ __all__ = [
     "DailyRecommendationWorkflow",
     "SingleRecommendationDeliveryWorkflow",
     "MaintenanceWorkflow",
+    "BuyerOnboardingWorkflow",
+    "HistoricalImportWorkflow",
+    "CreativeRegistrationWorkflow",
 ]

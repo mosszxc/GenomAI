@@ -37,6 +37,8 @@ from temporal.workflows.recommendation import (
     SingleRecommendationDeliveryWorkflow,
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow
+from temporal.workflows.buyer_onboarding import BuyerOnboardingWorkflow
+from temporal.workflows.historical_import import HistoricalImportWorkflow, CreativeRegistrationWorkflow
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
@@ -75,6 +77,20 @@ from temporal.activities.keitaro import (
     get_all_trackers,
     get_tracker_metrics,
     get_batch_metrics,
+    get_campaigns_by_source,
+    get_campaign_creatives,
+)
+
+# Import activities - Buyer
+from temporal.activities.buyer import (
+    create_buyer,
+    load_buyer_by_telegram_id,
+    load_buyer_by_id,
+    update_buyer,
+    send_telegram_message,
+    queue_historical_import,
+    get_pending_imports,
+    update_import_status,
 )
 
 # Import activities - Metrics
@@ -270,14 +286,43 @@ async def run_all_workers():
         ],
     )
 
+    # Telegram Worker (Buyer Onboarding + Historical Import)
+    telegram_worker = Worker(
+        client,
+        task_queue=settings.temporal.TASK_QUEUE_TELEGRAM,
+        workflows=[
+            BuyerOnboardingWorkflow,
+            HistoricalImportWorkflow,
+            CreativeRegistrationWorkflow,
+        ],
+        activities=[
+            # Buyer activities
+            create_buyer,
+            load_buyer_by_telegram_id,
+            load_buyer_by_id,
+            update_buyer,
+            send_telegram_message,
+            queue_historical_import,
+            get_pending_imports,
+            update_import_status,
+            # Keitaro activities for historical import
+            get_campaigns_by_source,
+            get_campaign_creatives,
+            # Supabase for events
+            emit_event,
+        ],
+    )
+
     logger.info("Workers configured:")
     logger.info(f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
     logger.info(f"  - Metrics & Learning: {settings.temporal.TASK_QUEUE_METRICS}")
+    logger.info(f"  - Telegram & Buyer: {settings.temporal.TASK_QUEUE_TELEGRAM}")
 
     # Run all workers concurrently
     await asyncio.gather(
         creative_worker.run(),
         metrics_worker.run(),
+        telegram_worker.run(),
     )
 
 
