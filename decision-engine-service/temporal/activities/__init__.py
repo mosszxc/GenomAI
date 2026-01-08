@@ -33,6 +33,26 @@ from temporal.activities.telegram import (
     update_hypothesis_delivery_status,
     emit_delivery_event,
 )
+from temporal.activities.keitaro import (
+    get_all_trackers,
+    get_tracker_metrics,
+    get_batch_metrics,
+)
+from temporal.activities.metrics import (
+    upsert_raw_metrics,
+    create_daily_snapshot,
+    check_snapshot_exists,
+    process_outcome,
+    get_unprocessed_snapshots,
+    emit_metrics_event,
+)
+from temporal.activities.learning import (
+    process_learning_batch,
+    get_unprocessed_outcomes,
+    process_single_outcome,
+    check_death_conditions,
+    emit_learning_event,
+)
 
 __all__ = [
     # Supabase activities
@@ -59,4 +79,21 @@ __all__ = [
     "get_buyer_chat_id",
     "update_hypothesis_delivery_status",
     "emit_delivery_event",
+    # Keitaro activities
+    "get_all_trackers",
+    "get_tracker_metrics",
+    "get_batch_metrics",
+    # Metrics activities
+    "upsert_raw_metrics",
+    "create_daily_snapshot",
+    "check_snapshot_exists",
+    "process_outcome",
+    "get_unprocessed_snapshots",
+    "emit_metrics_event",
+    # Learning activities
+    "process_learning_batch",
+    "get_unprocessed_outcomes",
+    "process_single_outcome",
+    "check_death_conditions",
+    "emit_learning_event",
 ]
