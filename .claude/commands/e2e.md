@@ -36,8 +36,24 @@ $ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations]
 - `mcp__supabase__execute_sql` - для SQL запросов (project_id: `ftrerelppsnbdcmtcwya`)
 - `mcp__n8n-mcp__n8n_health_check` - для n8n health
 - `mcp__n8n-mcp__n8n_list_workflows` - для проверки workflows
+- `mcp__n8n-mcp__n8n_test_workflow` - для live тестирования workflows
 - `mcp__n8n-mcp__n8n_executions` - для статистики executions
 - `WebFetch` - для Decision Engine health check
+
+### Test Data Loading (Phase 5)
+
+**ПЕРЕД live тестами workflows — загрузи тестовые ID из БД:**
+
+```sql
+SELECT
+  (SELECT id FROM genomai.creatives ORDER BY created_at DESC LIMIT 1) as test_creative_id,
+  (SELECT id FROM genomai.ideas ORDER BY created_at DESC LIMIT 1) as test_idea_id,
+  (SELECT id FROM genomai.decisions WHERE decision = 'approve' ORDER BY created_at DESC LIMIT 1) as test_decision_id,
+  (SELECT tracker_id FROM genomai.raw_metrics_current LIMIT 1) as test_tracker_id,
+  (SELECT id FROM genomai.decomposed_creatives ORDER BY created_at DESC LIMIT 1) as test_decomposed_id;
+```
+
+Сохрани результат как `TEST_IDS` и используй в Phase 5 для тестовых payloads.
 
 ### Параллельное выполнение
 
@@ -843,63 +859,148 @@ SELECT
 
 ---
 
-## Phase 5: Workflow Execution Health
+## Phase 5: MANDATORY Live Workflow Tests ⚡
 
-### 5.1 Recent Execution Stats
+### ⛔ CRITICAL EXECUTION RULES
 
-Для каждого critical workflow:
+**ЭТО ОБЯЗАТЕЛЬНАЯ ФАЗА. НЕ ПРОПУСКАТЬ!**
 
-```
-mcp__n8n-mcp__n8n_executions(
-  action: "list",
-  workflowId: "{workflow_id}",
-  limit: 20
-)
-```
+1. **MUST** вызывать `mcp__n8n-mcp__n8n_test_workflow` для каждого workflow
+2. **MUST** записывать `executionId` в отчёт как доказательство
+3. **MUST** после каждого теста делать DB verification
+4. **SKIP** только если workflow inactive или нет webhook trigger
 
-**Вычислить:**
-- `success_rate = success_count / total`
-- `error_rate = error_count / total`
-- `last_success_ago` = time since last successful execution
+**Без executionId в отчёте — Phase 5 НЕ ВЫПОЛНЕН!**
 
-**Критерии:**
-| Metric | OK | WARNING | ERROR |
-|--------|-----|---------|-------|
-| Error rate | < 5% | 5-15% | > 15% |
-| Last success | < 1h | 1-4h | > 4h |
+---
 
-### 5.2 Failed Executions Analysis
+### 5.0 Load Test Data
 
-Для executions со статусом `error`:
+**ПЕРВЫМ** — загрузить тестовые ID:
 
-```
-mcp__n8n-mcp__n8n_executions(
-  action: "get",
-  id: "{execution_id}",
-  mode: "error"
-)
+```sql
+SELECT
+  (SELECT id FROM genomai.creatives ORDER BY created_at DESC LIMIT 1) as test_creative_id,
+  (SELECT id FROM genomai.ideas ORDER BY created_at DESC LIMIT 1) as test_idea_id,
+  (SELECT id FROM genomai.decisions WHERE decision = 'approve' ORDER BY created_at DESC LIMIT 1) as test_decision_id,
+  (SELECT tracker_id FROM genomai.raw_metrics_current LIMIT 1) as test_tracker_id,
+  (SELECT id FROM genomai.decomposed_creatives ORDER BY created_at DESC LIMIT 1) as test_decomposed_id;
 ```
 
-**Собрать:**
-- Failed node name
-- Error message
-- Error pattern (group similar errors)
+Сохрани как `TEST_IDS`. Если ID = NULL → SKIP соответствующий тест.
 
-### 5.3 Execution Duration Trends
+---
+
+### 5.1 Decision Engine Wake-up
 
 ```
-mcp__n8n-mcp__n8n_executions(
-  action: "list",
-  workflowId: "{workflow_id}",
-  status: "success",
-  limit: 50
-)
+WebFetch: GET https://genomai.onrender.com/health
 ```
 
-**Вычислить:**
-- Average duration
-- P95 duration
-- Trend (getting slower?)
+Если 503 — подождать 30 секунд и повторить.
+
+**Критерии:** `status = "ok"`, response time < 30s
+
+---
+
+### MANDATORY TEST MATRIX
+
+**Выполнить ВСЕ тесты из Category 1-2. Записать executionId для каждого!**
+
+#### Category 1: Safe Tests (ОБЯЗАТЕЛЬНО)
+
+| # | Workflow | ID | MCP Call | DB Check |
+|---|----------|-----|----------|----------|
+| 5.2 | keep_alive | `ClXUPP2IvWRgu99y` | `n8n_test_workflow({workflowId: "ClXUPP2IvWRgu99y"})` | DE /health returns ok |
+| 5.3 | learning_loop | `fzXkoG805jQZUR3S` | `n8n_test_workflow({workflowId: "fzXkoG805jQZUR3S", data: {test: true}})` | 400 = expected |
+| 5.4 | pipeline_health | `H1uuOanSy627H4kg` | `n8n_test_workflow({workflowId: "H1uuOanSy627H4kg"})` | execution success |
+| 5.5 | data_integrity | `IEu0VguJiGwZsr92` | `n8n_test_workflow({workflowId: "IEu0VguJiGwZsr92"})` | execution success |
+| 5.6 | orphan_monitor | `lHow2zq2OOw7J0K7` | `n8n_test_workflow({workflowId: "lHow2zq2OOw7J0K7"})` | execution success |
+
+#### Category 2: Updates Data (ОБЯЗАТЕЛЬНО)
+
+| # | Workflow | ID | MCP Call | DB Check |
+|---|----------|-----|----------|----------|
+| 5.7 | keitaro_poller | `0TrVJOtHiNEEAsTN` | `n8n_test_workflow({workflowId: "0TrVJOtHiNEEAsTN"})` | `SELECT MAX(updated_at) FROM genomai.raw_metrics_current` |
+| 5.8 | snapshot_creator | `Gii8l2XwnX43Wqr4` | `n8n_test_workflow({workflowId: "Gii8l2XwnX43Wqr4", data: {tracker_id: TEST_IDS.test_tracker_id, date: "YYYY-MM-DD", metrics: {clicks:0,conversions:0,spend:0,revenue:0}}})` | `SELECT MAX(date) FROM genomai.daily_metrics_snapshot` |
+
+#### Category 3: Creates Data (ОПЦИОНАЛЬНО, с осторожностью)
+
+| # | Workflow | ID | MCP Call | DB Check |
+|---|----------|-----|----------|----------|
+| 5.9 | decision_engine_mvp | `YT2d7z5h9bPy1R4v` | `n8n_test_workflow({workflowId: "YT2d7z5h9bPy1R4v", data: {idea_id: TEST_IDS.test_idea_id, payload: {hook:"test"}, source:"e2e"}})` | decision returned |
+| 5.10 | idea_registry | `cGSyJPROrkqLVHZP` | `n8n_test_workflow({workflowId: "cGSyJPROrkqLVHZP", data: {creative_id: TEST_IDS.test_creative_id}})` | execution success |
+| 5.11 | hypothesis_factory | `oxG1DqxtkTGCqLZi` | `n8n_test_workflow({workflowId: "oxG1DqxtkTGCqLZi", data: {idea_id: TEST_IDS.test_idea_id, decision_id: TEST_IDS.test_decision_id, decision:"approve"}})` | creates hypothesis |
+
+#### Category 4-6: SKIP (LLM/Telegram/Historical)
+
+Эти категории пропустить — требуют реальные ресурсы:
+- LLM workflows (OpenAI cost)
+- Telegram workflows (sends real messages)
+- Historical import (batch operations)
+
+---
+
+### Execution Checklist
+
+**После КАЖДОГО теста записать:**
+
+```
+✅ Workflow: {name}
+   ExecutionID: {id from response}
+   Status: success/error
+   DB Check: {result}
+```
+
+**Пример:**
+```
+✅ keep_alive (5.2)
+   ExecutionID: 12345
+   Status: success
+   DB Check: DE /health → ok
+
+✅ keitaro_poller (5.7)
+   ExecutionID: 12346
+   Status: success
+   DB Check: metrics updated 2 min ago
+```
+
+---
+
+### Phase 5 Report Format
+
+**В финальном отчёте Phase 8 добавить эту секцию:**
+
+```markdown
+### 5. Live Workflow Tests (MANDATORY)
+
+| # | Workflow | ExecutionID | Triggered | DB Verified | Status |
+|---|----------|-------------|-----------|-------------|--------|
+| 5.2 | keep_alive | 12345 | ✅ | ✅ DE ok | PASS |
+| 5.3 | learning_loop | 12346 | ✅ | ✅ 400 expected | PASS |
+| 5.4 | pipeline_health | 12347 | ✅ | ✅ | PASS |
+| 5.5 | data_integrity | 12348 | ✅ | ✅ | PASS |
+| 5.6 | orphan_monitor | 12349 | ✅ | ✅ | PASS |
+| 5.7 | keitaro_poller | 12350 | ✅ | ✅ metrics fresh | PASS |
+| 5.8 | snapshot_creator | 12351 | ✅ | ✅ snapshot today | PASS |
+| 5.9 | decision_engine | SKIP | - | - | SKIP (optional) |
+
+**Live Tests: 7/7 executed, 7/7 passed**
+```
+
+**Без этой секции отчёт НЕПОЛНЫЙ!**
+
+---
+
+### Error Handling
+
+| Ситуация | Действие |
+|----------|----------|
+| Workflow inactive | Отметить ⏭️ SKIP (inactive) |
+| No webhook trigger | Отметить ⏭️ SKIP (no trigger) |
+| Timeout (>120s) | Отметить ❌ TIMEOUT, retry 1x |
+| n8n API error | Отметить ❌ ERROR, записать message |
+| DB check failed | Отметить ⚠️ WARNING, продолжить |
 
 ---
 
@@ -1124,10 +1225,12 @@ ORDER BY timestamp;
 | Integrations | OK/WARN/FAIL | {count} | {skip_count} |
 | Relationships | OK/WARN/FAIL | {count} | {skip_count} |
 | SLA | OK/WARN/FAIL | {count} | {skip_count} |
-| Workflows | OK/WARN/FAIL | {count} | {skip_count} |
+| **Live Tests ⚡** | OK/WARN/FAIL | {executed}/{total} | {skip_count} |
+| Workflow History | OK/WARN/FAIL | {count} | {skip_count} |
 | Regression | OK/WARN/FAIL | {count} | {skip_count} |
 
 **Overall: PASS / WARNING / FAIL**
+**Live Tests: {X}/{Y} executed** ← MANDATORY
 **Schema Drift:** {count} missing columns detected
 
 ---
@@ -1220,7 +1323,26 @@ ORDER BY timestamp;
 | Hypothesis | 1 | WARN |
 | Delivery | 0 | OK |
 
-### 5. Workflow Health
+### 5. Live Workflow Tests (MANDATORY) ⚡
+
+**Эта секция ОБЯЗАТЕЛЬНА — без неё отчёт неполный!**
+
+| # | Workflow | ExecutionID | Triggered | DB Verified | Status |
+|---|----------|-------------|-----------|-------------|--------|
+| 5.2 | keep_alive | 12345 | ✅ | ✅ DE ok | PASS |
+| 5.3 | learning_loop | 12346 | ✅ | ✅ 400 expected | PASS |
+| 5.4 | pipeline_health | 12347 | ✅ | ✅ | PASS |
+| 5.5 | data_integrity | 12348 | ✅ | ✅ | PASS |
+| 5.6 | orphan_monitor | 12349 | ✅ | ✅ | PASS |
+| 5.7 | keitaro_poller | 12350 | ✅ | ✅ metrics fresh | PASS |
+| 5.8 | snapshot_creator | 12351 | ✅ | ✅ snapshot today | PASS |
+| 5.9 | decision_engine | SKIP | - | - | SKIP (optional) |
+| 5.10 | idea_registry | SKIP | - | - | SKIP (optional) |
+| 5.11 | hypothesis_factory | SKIP | - | - | SKIP (optional) |
+
+**Live Tests Summary: 7/7 executed, 7/7 passed**
+
+### 5A. Workflow Historical Stats
 
 | Workflow | Success Rate | Errors (24h) | Last Success | Status |
 |----------|--------------|--------------|--------------|--------|
