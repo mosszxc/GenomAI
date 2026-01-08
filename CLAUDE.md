@@ -8,17 +8,28 @@ Short, dense. Lists > prose.
 ## Stack
 DB: Supabase `genomai` schema, project `ftrerelppsnbdcmtcwya`
 Backend: FastAPI `decision-engine-service/`, genomai.onrender.com:10000
-Orchestration: n8n | Tracking: Keitaro | UI: Telegram
+Orchestration: Temporal | Tracking: Keitaro | UI: Telegram
 
 ## Flow
-Video → n8n → LLM → Idea Registry → DE (4 checks) → APPROVE/REJECT/DEFER → Hypothesis → Keitaro → Learning → Telegram
+Video → Temporal → LLM → Idea Registry → DE (4 checks) → APPROVE/REJECT/DEFER → Hypothesis → Keitaro → Learning → Telegram
 
 ## Decision Engine Checks
 schema_validity.py → REJECT | death_memory.py → REJECT | fatigue_constraint.py → REJECT | risk_budget.py → DEFER
 All pass = APPROVE
 
 ## Commands
-`cd decision-engine-service && uvicorn main:app --reload --port 10000`
+```bash
+# FastAPI service
+cd decision-engine-service && uvicorn main:app --reload --port 10000
+
+# Temporal workers
+cd decision-engine-service && python -m temporal.worker
+
+# Temporal schedules
+cd decision-engine-service && python -m temporal.schedules list
+cd decision-engine-service && python -m temporal.schedules create
+cd decision-engine-service && python -m temporal.schedules trigger <schedule-id>
+```
 
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `infrastructure/schemas/` `docs/`
@@ -321,17 +332,34 @@ FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
 ## Render Deploy
 Free tier = **3 минуты** на deploy. После push: один `sleep 180`, не несколько коротких.
 
-## n8n
-Перед работой → `docs/N8N_WORKFLOWS.md`
-Webhook issue: API не регистрирует → добавить → активировать в UI → тестировать
+## Temporal
+Документация: `docs/TEMPORAL_WORKFLOWS.md` | `docs/TEMPORAL_RUNBOOK.md`
 
-Credentials: Supabase `RNItSRYOCypd9H1a` | Telegram `06SWHhdUxiQNwDWD`
+### Workflows
+| Workflow | Queue | Schedule |
+|----------|-------|----------|
+| CreativePipelineWorkflow | creative-pipeline | Webhook trigger |
+| KeitaroPollerWorkflow | metrics | Every 10 min |
+| MetricsProcessingWorkflow | metrics | Every 30 min |
+| LearningLoopWorkflow | metrics | Every 1 hour |
+| DailyRecommendationWorkflow | metrics | 09:00 UTC |
+| MaintenanceWorkflow | metrics | Every 6 hours |
 
-### n8n Common Issues
-- Supabase nodes: ALWAYS `useCustomSchema: true, schema: "genomai"` (default = public)
-- HTTP Request to Supabase: `authentication: "predefinedCredentialType"` + `Content-Profile: genomai` header
-- Before CREATE: check table NOT NULL constraints via `information_schema.columns`
-- Expression refs: verify upstream node output structure before using `$json.field`
+### Common Operations
+```bash
+# List schedules
+python -m temporal.schedules list
+
+# Trigger manually
+python -m temporal.schedules trigger daily-recommendations
+
+# Pause/resume
+python -m temporal.schedules pause keitaro-poller
+python -m temporal.schedules resume keitaro-poller
+```
+
+### n8n (ARCHIVED)
+n8n workflows migrated to Temporal. Archive: `infrastructure/n8n-archive/`
 
 ## Validation
 `/valid {process}` — валидация процесса (learning-loop, hypothesis-factory, decision-engine, video-ingestion)

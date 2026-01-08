@@ -9,10 +9,18 @@ from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
 from temporal.workflows.keitaro_polling import KeitaroPollerWorkflow
 from temporal.workflows.metrics_processing import MetricsProcessingWorkflow
 from temporal.workflows.learning_loop import LearningLoopWorkflow
+from temporal.workflows.recommendation import (
+    DailyRecommendationWorkflow,
+    SingleRecommendationDeliveryWorkflow,
+)
+from temporal.workflows.maintenance import MaintenanceWorkflow
 
 __all__ = [
     "CreativePipelineWorkflow",
     "KeitaroPollerWorkflow",
     "MetricsProcessingWorkflow",
     "LearningLoopWorkflow",
+    "DailyRecommendationWorkflow",
+    "SingleRecommendationDeliveryWorkflow",
+    "MaintenanceWorkflow",
 ]

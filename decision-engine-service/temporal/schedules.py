@@ -21,6 +21,8 @@ from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow
 from temporalio.client import (
     ScheduleSpec,
     ScheduleIntervalSpec,
+    ScheduleCalendarSpec,
+    ScheduleRange,
     ScheduleState,
     SchedulePolicy,
     ScheduleOverlapPolicy,
@@ -31,6 +33,8 @@ from temporal.client import get_temporal_client
 from temporal.workflows.keitaro_polling import KeitaroPollerWorkflow, KeitaroPollerInput
 from temporal.workflows.metrics_processing import MetricsProcessingWorkflow, MetricsProcessingInput
 from temporal.workflows.learning_loop import LearningLoopWorkflow, LearningLoopInput
+from temporal.workflows.recommendation import DailyRecommendationWorkflow, DailyRecommendationInput
+from temporal.workflows.maintenance import MaintenanceWorkflow, MaintenanceInput
 
 
 logging.basicConfig(
@@ -63,12 +67,44 @@ SCHEDULES = {
         "interval": timedelta(hours=1),
         "description": "Runs learning loop every hour",
     },
+    "daily-recommendations": {
+        "workflow": DailyRecommendationWorkflow.run,
+        "args": [DailyRecommendationInput(skip_existing=True, max_recommendations=0)],
+        "task_queue": settings.temporal.TASK_QUEUE_METRICS,
+        "cron": "0 9 * * *",  # Daily at 09:00 UTC
+        "description": "Generates and delivers daily recommendations at 09:00 UTC",
+    },
+    "maintenance": {
+        "workflow": MaintenanceWorkflow.run,
+        "args": [MaintenanceInput(
+            buyer_state_timeout_hours=6,
+            recommendation_expiry_days=7,
+            run_integrity_checks=True,
+        )],
+        "task_queue": settings.temporal.TASK_QUEUE_METRICS,
+        "interval": timedelta(hours=6),
+        "description": "Maintenance tasks every 6 hours: cleanup stale states, expire recommendations",
+    },
 }
 
 
 async def create_schedule(client: Client, schedule_id: str, config: dict) -> bool:
     """Create a single schedule"""
     try:
+        # Build schedule spec based on interval or cron
+        if "cron" in config:
+            # Parse cron expression (minute hour day month dayofweek)
+            cron_parts = config["cron"].split()
+            spec = ScheduleSpec(
+                cron_expressions=[config["cron"]]
+            )
+        else:
+            spec = ScheduleSpec(
+                intervals=[
+                    ScheduleIntervalSpec(every=config["interval"])
+                ]
+            )
+
         handle = await client.create_schedule(
             schedule_id,
             Schedule(
@@ -78,11 +114,7 @@ async def create_schedule(client: Client, schedule_id: str, config: dict) -> boo
                     id=f"{schedule_id}-{{{{.ScheduledTime}}}}",
                     task_queue=config["task_queue"],
                 ),
-                spec=ScheduleSpec(
-                    intervals=[
-                        ScheduleIntervalSpec(every=config["interval"])
-                    ]
-                ),
+                spec=spec,
                 state=ScheduleState(
                     note=config["description"]
                 ),

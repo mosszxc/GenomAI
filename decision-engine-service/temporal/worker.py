@@ -32,6 +32,11 @@ from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
 from temporal.workflows.keitaro_polling import KeitaroPollerWorkflow
 from temporal.workflows.metrics_processing import MetricsProcessingWorkflow
 from temporal.workflows.learning_loop import LearningLoopWorkflow
+from temporal.workflows.recommendation import (
+    DailyRecommendationWorkflow,
+    SingleRecommendationDeliveryWorkflow,
+)
+from temporal.workflows.maintenance import MaintenanceWorkflow
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
@@ -89,6 +94,25 @@ from temporal.activities.learning import (
     process_single_outcome,
     check_death_conditions,
     emit_learning_event,
+)
+
+# Import activities - Recommendation
+from temporal.activities.recommendation import (
+    get_active_buyers,
+    generate_recommendation_for_buyer,
+    send_recommendation_to_telegram,
+    update_recommendation_delivery,
+    emit_recommendation_event,
+    get_recommendation_by_id,
+    check_existing_daily_recommendation,
+)
+
+# Import activities - Maintenance
+from temporal.activities.maintenance import (
+    reset_stale_buyer_states,
+    expire_old_recommendations,
+    check_data_integrity,
+    emit_maintenance_event,
 )
 
 
@@ -200,7 +224,7 @@ async def run_all_workers():
         ],
     )
 
-    # Metrics Worker (Keitaro + Metrics + Learning)
+    # Metrics Worker (Keitaro + Metrics + Learning + Recommendations)
     metrics_worker = Worker(
         client,
         task_queue=settings.temporal.TASK_QUEUE_METRICS,
@@ -208,6 +232,9 @@ async def run_all_workers():
             KeitaroPollerWorkflow,
             MetricsProcessingWorkflow,
             LearningLoopWorkflow,
+            DailyRecommendationWorkflow,
+            SingleRecommendationDeliveryWorkflow,
+            MaintenanceWorkflow,
         ],
         activities=[
             # Keitaro activities
@@ -227,6 +254,19 @@ async def run_all_workers():
             process_single_outcome,
             check_death_conditions,
             emit_learning_event,
+            # Recommendation activities
+            get_active_buyers,
+            generate_recommendation_for_buyer,
+            send_recommendation_to_telegram,
+            update_recommendation_delivery,
+            emit_recommendation_event,
+            get_recommendation_by_id,
+            check_existing_daily_recommendation,
+            # Maintenance activities
+            reset_stale_buyer_states,
+            expire_old_recommendations,
+            check_data_integrity,
+            emit_maintenance_event,
         ],
     )
 
