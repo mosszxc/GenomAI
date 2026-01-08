@@ -42,6 +42,7 @@ from temporal.workflows.historical_import import HistoricalImportWorkflow, Creat
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
+    create_creative,
     get_creative,
     get_idea,
     check_idea_exists,
@@ -308,7 +309,8 @@ async def run_all_workers():
             # Keitaro activities for historical import
             get_campaigns_by_source,
             get_campaign_creatives,
-            # Supabase for events
+            # Supabase for creative registration and events
+            create_creative,
             emit_event,
         ],
     )

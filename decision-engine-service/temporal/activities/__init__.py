@@ -6,6 +6,7 @@ Activities are the building blocks of workflows - they perform the actual work.
 """
 
 from temporal.activities.supabase import (
+    create_creative,
     get_creative,
     get_idea,
     check_idea_exists,
@@ -83,6 +84,7 @@ from temporal.activities.maintenance import (
 
 __all__ = [
     # Supabase activities
+    "create_creative",
     "get_creative",
     "get_idea",
     "check_idea_exists",
