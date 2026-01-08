@@ -1,4 +1,5 @@
 services:
+  # FastAPI Web Service (webhooks, health check)
   - type: web
     name: decision-engine-service
     env: python
@@ -16,4 +17,37 @@ services:
         sync: false
       - key: API_KEY
         generateValue: true
+
+  # Temporal Worker Service
+  - type: worker
+    name: genomai-temporal-worker
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m temporal.worker
+    region: frankfurt
+    plan: starter
+    envVars:
+      # Temporal Cloud connection
+      - key: TEMPORAL_ADDRESS
+        sync: false
+      - key: TEMPORAL_NAMESPACE
+        sync: false
+      - key: TEMPORAL_API_KEY
+        sync: false
+      # Supabase (shared with web service)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # External APIs
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: KEITARO_API_KEY
+        sync: false
+      - key: KEITARO_BASE_URL
+        sync: false
 

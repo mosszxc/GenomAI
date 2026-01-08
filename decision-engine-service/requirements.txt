@@ -8,3 +8,6 @@ jsonschema>=4.20.0
 # Using direct httpx for Supabase REST API
 # This gives full control over Accept-Profile/Content-Profile headers
 
+# Temporal workflow orchestration
+temporalio>=1.7.0
+
