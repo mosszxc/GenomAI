@@ -93,6 +93,24 @@ gh issue create -t "title" -l enhancement
 ./scripts/task-done.sh <issue-number>
 ```
 
+## Auto-Worktree Rule (CRITICAL)
+
+**При ЛЮБОМ запросе работы над issue — СНАЧАЛА создать worktree:**
+
+```
+Триггеры: "сделай issue #123", "работай над #123", "fix #123", "issue 123"
+
+АВТОМАТИЧЕСКИ выполнить:
+1. git worktree list                           # проверить есть ли уже
+2. Если нет → ./scripts/task-start.sh 123     # создать worktree
+3. Сообщить пользователю о созданном worktree
+4. Продолжить работу В КОНТЕКСТЕ worktree
+```
+
+**Исключения (worktree НЕ нужен):**
+- Только чтение/исследование issue
+- Вопросы про issue без изменений кода
+
 ## Issue Workflow (7 Phases)
 
 **Правило: ВСЕГДА создавать worktree. Даже для мелких фиксов.**
@@ -102,8 +120,9 @@ gh issue create -t "title" -l enhancement
 User: "Работай над issue #123"
 
 1. mcp__github__get_issue(123)     # понять задачу
-2. ./scripts/task-start.sh 123     # создать worktree (ОБЯЗАТЕЛЬНО)
-3. TodoWrite                        # инициализировать tracking
+2. git worktree list               # проверить существующие
+3. ./scripts/task-start.sh 123    # создать worktree (если нет)
+4. TodoWrite                       # инициализировать tracking
 ```
 
 ### Phase 2: UNDERSTANDING (READ-ONLY)
