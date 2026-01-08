@@ -337,7 +337,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             CreativeRegistrationWorkflow.run,
             args=[buyer_id, video_url, None, None],
             id=workflow_id,
-            task_queue="creative-pipeline",
+            task_queue="telegram",
         )
 
         await send_telegram_message(
