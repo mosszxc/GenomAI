@@ -65,6 +65,21 @@ from temporal.activities.learning import (
     check_death_conditions,
     emit_learning_event,
 )
+from temporal.activities.recommendation import (
+    get_active_buyers,
+    generate_recommendation_for_buyer,
+    send_recommendation_to_telegram,
+    update_recommendation_delivery,
+    emit_recommendation_event,
+    get_recommendation_by_id,
+    check_existing_daily_recommendation,
+)
+from temporal.activities.maintenance import (
+    reset_stale_buyer_states,
+    expire_old_recommendations,
+    check_data_integrity,
+    emit_maintenance_event,
+)
 
 __all__ = [
     # Supabase activities
@@ -119,4 +134,17 @@ __all__ = [
     "process_single_outcome",
     "check_death_conditions",
     "emit_learning_event",
+    # Recommendation activities
+    "get_active_buyers",
+    "generate_recommendation_for_buyer",
+    "send_recommendation_to_telegram",
+    "update_recommendation_delivery",
+    "emit_recommendation_event",
+    "get_recommendation_by_id",
+    "check_existing_daily_recommendation",
+    # Maintenance activities
+    "reset_stale_buyer_states",
+    "expire_old_recommendations",
+    "check_data_integrity",
+    "emit_maintenance_event",
 ]
