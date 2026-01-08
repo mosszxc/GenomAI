@@ -41,6 +41,15 @@ cd decision-engine-service && python -m temporal.schedules trigger <schedule-id>
 ## Rules
 1. Market = truth 2. Deterministic+trace 3. ML signals only 4. LLM: transcripts 5. Schema-first
 
+## Reference by Task Type
+| Задача | Прочитай сначала |
+|--------|------------------|
+| Temporal workflows | `docs/TEMPORAL_WORKFLOWS.md`, `docs/TEMPORAL_RUNBOOK.md` |
+| DB schema changes | `docs/SCHEMA_REFERENCE.md` (check generated columns!) |
+| API endpoints | `docs/API_REFERENCE.md` |
+| New process | `docs/layer-3-implementation-design/SERVICE_BOUNDARIES.md` |
+| Decision Engine | `docs/layer-1-logic/DECISION_ENGINE.md` |
+
 ## /idea Workflow (Recommended)
 Быстрый старт задачи с изоляцией:
 ```
@@ -178,7 +187,7 @@ Always push after commit. No exceptions.
 ```
 НЕТ ТЕСТА = НЕТ ЗАКРЫТИЯ
 ```
-Validation (структура) ≠ Test (реальный запуск). `n8n_validate_workflow` — это НЕ тест.
+Validation (структура) ≠ Test (реальный запуск). Validate — это НЕ тест.
 
 ### Обязательные тесты по типу изменения
 | Изменение | Тест | Критерий успеха |
@@ -188,7 +197,7 @@ Validation (структура) ≠ Test (реальный запуск). `n8n_v
 | Migration | `execute_sql` SELECT | ✅ Данные есть + constraints |
 | Python | Запустить endpoint | ✅ Нет ошибок + output |
 
-**Примечание:** `n8n_test_workflow` недоступен — используй WebFetch на webhook URL.
+**Примечание:** Для Temporal workflows используй `python -m temporal.schedules trigger`.
 
 ### Before Closing Issue — MANDATORY
 1. **RUN THE TEST** (см. таблицу выше)
@@ -251,16 +260,6 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 ```
 **Правило:** Один Edit = одна логическая операция. Cosmetic fixes (positions) — batch.
 
-### n8n Deploy Cycle
-```
-1. Изменить JSON локально
-2. validate_workflow с profile:"strict"
-3. Fix all errors ЛОКАЛЬНО
-4. ТОЛЬКО ПОТОМ deploy
-5. Один deploy на задачу
-```
-**Экономия:** ~9k tokens (избегаем redeploy)
-
 ### MCP Tools
 
 **claude-mem:**
@@ -277,29 +276,8 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 ✅ Не дублировать UI действия через MCP
 ```
 
-**n8n-mcp (ПОЛНЫЙ ДОСТУП):**
-```
-✅ n8n API ПОЛНОСТЬЮ ДОСТУПЕН
-✅ N8N_API_URL и N8N_API_KEY настроены в ~/.claude.json
-```
-
-**Доступные инструменты:**
-| Категория | Инструменты |
-|-----------|-------------|
-| Документация | `tools_documentation`, `search_nodes`, `get_node`, `search_templates`, `get_template` |
-| Валидация | `validate_node`, `validate_workflow`, `n8n_validate_workflow`, `n8n_autofix_workflow` |
-| Workflows | `n8n_list_workflows`, `n8n_get_workflow`, `n8n_create_workflow`, `n8n_update_full_workflow`, `n8n_update_partial_workflow`, `n8n_delete_workflow` |
-| Execution | `n8n_test_workflow`, `n8n_executions` |
-| Deploy | `n8n_deploy_template`, `n8n_workflow_versions` |
-| Health | `n8n_health_check` |
-
-**Тестирование workflows:**
-- `n8n_test_workflow` — прямой запуск через API
-- WebFetch на webhook URL — альтернатива
-- Проверка результатов через `mcp__supabase__execute_sql`
-
 **Общие лимиты:**
-n8n: `mode:"minimal"` `limit:10` | Supabase: `LIMIT 10` | Grep: `head_limit:10` | Explore: `Task subagent_type:"Explore"`
+Supabase: `LIMIT 10` | Grep: `head_limit:10` | Explore: `Task subagent_type:"Explore"`
 
 ### /rw Exclusions
 Skip /rw для:
