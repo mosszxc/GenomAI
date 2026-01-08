@@ -76,9 +76,9 @@ class Settings:
 def load_settings() -> Settings:
     """Load settings from environment variables."""
 
-    # Detect if using Temporal Cloud (has tmprl.cloud in address)
+    # Detect if using Temporal Cloud (has tmprl.cloud or temporal.io in address)
     temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
-    is_cloud = "tmprl.cloud" in temporal_address
+    is_cloud = "tmprl.cloud" in temporal_address or ".temporal.io" in temporal_address
 
     return Settings(
         temporal=TemporalSettings(

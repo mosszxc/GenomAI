@@ -5,7 +5,6 @@ Provides a single Temporal client instance for the application.
 Handles both Temporal Cloud (with TLS/API key) and local development.
 """
 
-import ssl
 from typing import Optional
 
 from temporalio.client import Client, TLSConfig
@@ -37,9 +36,8 @@ async def get_temporal_client() -> Client:
     if _client is not None:
         return _client
 
-    # Build connection options
+    # Build connection options (endpoint must be positional argument for Temporal Cloud)
     connect_kwargs = {
-        "target_host": settings.temporal.address,
         "namespace": settings.temporal.namespace,
     }
 
@@ -53,7 +51,8 @@ async def get_temporal_client() -> Client:
             # For self-hosted with TLS
             connect_kwargs["tls"] = TLSConfig()
 
-    _client = await Client.connect(**connect_kwargs)
+    # Connect with endpoint as first positional argument (required for Temporal Cloud)
+    _client = await Client.connect(settings.temporal.address, **connect_kwargs)
 
     return _client
 
