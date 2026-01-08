@@ -28,7 +28,7 @@ class CreativePipelineWorkflow:
     Main creative processing pipeline.
 
     Flow:
-        Creative → Transcription → Decomposition → Idea → Decision → Hypothesis
+        Creative → Transcription → Decomposition → Idea → Decision → Hypothesis → Telegram
 
     Replaces:
         - GenomAI - Creative Transcription
@@ -44,6 +44,7 @@ class CreativePipelineWorkflow:
         self._creative_id: str | None = None
         self._idea_id: str | None = None
         self._decision: str | None = None
+        self._hypothesis_count: int = 0
         self._error: str | None = None
 
     @workflow.run
@@ -71,11 +72,29 @@ class CreativePipelineWorkflow:
                 emit_event,
             )
             from temporal.activities.decision_engine import make_decision
+            from temporal.activities.transcription import transcribe_audio
+            from temporal.activities.llm_decomposition import decompose_creative
+            from temporal.activities.hypothesis_generation import (
+                generate_hypotheses,
+                save_hypotheses,
+            )
+            from temporal.activities.telegram import (
+                send_hypothesis_to_telegram,
+                get_buyer_chat_id,
+                emit_delivery_event,
+            )
 
             # Default retry policy for most activities
             default_retry = RetryPolicy(
                 initial_interval=timedelta(seconds=1),
                 maximum_interval=timedelta(seconds=30),
+                maximum_attempts=3,
+            )
+
+            # Long-running activity retry (for transcription)
+            long_running_retry = RetryPolicy(
+                initial_interval=timedelta(seconds=5),
+                maximum_interval=timedelta(minutes=2),
                 maximum_attempts=3,
             )
 
@@ -92,30 +111,52 @@ class CreativePipelineWorkflow:
                 self._error = f"Creative {input.creative_id} not found"
                 return self._build_result()
 
-            # Step 2: Transcription (placeholder - will implement transcription activity)
+            # Step 2: Transcription (AssemblyAI with heartbeats)
             self._status = "transcribing"
-            # TODO: Implement transcription activity with heartbeats
-            # For now, assume transcript exists in creative
-            transcript_text = creative.get("transcript", "")
+            audio_url = creative.get("media_url") or creative.get("video_url")
 
-            # Step 3: LLM Decomposition (placeholder - will implement LLM activity)
+            if not audio_url:
+                self._error = "Creative has no media_url or video_url"
+                return self._build_result()
+
+            transcription_result = await workflow.execute_activity(
+                transcribe_audio,
+                audio_url,
+                None,  # language_code - auto-detect
+                start_to_close_timeout=timedelta(minutes=15),
+                heartbeat_timeout=timedelta(seconds=60),
+                retry_policy=long_running_retry,
+            )
+
+            transcript_text = transcription_result.get("text", "")
+            if not transcript_text:
+                self._error = "Transcription returned empty text"
+                return self._build_result()
+
+            # Emit transcription event
+            await workflow.execute_activity(
+                emit_event,
+                "TranscriptCreated",
+                {
+                    "creative_id": input.creative_id,
+                    "transcript_id": transcription_result.get("transcript_id"),
+                    "words": transcription_result.get("words", 0),
+                },
+                start_to_close_timeout=timedelta(seconds=10),
+            )
+
+            # Step 3: LLM Decomposition (OpenAI)
             self._status = "decomposing"
-            # TODO: Implement LLM decomposition activity
-            # For now, create minimal decomposition
-            decomposition_payload = {
-                "schema_version": "v1",
-                "angle_type": "pain",
-                "core_belief": "transformation",
-                "promise_type": "result",
-            }
+            decomposition_result = await workflow.execute_activity(
+                decompose_creative,
+                transcript_text,
+                input.creative_id,
+                start_to_close_timeout=timedelta(seconds=120),
+                retry_policy=default_retry,
+            )
 
-            # Compute canonical hash
-            import hashlib
-            import json
-
-            canonical_hash = hashlib.sha256(
-                json.dumps(decomposition_payload, sort_keys=True).encode()
-            ).hexdigest()
+            decomposition_payload = decomposition_result["payload"]
+            canonical_hash = decomposition_result["canonical_hash"]
 
             # Save decomposed creative
             decomposed = await workflow.execute_activity(
@@ -123,11 +164,12 @@ class CreativePipelineWorkflow:
                 input.creative_id,
                 decomposition_payload,
                 canonical_hash,
+                transcription_result.get("transcript_id"),
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
 
-            # Emit event
+            # Emit decomposition event
             await workflow.execute_activity(
                 emit_event,
                 "CreativeDecomposed",
@@ -135,6 +177,7 @@ class CreativePipelineWorkflow:
                     "creative_id": input.creative_id,
                     "decomposed_creative_id": decomposed["id"],
                     "canonical_hash": canonical_hash,
+                    "schema_version": decomposition_result["schema_version"],
                 },
                 start_to_close_timeout=timedelta(seconds=10),
             )
@@ -165,7 +208,7 @@ class CreativePipelineWorkflow:
                 )
                 self._idea_id = new_idea["id"]
 
-            # Emit event
+            # Emit idea event
             await workflow.execute_activity(
                 emit_event,
                 "IdeaRegistered",
@@ -188,7 +231,7 @@ class CreativePipelineWorkflow:
 
             self._decision = decision_result.decision_type
 
-            # Emit event
+            # Emit decision event
             await workflow.execute_activity(
                 emit_event,
                 "DecisionMade",
@@ -205,9 +248,77 @@ class CreativePipelineWorkflow:
             hypothesis_id = None
             if decision_result.is_approved:
                 self._status = "generating_hypothesis"
-                # TODO: Implement hypothesis generation activity
-                # For now, skip hypothesis
-                pass
+
+                # Generate hypotheses
+                hypothesis_result = await workflow.execute_activity(
+                    generate_hypotheses,
+                    self._idea_id,
+                    decision_result.decision_id,
+                    decomposition_payload,
+                    start_to_close_timeout=timedelta(seconds=120),
+                    retry_policy=default_retry,
+                )
+
+                # Save hypotheses
+                saved_hypotheses = await workflow.execute_activity(
+                    save_hypotheses,
+                    hypothesis_result["hypotheses"],
+                    self._idea_id,
+                    decision_result.decision_id,
+                    hypothesis_result["prompt_version"],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+
+                self._hypothesis_count = len(saved_hypotheses)
+
+                # Emit hypothesis event
+                await workflow.execute_activity(
+                    emit_event,
+                    "HypothesisGenerated",
+                    {
+                        "idea_id": self._idea_id,
+                        "decision_id": decision_result.decision_id,
+                        "count": self._hypothesis_count,
+                    },
+                    start_to_close_timeout=timedelta(seconds=10),
+                )
+
+                # Step 7: Telegram Delivery (only for APPROVE with buyer)
+                if input.buyer_id and saved_hypotheses:
+                    self._status = "delivering_telegram"
+
+                    # Get buyer's chat ID
+                    chat_id = await workflow.execute_activity(
+                        get_buyer_chat_id,
+                        input.buyer_id,
+                        start_to_close_timeout=timedelta(seconds=10),
+                        retry_policy=default_retry,
+                    )
+
+                    if chat_id:
+                        # Send first hypothesis to Telegram
+                        first_hypothesis = saved_hypotheses[0]
+                        hypothesis_id = first_hypothesis["id"]
+
+                        delivery_result = await workflow.execute_activity(
+                            send_hypothesis_to_telegram,
+                            hypothesis_id,
+                            first_hypothesis["content"],
+                            chat_id,
+                            self._idea_id,
+                            start_to_close_timeout=timedelta(seconds=30),
+                            retry_policy=default_retry,
+                        )
+
+                        # Emit delivery event
+                        await workflow.execute_activity(
+                            emit_delivery_event,
+                            hypothesis_id,
+                            self._idea_id,
+                            delivery_result["status"],
+                            start_to_close_timeout=timedelta(seconds=10),
+                        )
 
             # Update creative status
             await workflow.execute_activity(
@@ -245,6 +356,7 @@ class CreativePipelineWorkflow:
             decision_id=decision_id,
             decision_type=self._decision,
             hypothesis_id=hypothesis_id,
+            hypothesis_count=self._hypothesis_count,
             completed_at=datetime.utcnow(),
             error=self._error,
         )
@@ -262,5 +374,6 @@ class CreativePipelineWorkflow:
             "creative_id": self._creative_id,
             "idea_id": self._idea_id,
             "decision": self._decision,
+            "hypothesis_count": self._hypothesis_count,
             "error": self._error,
         }

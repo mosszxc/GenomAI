@@ -58,6 +58,7 @@ class PipelineResult:
     decision_id: Optional[str] = None
     decision_type: Optional[str] = None  # APPROVE | REJECT | DEFER
     hypothesis_id: Optional[str] = None
+    hypothesis_count: int = 0
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
 
