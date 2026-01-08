@@ -211,6 +211,213 @@ class BatchMetricsOutput:
     failed_ids: list[str]
 
 
+@dataclass
+class GetCampaignsBySourceInput:
+    """Input for get_campaigns_by_source activity"""
+    source: str  # Keitaro source/affiliate parameter
+    date_from: Optional[str] = None  # ISO date string
+    date_to: Optional[str] = None  # ISO date string
+
+
+@dataclass
+class CampaignInfo:
+    """Campaign information from Keitaro"""
+    campaign_id: str
+    name: str
+    clicks: int = 0
+    conversions: int = 0
+    revenue: float = 0.0
+    cost: float = 0.0
+    offer_id: Optional[str] = None
+    landing_id: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "campaign_id": self.campaign_id,
+            "name": self.name,
+            "clicks": self.clicks,
+            "conversions": self.conversions,
+            "revenue": self.revenue,
+            "cost": self.cost,
+        }
+
+
+@dataclass
+class GetCampaignsBySourceOutput:
+    """Output from get_campaigns_by_source activity"""
+    campaigns: list[CampaignInfo]
+    total: int
+    source: str
+
+
+@activity.defn
+async def get_campaigns_by_source(input: GetCampaignsBySourceInput) -> GetCampaignsBySourceOutput:
+    """
+    Get all campaigns for a specific source/affiliate from Keitaro.
+
+    Uses report/build with source filter to get campaigns.
+
+    Args:
+        input: Contains source and optional date range
+
+    Returns:
+        GetCampaignsBySourceOutput with list of campaigns
+    """
+    activity.logger.info(f"Fetching campaigns for source: {input.source}")
+
+    url = _get_keitaro_url("/report/build")
+    headers = _get_keitaro_headers()
+
+    # Build date range
+    range_config = {}
+    if input.date_from and input.date_to:
+        range_config = {
+            "from": input.date_from,
+            "to": input.date_to,
+            "timezone": "UTC"
+        }
+    else:
+        range_config = {"interval": "last_30_days"}
+
+    payload = {
+        "range": range_config,
+        "metrics": ["clicks", "conversions", "revenue", "cost"],
+        "dimensions": ["campaign_id", "campaign"],
+        "filters": [
+            {
+                "name": "source",
+                "operator": "EQUALS",
+                "expression": input.source
+            }
+        ]
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+    rows = data.get("rows", [])
+    campaigns = []
+
+    for row in rows:
+        campaign_id = row.get("campaign_id")
+        if not campaign_id:
+            continue
+
+        campaigns.append(CampaignInfo(
+            campaign_id=str(campaign_id),
+            name=row.get("campaign", f"Campaign {campaign_id}"),
+            clicks=int(row.get("clicks", 0) or 0),
+            conversions=int(row.get("conversions", 0) or 0),
+            revenue=float(row.get("revenue", 0) or 0),
+            cost=float(row.get("cost", 0) or 0),
+        ))
+
+    activity.logger.info(f"Found {len(campaigns)} campaigns for source: {input.source}")
+
+    return GetCampaignsBySourceOutput(
+        campaigns=campaigns,
+        total=len(campaigns),
+        source=input.source
+    )
+
+
+@dataclass
+class GetCampaignCreativesInput:
+    """Input for get_campaign_creatives activity"""
+    campaign_id: str
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+
+
+@dataclass
+class CreativeInfo:
+    """Creative/landing information from Keitaro"""
+    landing_id: str
+    name: str
+    url: Optional[str] = None
+    clicks: int = 0
+    conversions: int = 0
+
+
+@dataclass
+class GetCampaignCreativesOutput:
+    """Output from get_campaign_creatives activity"""
+    creatives: list[CreativeInfo]
+    campaign_id: str
+    total: int
+
+
+@activity.defn
+async def get_campaign_creatives(input: GetCampaignCreativesInput) -> GetCampaignCreativesOutput:
+    """
+    Get creatives (landings) for a specific campaign from Keitaro.
+
+    Args:
+        input: Contains campaign_id and optional date range
+
+    Returns:
+        GetCampaignCreativesOutput with list of creatives
+    """
+    activity.logger.info(f"Fetching creatives for campaign: {input.campaign_id}")
+
+    url = _get_keitaro_url("/report/build")
+    headers = _get_keitaro_headers()
+
+    # Build date range
+    range_config = {}
+    if input.date_from and input.date_to:
+        range_config = {
+            "from": input.date_from,
+            "to": input.date_to,
+            "timezone": "UTC"
+        }
+    else:
+        range_config = {"interval": "last_30_days"}
+
+    payload = {
+        "range": range_config,
+        "metrics": ["clicks", "conversions"],
+        "dimensions": ["landing_id", "landing"],
+        "filters": [
+            {
+                "name": "campaign_id",
+                "operator": "EQUALS",
+                "expression": input.campaign_id
+            }
+        ]
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+    rows = data.get("rows", [])
+    creatives = []
+
+    for row in rows:
+        landing_id = row.get("landing_id")
+        if not landing_id:
+            continue
+
+        creatives.append(CreativeInfo(
+            landing_id=str(landing_id),
+            name=row.get("landing", f"Landing {landing_id}"),
+            clicks=int(row.get("clicks", 0) or 0),
+            conversions=int(row.get("conversions", 0) or 0),
+        ))
+
+    activity.logger.info(f"Found {len(creatives)} creatives for campaign: {input.campaign_id}")
+
+    return GetCampaignCreativesOutput(
+        creatives=creatives,
+        campaign_id=input.campaign_id,
+        total=len(creatives)
+    )
+
+
 @activity.defn
 async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     """
