@@ -232,8 +232,7 @@ class CreativeRegistrationWorkflow:
         Returns:
             dict with creative_id and status
         """
-        from temporal.activities.supabase import emit_event
-        import uuid
+        from temporal.activities.supabase import emit_event, create_creative
 
         default_retry = RetryPolicy(
             initial_interval=timedelta(seconds=1),
@@ -242,12 +241,22 @@ class CreativeRegistrationWorkflow:
         )
 
         try:
-            # Create creative record
-            self._creative_id = str(uuid.uuid4())
-            self._status = "registered"
+            # Create creative record in database
+            self._status = "registering"
 
-            # Note: In production, this would create the creative in database
-            # and then start the CreativePipelineWorkflow
+            creative = await workflow.execute_activity(
+                create_creative,
+                video_url,
+                "telegram",  # source_type
+                buyer_id,
+                target_geo,
+                target_vertical,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            self._creative_id = creative["id"]
+            self._status = "registered"
 
             # Emit event
             await workflow.execute_activity(
