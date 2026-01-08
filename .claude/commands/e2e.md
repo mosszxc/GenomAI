@@ -905,7 +905,9 @@ WebFetch: GET https://genomai.onrender.com/health
 
 ### MANDATORY TEST MATRIX
 
-**Выполнить ВСЕ тесты из Category 1-2. Записать executionId для каждого!**
+**Тестируем 11 workflows обязательно + 3 опционально. Записать executionId для каждого!**
+
+Из 31 активного workflow: ✅ 11 mandatory, ⚠️ 3 optional, ⏭️ 19 skip (LLM/TG/Historical)
 
 #### Category 1: Safe Tests (ОБЯЗАТЕЛЬНО)
 
@@ -917,27 +919,38 @@ WebFetch: GET https://genomai.onrender.com/health
 | 5.5 | data_integrity | `IEu0VguJiGwZsr92` | `n8n_test_workflow({workflowId: "IEu0VguJiGwZsr92"})` | execution success |
 | 5.6 | orphan_monitor | `lHow2zq2OOw7J0K7` | `n8n_test_workflow({workflowId: "lHow2zq2OOw7J0K7"})` | execution success |
 
-#### Category 2: Updates Data (ОБЯЗАТЕЛЬНО)
+#### Category 2: Metrics & Outcomes (ОБЯЗАТЕЛЬНО)
 
 | # | Workflow | ID | MCP Call | DB Check |
 |---|----------|-----|----------|----------|
-| 5.7 | keitaro_poller | `0TrVJOtHiNEEAsTN` | `n8n_test_workflow({workflowId: "0TrVJOtHiNEEAsTN"})` | `SELECT MAX(updated_at) FROM genomai.raw_metrics_current` |
-| 5.8 | snapshot_creator | `Gii8l2XwnX43Wqr4` | `n8n_test_workflow({workflowId: "Gii8l2XwnX43Wqr4", data: {tracker_id: TEST_IDS.test_tracker_id, date: "YYYY-MM-DD", metrics: {clicks:0,conversions:0,spend:0,revenue:0}}})` | `SELECT MAX(date) FROM genomai.daily_metrics_snapshot` |
+| 5.7 | keitaro_poller | `0TrVJOtHiNEEAsTN` | `n8n_test_workflow({workflowId: "0TrVJOtHiNEEAsTN"})` | `MAX(updated_at) FROM raw_metrics_current` |
+| 5.8 | snapshot_creator | `Gii8l2XwnX43Wqr4` | `n8n_test_workflow({workflowId: "Gii8l2XwnX43Wqr4", data: {tracker_id: TEST_IDS.test_tracker_id, date: "YYYY-MM-DD", metrics: {clicks:0}}})` | `MAX(date) FROM daily_metrics_snapshot` |
+| 5.9 | outcome_processor | `bbbQC4Aua5E3SYSK` | `n8n_test_workflow({workflowId: "bbbQC4Aua5E3SYSK", data: {tracker_id: TEST_IDS.test_tracker_id}})` | execution success |
+| 5.10 | outcome_aggregator | `243QnGrUSDtXLjqU` | `n8n_test_workflow({workflowId: "243QnGrUSDtXLjqU", data: {tracker_id: TEST_IDS.test_tracker_id}})` | execution success |
 
-#### Category 3: Creates Data (ОПЦИОНАЛЬНО, с осторожностью)
+#### Category 3: Recommendations & Ingestion (ОБЯЗАТЕЛЬНО)
 
 | # | Workflow | ID | MCP Call | DB Check |
 |---|----------|-----|----------|----------|
-| 5.9 | decision_engine_mvp | `YT2d7z5h9bPy1R4v` | `n8n_test_workflow({workflowId: "YT2d7z5h9bPy1R4v", data: {idea_id: TEST_IDS.test_idea_id, payload: {hook:"test"}, source:"e2e"}})` | decision returned |
-| 5.10 | idea_registry | `cGSyJPROrkqLVHZP` | `n8n_test_workflow({workflowId: "cGSyJPROrkqLVHZP", data: {creative_id: TEST_IDS.test_creative_id}})` | execution success |
-| 5.11 | hypothesis_factory | `oxG1DqxtkTGCqLZi` | `n8n_test_workflow({workflowId: "oxG1DqxtkTGCqLZi", data: {idea_id: TEST_IDS.test_idea_id, decision_id: TEST_IDS.test_decision_id, decision:"approve"}})` | creates hypothesis |
+| 5.11 | recommendation_generator | `wgEdEqt2BA3P9JlA` | `n8n_test_workflow({workflowId: "wgEdEqt2BA3P9JlA"})` | execution success |
+| 5.12 | creative_ingestion | `dvZvUUmhtPzYOK7X` | `n8n_test_workflow({workflowId: "dvZvUUmhtPzYOK7X", data: {video_url: "test", tracker_id: "e2e"}})` | validation error OK |
 
-#### Category 4-6: SKIP (LLM/Telegram/Historical)
+#### Category 4: Core Pipeline — Creates Data (ОПЦИОНАЛЬНО)
 
-Эти категории пропустить — требуют реальные ресурсы:
-- LLM workflows (OpenAI cost)
-- Telegram workflows (sends real messages)
-- Historical import (batch operations)
+| # | Workflow | ID | MCP Call | DB Check |
+|---|----------|-----|----------|----------|
+| 5.13 | decision_engine_mvp | `YT2d7z5h9bPy1R4v` | `n8n_test_workflow({workflowId: "YT2d7z5h9bPy1R4v", data: {idea_id: TEST_IDS.test_idea_id, payload: {hook:"test"}, source:"e2e"}})` | decision returned |
+| 5.14 | idea_registry | `cGSyJPROrkqLVHZP` | `n8n_test_workflow({workflowId: "cGSyJPROrkqLVHZP", data: {creative_id: TEST_IDS.test_creative_id}})` | execution success |
+| 5.15 | hypothesis_factory | `oxG1DqxtkTGCqLZi` | `n8n_test_workflow({workflowId: "oxG1DqxtkTGCqLZi", data: {idea_id: TEST_IDS.test_idea_id, decision_id: TEST_IDS.test_decision_id}})` | creates hypothesis |
+
+#### SKIP: LLM Workflows (4) — OpenAI cost
+`WMnFHqsFh8i7ddjV` `mv6diVtqnuwr7qev` `fcnpPrj9sCFUqoWF` `zwtqav0d2R35zQot`
+
+#### SKIP: Telegram Workflows (11) — Sends messages
+`BuyQncnHNb7ulL6z` `5q3mshC9HRPpL6C0` `hgTozRQFwh4GLM0z` `d5i9dB2GNqsbfmSD` `pL6C4j1uiJLfVRIi` `rHuT8dYyIXoiHMAV` `WkS1fPSxZaLmWcYy` `QC8bmnAYdH5mkntG` `4uluD04qYHhsetBy` `9nCezru94d0ABHh4` `97cj3kRY6zzlAy0M`
+
+#### SKIP: Historical (4) — Batch operations
+`1FC7amTd3dCRZPEa` `lmiWkYTRZPSpydJH` `6tu8j4M4wvwi0pyB` `UYgvqpsU3TMzb2Qd`
 
 ---
 
@@ -983,9 +996,14 @@ WebFetch: GET https://genomai.onrender.com/health
 | 5.6 | orphan_monitor | 12349 | ✅ | ✅ | PASS |
 | 5.7 | keitaro_poller | 12350 | ✅ | ✅ metrics fresh | PASS |
 | 5.8 | snapshot_creator | 12351 | ✅ | ✅ snapshot today | PASS |
-| 5.9 | decision_engine | SKIP | - | - | SKIP (optional) |
+| 5.9 | outcome_processor | 12352 | ✅ | ✅ | PASS |
+| 5.10 | outcome_aggregator | 12353 | ✅ | ✅ | PASS |
+| 5.11 | recommendation_gen | 12354 | ✅ | ✅ | PASS |
+| 5.12 | creative_ingestion | 12355 | ✅ | ✅ validation err | PASS |
+| 5.13-15 | Core Pipeline | SKIP | - | - | SKIP (optional) |
 
-**Live Tests: 7/7 executed, 7/7 passed**
+**Live Tests: 11/11 mandatory executed, 11/11 passed**
+**Skipped: 3 optional (creates data), 19 (LLM/TG/Historical)**
 ```
 
 **Без этой секции отчёт НЕПОЛНЫЙ!**
