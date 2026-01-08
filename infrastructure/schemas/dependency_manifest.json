@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "version": "1.0.0",
-  "updated_at": "2026-01-07",
+  "updated_at": "2026-01-08",
   "description": "Auto-generated dependency manifest from n8n",
   "workflows": {
     "keitaro_poller": {
@@ -9,8 +9,8 @@
       "active": true,
       "trigger": "schedule",
       "calls": [
-        "buyer",
-        "snapshot-creator"
+        "snapshot-creator",
+        "buyer"
       ],
       "writes": [
         "historical_import_queue",
@@ -41,8 +41,8 @@
         "keitaro_config"
       ],
       "events_emitted": [
-        "OutcomeImported",
-        "CreativeRegistered"
+        "CreativeRegistered",
+        "OutcomeImported"
       ],
       "external_deps": [
         "Keitaro API"
@@ -64,18 +64,18 @@
       "trigger": "schedule",
       "calls": [],
       "writes": [
+        "BuyingUsersKey",
         "creatives",
-        "performance_data",
-        "BuyingUsersKey"
+        "performance_data"
       ],
       "reads": [
-        "creatives",
-        "performance_data",
         "KeitaroCampaigns",
+        "BuyingUsersAdaccounts",
         "ad_accounts",
-        "buyers",
+        "performance_data",
+        "creatives",
         "BuyingUsersKey",
-        "BuyingUsersAdaccounts"
+        "buyers"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -106,8 +106,8 @@
         "={{ \"hypotheses\" }}"
       ],
       "reads": [
-        "={{ \"buyers\" }}",
-        "={{ \"hypotheses\" }}"
+        "={{ \"hypotheses\" }}",
+        "={{ \"buyers\" }}"
       ],
       "events_emitted": [
         "DeliveryFailed",
@@ -144,8 +144,8 @@
         "buyer_states"
       ],
       "reads": [
-        "buyer_states",
-        "historical_import_queue"
+        "historical_import_queue",
+        "buyer_states"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -161,8 +161,8 @@
         "historical_import_queue"
       ],
       "reads": [
-        "keitaro_config",
-        "historical_import_queue"
+        "historical_import_queue",
+        "keitaro_config"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -200,8 +200,8 @@
         "={{ \"recommendations\" }}"
       ],
       "reads": [
-        "={{ \"hypotheses\" }}",
-        "={{ \"recommendations\" }}"
+        "={{ \"recommendations\" }}",
+        "={{ \"hypotheses\" }}"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -216,12 +216,12 @@
         "historical-import-process"
       ],
       "writes": [
-        "buyer_states",
-        "historical_import_queue"
+        "historical_import_queue",
+        "buyer_states"
       ],
       "reads": [
-        "buyer_states",
-        "historical_import_queue"
+        "historical_import_queue",
+        "buyer_states"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -236,8 +236,8 @@
         "router"
       ],
       "writes": [
-        "buyer_interactions",
-        "event_log"
+        "event_log",
+        "buyer_interactions"
       ],
       "reads": [
         "buyers",
@@ -263,8 +263,8 @@
       "active": true,
       "trigger": "webhook",
       "calls": [
-        "outcome-processor",
-        "outcome-aggregator"
+        "outcome-aggregator",
+        "outcome-processor"
       ],
       "writes": [
         "daily_metrics_snapshot"
@@ -281,8 +281,8 @@
       "trigger": "schedule",
       "calls": [],
       "writes": [
-        "buyer_states",
-        "rpc"
+        "rpc",
+        "buyer_states"
       ],
       "reads": [
         "buyer_states"
@@ -299,12 +299,12 @@
       "calls": [],
       "writes": [],
       "reads": [
-        "ideas",
         "decision_traces",
         "decisions",
-        "event_log",
         "decomposed_creatives",
-        "hypotheses"
+        "event_log",
+        "hypotheses",
+        "ideas"
       ],
       "events_emitted": [],
       "external_deps": []
@@ -332,13 +332,13 @@
         "={{ \"recommendations\" }}"
       ],
       "reads": [
-        "={{ \"buyers\" }}",
         "={{ \"avatars\" }}",
-        "={{ \"recommendations\" }}"
+        "={{ \"recommendations\" }}",
+        "={{ \"buyers\" }}"
       ],
       "events_emitted": [
-        "RecommendationDelivered",
-        "DeliveryFailed"
+        "DeliveryFailed",
+        "RecommendationDelivered"
       ],
       "external_deps": [
         "Telegram Bot API"
@@ -352,8 +352,8 @@
       "writes": [],
       "reads": [
         "buyers",
-        "keitaro_config",
-        "historical_import_queue"
+        "historical_import_queue",
+        "keitaro_config"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -381,18 +381,18 @@
     },
     "genomai___creative_transcription": {
       "id": "WMnFHqsFh8i7ddjV",
-      "active": false,
+      "active": true,
       "trigger": "webhook",
       "calls": [],
       "writes": [
+        "transcripts",
         "creatives",
-        "event_log",
-        "transcripts"
+        "event_log"
       ],
       "reads": [
+        "transcripts",
         "buyers",
-        "creatives",
-        "transcripts"
+        "creatives"
       ],
       "events_emitted": [
         "TranscriptionFailed",
@@ -438,9 +438,9 @@
       "calls": [],
       "writes": [],
       "reads": [
+        "config",
         "creatives",
-        "creative_idea_lookup",
-        "config"
+        "creative_idea_lookup"
       ],
       "events_emitted": [
         "HypothesisEvaluated"
@@ -458,11 +458,11 @@
         "decomposed_creatives"
       ],
       "reads": [
-        "creatives",
         "avatars",
-        "ideas",
+        "decomposed_creatives",
+        "creatives",
         "buyers",
-        "decomposed_creatives"
+        "ideas"
       ],
       "events_emitted": [
         "IdeaRegistered"
@@ -477,16 +477,16 @@
         "decompose"
       ],
       "writes": [
-        "buyer_interactions",
-        "event_log"
+        "event_log",
+        "buyer_interactions"
       ],
       "reads": [
         "buyers"
       ],
       "events_emitted": [
+        "CreativeRegistered",
         "BuyerNotRegistered",
-        "CreativeIngestionFailed",
-        "CreativeRegistered"
+        "CreativeIngestionFailed"
       ],
       "external_deps": [
         "Telegram Bot API"
@@ -504,8 +504,8 @@
         "creatives"
       ],
       "events_emitted": [
-        "CreativeRegistered",
         "CreativeReferenceReceived",
+        "CreativeRegistered",
         "CreativeIngestionRejected"
       ],
       "external_deps": []
@@ -540,8 +540,8 @@
         "buyer-historical-loader"
       ],
       "writes": [
-        "buyer_states",
-        "rpc"
+        "rpc",
+        "buyer_states"
       ],
       "reads": [
         "buyers",
@@ -569,8 +569,8 @@
       "trigger": "webhook",
       "calls": [],
       "writes": [
-        "buyer_states",
-        "historical_import_queue"
+        "historical_import_queue",
+        "buyer_states"
       ],
       "reads": [
         "keitaro_config"
@@ -593,8 +593,8 @@
       ],
       "reads": [],
       "events_emitted": [
-        "DecompositionFailed",
         "CreativeDecomposed",
+        "DecompositionFailed",
         "TranscriptCreated"
       ],
       "external_deps": [
@@ -608,11 +608,11 @@
       "calls": [],
       "writes": [],
       "reads": [
-        "creatives",
         "={{ \"event_log\" }}",
+        "decomposed_creatives",
         "={{ \"decisions\" }}",
         "premises",
-        "decomposed_creatives"
+        "creatives"
       ],
       "events_emitted": [
         "HypothesisGenerationFailed",
@@ -631,12 +631,12 @@
         "genomai-transcribe"
       ],
       "writes": [
-        "creatives",
-        "event_log"
+        "event_log",
+        "creatives"
       ],
       "reads": [
-        "buyers",
-        "transcripts"
+        "transcripts",
+        "buyers"
       ],
       "events_emitted": [
         "SpyCreativeRegistered"
@@ -680,9 +680,9 @@
       "trigger": "schedule",
       "calls": [],
       "writes": [
-        "premises",
         "event_log",
-        "rpc"
+        "rpc",
+        "premises"
       ],
       "reads": [
         "premises"
@@ -709,8 +709,8 @@
         "raw_metrics_current"
       ],
       "events_emitted": [
-        "DailyMetricsSnapshotCreated",
-        "RawMetricsObserved"
+        "RawMetricsObserved",
+        "DailyMetricsSnapshotCreated"
       ],
       "external_deps": [
         "Keitaro API"
