@@ -180,15 +180,16 @@ fi
 # Return to main project
 cd "$PROJECT_ROOT"
 
-# Cleanup worktree
+# Cleanup current worktree
 echo ""
 echo "Cleaning up worktree..."
 git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
 git branch -d "$BRANCH_NAME" 2>/dev/null || true
 
-# Fetch and prune
-git fetch --prune
-git worktree prune
+# Run full cleanup to catch any other merged worktrees
+echo ""
+echo "Running cleanup for other merged worktrees..."
+"$PROJECT_ROOT/scripts/cleanup-worktrees.sh" 2>/dev/null || true
 
 echo ""
 echo "=== Done ==="
