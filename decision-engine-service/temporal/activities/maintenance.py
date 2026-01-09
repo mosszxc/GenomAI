@@ -255,18 +255,18 @@ async def emit_maintenance_event(
     event = {
         "id": str(uuid.uuid4()),
         "event_type": "MaintenanceCompleted",
+        "entity_type": "system",
         "payload": {
             "buyers_reset": buyers_reset,
             "recommendations_expired": recommendations_expired,
             "integrity_issues": issues_count,
         },
-        "source": "temporal",
-        "created_at": datetime.utcnow().isoformat(),
+        "occurred_at": datetime.utcnow().isoformat(),
     }
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{rest_url}/events",
+            f"{rest_url}/event_log",
             headers=headers,
             json=event,
         )

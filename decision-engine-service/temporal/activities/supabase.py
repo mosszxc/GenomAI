@@ -302,17 +302,19 @@ async def update_creative_status(creative_id: str, status: str) -> None:
 async def emit_event(
     event_type: str,
     payload: Dict[str, Any],
-    source: str = "temporal",
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Emit event to Supabase events table.
+    Emit event to Supabase event_log table.
 
     Replaces n8n event emission pattern.
 
     Args:
         event_type: Event type (e.g., "CreativeDecomposed", "DecisionMade")
         payload: Event payload
-        source: Event source identifier
+        entity_type: Optional entity type (e.g., "creative", "decision")
+        entity_id: Optional entity UUID
 
     Returns:
         Created event dict
@@ -326,13 +328,17 @@ async def emit_event(
         "id": str(uuid.uuid4()),
         "event_type": event_type,
         "payload": payload,
-        "source": source,
-        "created_at": datetime.utcnow().isoformat(),
+        "occurred_at": datetime.utcnow().isoformat(),
     }
+
+    if entity_type:
+        event["entity_type"] = entity_type
+    if entity_id:
+        event["entity_id"] = entity_id
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{rest_url}/events",
+            f"{rest_url}/event_log",
             headers=headers,
             json=event,
         )
