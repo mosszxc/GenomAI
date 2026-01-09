@@ -27,6 +27,7 @@ with workflow.unsafe.imports_passed_through():
         HistoricalImportInput,
         VALID_GEOS,
         VALID_VERTICALS,
+        CreateBuyerInput,
     )
 
 
@@ -132,17 +133,6 @@ class BuyerOnboardingWorkflow:
         self._telegram_username = input.telegram_username
         self._chat_id = input.chat_id or input.telegram_id
 
-        # Import activities inside workflow (pass-through for sandbox)
-        with workflow.unsafe.imports_passed_through():
-            from temporal.activities.buyer import (
-                create_buyer,
-                load_buyer_by_telegram_id,
-                update_buyer,
-                send_telegram_message,
-                CreateBuyerInput,
-                UpdateBuyerInput,
-            )
-
         # Default retry policy
         default_retry = RetryPolicy(
             initial_interval=timedelta(seconds=1),
@@ -156,7 +146,7 @@ class BuyerOnboardingWorkflow:
         try:
             # Check if buyer already exists
             existing_buyer = await workflow.execute_activity(
-                load_buyer_by_telegram_id,
+                "load_buyer_by_telegram_id",
                 self._telegram_id,
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
@@ -164,15 +154,23 @@ class BuyerOnboardingWorkflow:
 
             if existing_buyer:
                 # Buyer exists, return completed
-                self._buyer_id = existing_buyer.id
-                self._name = existing_buyer.name
-                self._geos = existing_buyer.geos or []
-                self._verticals = existing_buyer.verticals or []
-                self._keitaro_source = existing_buyer.keitaro_source
+                # Handle both dict and object responses
+                if isinstance(existing_buyer, dict):
+                    self._buyer_id = existing_buyer["id"]
+                    self._name = existing_buyer.get("name")
+                    self._geos = existing_buyer.get("geos") or []
+                    self._verticals = existing_buyer.get("verticals") or []
+                    self._keitaro_source = existing_buyer.get("keitaro_source")
+                else:
+                    self._buyer_id = existing_buyer.id
+                    self._name = existing_buyer.name
+                    self._geos = existing_buyer.geos or []
+                    self._verticals = existing_buyer.verticals or []
+                    self._keitaro_source = existing_buyer.keitaro_source
                 self._state = OnboardingState.COMPLETED
 
                 await workflow.execute_activity(
-                    send_telegram_message,
+                    "send_telegram_message",
                     self._chat_id,
                     f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up.",
                     start_to_close_timeout=timedelta(seconds=30),
@@ -184,7 +182,7 @@ class BuyerOnboardingWorkflow:
             # Step 1: Send welcome message and wait for name
             self._state = OnboardingState.AWAITING_NAME
             await workflow.execute_activity(
-                send_telegram_message,
+                "send_telegram_message",
                 self._chat_id,
                 MESSAGES["welcome"],
                 start_to_close_timeout=timedelta(seconds=30),
@@ -204,7 +202,7 @@ class BuyerOnboardingWorkflow:
             # Step 2: Ask for GEOs
             self._state = OnboardingState.AWAITING_GEO
             await workflow.execute_activity(
-                send_telegram_message,
+                "send_telegram_message",
                 self._chat_id,
                 MESSAGES["ask_geo"].format(name=self._name),
                 start_to_close_timeout=timedelta(seconds=30),
@@ -230,7 +228,7 @@ class BuyerOnboardingWorkflow:
 
                 # Invalid, ask again
                 await workflow.execute_activity(
-                    send_telegram_message,
+                    "send_telegram_message",
                     self._chat_id,
                     MESSAGES["invalid_geo"],
                     start_to_close_timeout=timedelta(seconds=30),
@@ -240,7 +238,7 @@ class BuyerOnboardingWorkflow:
             # Step 3: Ask for verticals
             self._state = OnboardingState.AWAITING_VERTICAL
             await workflow.execute_activity(
-                send_telegram_message,
+                "send_telegram_message",
                 self._chat_id,
                 MESSAGES["ask_vertical"].format(geos=", ".join(self._geos)),
                 start_to_close_timeout=timedelta(seconds=30),
@@ -266,7 +264,7 @@ class BuyerOnboardingWorkflow:
 
                 # Invalid, ask again
                 await workflow.execute_activity(
-                    send_telegram_message,
+                    "send_telegram_message",
                     self._chat_id,
                     MESSAGES["invalid_vertical"],
                     start_to_close_timeout=timedelta(seconds=30),
@@ -276,7 +274,7 @@ class BuyerOnboardingWorkflow:
             # Step 4: Ask for Keitaro source
             self._state = OnboardingState.AWAITING_KEITARO
             await workflow.execute_activity(
-                send_telegram_message,
+                "send_telegram_message",
                 self._chat_id,
                 MESSAGES["ask_keitaro"].format(verticals=", ".join(self._verticals)),
                 start_to_close_timeout=timedelta(seconds=30),
@@ -296,7 +294,7 @@ class BuyerOnboardingWorkflow:
             # Step 5: Create buyer and load history
             self._state = OnboardingState.LOADING_HISTORY
             await workflow.execute_activity(
-                send_telegram_message,
+                "send_telegram_message",
                 self._chat_id,
                 MESSAGES["loading_history"].format(keitaro_source=self._keitaro_source),
                 start_to_close_timeout=timedelta(seconds=30),
@@ -305,7 +303,7 @@ class BuyerOnboardingWorkflow:
 
             # Create buyer record
             buyer = await workflow.execute_activity(
-                create_buyer,
+                "create_buyer",
                 CreateBuyerInput(
                     telegram_id=self._telegram_id,
                     telegram_username=self._telegram_username,
@@ -318,10 +316,11 @@ class BuyerOnboardingWorkflow:
                 retry_policy=default_retry,
             )
 
-            self._buyer_id = buyer.id
+            self._buyer_id = buyer["id"] if isinstance(buyer, dict) else buyer.id
 
             # Start historical import as child workflow
-            from temporal.workflows.historical_import import HistoricalImportWorkflow
+            with workflow.unsafe.imports_passed_through():
+                from temporal.workflows.historical_import import HistoricalImportWorkflow
 
             import_result = await workflow.execute_child_workflow(
                 HistoricalImportWorkflow.run,
@@ -334,12 +333,12 @@ class BuyerOnboardingWorkflow:
                 execution_timeout=timedelta(hours=2),
             )
 
-            self._campaigns_count = import_result.total_campaigns
+            self._campaigns_count = import_result["total_campaigns"] if isinstance(import_result, dict) else import_result.total_campaigns
 
             # Step 6: Completed
             self._state = OnboardingState.COMPLETED
             await workflow.execute_activity(
-                send_telegram_message,
+                "send_telegram_message",
                 self._chat_id,
                 MESSAGES["completed"].format(
                     name=self._name,
@@ -361,13 +360,11 @@ class BuyerOnboardingWorkflow:
 
     async def _handle_timeout(self) -> BuyerOnboardingResult:
         """Handle step timeout."""
-        from temporal.activities.buyer import send_telegram_message
-
         self._state = OnboardingState.TIMED_OUT
         self._error = "Session timed out"
 
         await workflow.execute_activity(
-            send_telegram_message,
+            "send_telegram_message",
             self._chat_id,
             MESSAGES["timeout"],
             start_to_close_timeout=timedelta(seconds=30),

@@ -18,17 +18,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 import httpx
 
-
-@dataclass
-class CreateBuyerInput:
-    """Input for create_buyer activity."""
-
-    telegram_id: str
-    telegram_username: Optional[str] = None
-    name: Optional[str] = None
-    geos: Optional[List[str]] = None
-    verticals: Optional[List[str]] = None
-    keitaro_source: Optional[str] = None
+from temporal.models.buyer import CreateBuyerInput
 
 
 @dataclass
