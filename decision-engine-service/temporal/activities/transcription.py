@@ -7,6 +7,7 @@ for crash recovery and cancellation support.
 """
 
 import os
+import re
 import time
 from typing import Optional
 from temporalio import activity
@@ -14,6 +15,41 @@ from temporalio.exceptions import ApplicationError
 
 # Polling interval for transcription status (seconds)
 POLL_INTERVAL = 30
+
+
+def convert_to_direct_url(url: str) -> str:
+    """
+    Convert cloud storage URLs to direct download URLs.
+
+    Supports:
+    - Google Drive: /file/d/{ID}/view -> /uc?export=download&id={ID}
+    - Dropbox: ?dl=0 -> ?dl=1
+
+    Args:
+        url: Original URL
+
+    Returns:
+        Direct download URL (or original if not a known cloud storage URL)
+    """
+    # Google Drive pattern: https://drive.google.com/file/d/{FILE_ID}/view...
+    gdrive_pattern = r"https?://drive\.google\.com/file/d/([^/]+)"
+    gdrive_match = re.search(gdrive_pattern, url)
+    if gdrive_match:
+        file_id = gdrive_match.group(1)
+        return f"https://drive.google.com/uc?export=download&id={file_id}"
+
+    # Dropbox pattern: change ?dl=0 to ?dl=1
+    if "dropbox.com" in url:
+        if "?dl=0" in url:
+            return url.replace("?dl=0", "?dl=1")
+        elif "dl=0" not in url and "dl=1" not in url:
+            separator = "&" if "?" in url else "?"
+            return f"{url}{separator}dl=1"
+
+    # Return original if not a known cloud storage URL
+    return url
+
+
 # Maximum wait time before timeout (seconds) - 15 minutes
 MAX_WAIT_TIME = 900
 
@@ -46,6 +82,12 @@ async def transcribe_audio(
         raise ApplicationError("ASSEMBLYAI_API_KEY not configured")
 
     aai.settings.api_key = api_key
+
+    # Convert cloud storage URLs to direct download URLs
+    original_url = audio_url
+    audio_url = convert_to_direct_url(audio_url)
+    if audio_url != original_url:
+        activity.logger.info(f"Converted URL: {original_url} -> {audio_url}")
 
     activity.logger.info(f"Starting transcription for: {audio_url}")
 
