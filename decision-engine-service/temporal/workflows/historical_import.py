@@ -15,12 +15,24 @@ from typing import List
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-# Import models (pass-through for workflow sandbox)
+# Import models and activities (pass-through for workflow sandbox)
 with workflow.unsafe.imports_passed_through():
     from temporal.models.buyer import (
         HistoricalImportInput,
         HistoricalImportResult,
     )
+    from temporal.models.creative import CreativeInput
+    from temporal.activities.supabase import emit_event, create_creative
+    from temporal.activities.keitaro import (
+        get_campaigns_by_source,
+        GetCampaignsBySourceInput,
+    )
+    from temporal.activities.buyer import (
+        queue_historical_import,
+        update_import_status,
+        QueueHistoricalImportInput,
+    )
+    from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
 
 
 # Maximum campaigns per workflow execution (before continue-as-new)
@@ -60,17 +72,6 @@ class HistoricalImportWorkflow:
         """
         self._buyer_id = input.buyer_id
         self._keitaro_source = input.keitaro_source
-
-        # Import activities inside workflow
-        from temporal.activities.keitaro import (
-            get_campaigns_by_source,
-            GetCampaignsBySourceInput,
-        )
-        from temporal.activities.buyer import (
-            queue_historical_import,
-            update_import_status,
-            QueueHistoricalImportInput,
-        )
 
         # Default retry policy
         default_retry = RetryPolicy(
@@ -232,8 +233,6 @@ class CreativeRegistrationWorkflow:
         Returns:
             dict with creative_id and status
         """
-        from temporal.activities.supabase import emit_event, create_creative
-
         default_retry = RetryPolicy(
             initial_interval=timedelta(seconds=1),
             maximum_interval=timedelta(seconds=30),
@@ -273,9 +272,6 @@ class CreativeRegistrationWorkflow:
             )
 
             # Start creative pipeline as child workflow
-            from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
-            from temporal.models.creative import CreativeInput
-
             pipeline_result = await workflow.execute_child_workflow(
                 CreativePipelineWorkflow.run,
                 CreativeInput(
