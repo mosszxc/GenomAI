@@ -248,19 +248,20 @@ async def emit_delivery_event(
     event = {
         "id": str(uuid.uuid4()),
         "event_type": event_type,
+        "entity_type": "hypothesis",
+        "entity_id": hypothesis_id,
         "payload": {
             "hypothesis_id": hypothesis_id,
             "idea_id": idea_id,
             "status": status,
             "error": error,
         },
-        "source": "temporal",
-        "created_at": datetime.utcnow().isoformat(),
+        "occurred_at": datetime.utcnow().isoformat(),
     }
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{rest_url}/events",
+            f"{rest_url}/event_log",
             headers=headers,
             json=event,
         )

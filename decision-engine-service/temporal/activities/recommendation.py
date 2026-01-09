@@ -387,18 +387,19 @@ async def emit_recommendation_event(
     event = {
         "id": str(uuid.uuid4()),
         "event_type": event_type,
+        "entity_type": "recommendation",
+        "entity_id": recommendation_id,
         "payload": {
             "recommendation_id": recommendation_id,
             "buyer_id": buyer_id,
             "error": error,
         },
-        "source": "temporal",
-        "created_at": datetime.utcnow().isoformat(),
+        "occurred_at": datetime.utcnow().isoformat(),
     }
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{rest_url}/events",
+            f"{rest_url}/event_log",
             headers=headers,
             json=event,
         )
