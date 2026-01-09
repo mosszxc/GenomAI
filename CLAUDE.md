@@ -119,7 +119,7 @@ gh issue create -t "title" -l enhancement
 ```
 User: "Работай над issue #123"
 
-1. mcp__github__get_issue(123)     # понять задачу
+1. gh issue view 123               # понять задачу
 2. git worktree list               # проверить существующие
 3. ./scripts/task-start.sh 123    # создать worktree (если нет)
 4. TodoWrite                       # инициализировать tracking
@@ -280,6 +280,27 @@ Always run Post-Task Knowledge Loop after completing any task. No exceptions.
 **Правило:** Один Edit = одна логическая операция. Cosmetic fixes (positions) — batch.
 
 ### MCP Tools
+
+**GitHub — ТОЛЬКО через CLI (MCP нестабилен):**
+```bash
+# Issues
+gh issue list
+gh issue view 123
+gh issue create -t "title" -b "body"
+gh issue close 123
+
+# PRs
+gh pr list
+gh pr view 123
+gh pr create --title "title" --body "body"
+gh pr merge 123
+
+# Commits & branches
+gh api repos/mosszxc/GenomAI/commits --jq '.[0:3]'
+git log --oneline -5
+```
+❌ НЕ использовать: `mcp__github__*` (fetch failed errors)
+✅ ВСЕГДА использовать: `gh` CLI через Bash
 
 **claude-mem:**
 ```
