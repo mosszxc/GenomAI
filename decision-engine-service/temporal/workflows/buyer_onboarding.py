@@ -176,8 +176,7 @@ class BuyerOnboardingWorkflow:
 
                 await workflow.execute_activity(
                     send_telegram_message,
-                    self._chat_id,
-                    f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up.",
+                    args=[self._chat_id, f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
@@ -188,8 +187,7 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.AWAITING_NAME
             await workflow.execute_activity(
                 send_telegram_message,
-                self._chat_id,
-                MESSAGES["welcome"],
+                args=[self._chat_id, MESSAGES["welcome"]],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -208,8 +206,7 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.AWAITING_GEO
             await workflow.execute_activity(
                 send_telegram_message,
-                self._chat_id,
-                MESSAGES["ask_geo"].format(name=self._name),
+                args=[self._chat_id, MESSAGES["ask_geo"].format(name=self._name)],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -234,8 +231,7 @@ class BuyerOnboardingWorkflow:
                 # Invalid, ask again
                 await workflow.execute_activity(
                     send_telegram_message,
-                    self._chat_id,
-                    MESSAGES["invalid_geo"],
+                    args=[self._chat_id, MESSAGES["invalid_geo"]],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
@@ -244,8 +240,7 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.AWAITING_VERTICAL
             await workflow.execute_activity(
                 send_telegram_message,
-                self._chat_id,
-                MESSAGES["ask_vertical"].format(geos=", ".join(self._geos)),
+                args=[self._chat_id, MESSAGES["ask_vertical"].format(geos=", ".join(self._geos))],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -270,8 +265,7 @@ class BuyerOnboardingWorkflow:
                 # Invalid, ask again
                 await workflow.execute_activity(
                     send_telegram_message,
-                    self._chat_id,
-                    MESSAGES["invalid_vertical"],
+                    args=[self._chat_id, MESSAGES["invalid_vertical"]],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
@@ -280,8 +274,7 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.AWAITING_KEITARO
             await workflow.execute_activity(
                 send_telegram_message,
-                self._chat_id,
-                MESSAGES["ask_keitaro"].format(verticals=", ".join(self._verticals)),
+                args=[self._chat_id, MESSAGES["ask_keitaro"].format(verticals=", ".join(self._verticals))],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -300,8 +293,7 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.LOADING_HISTORY
             await workflow.execute_activity(
                 send_telegram_message,
-                self._chat_id,
-                MESSAGES["loading_history"].format(keitaro_source=self._keitaro_source),
+                args=[self._chat_id, MESSAGES["loading_history"].format(keitaro_source=self._keitaro_source)],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -344,14 +336,16 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.COMPLETED
             await workflow.execute_activity(
                 send_telegram_message,
-                self._chat_id,
-                MESSAGES["completed"].format(
-                    name=self._name,
-                    geos=", ".join(self._geos),
-                    verticals=", ".join(self._verticals),
-                    keitaro_source=self._keitaro_source,
-                    campaigns_count=self._campaigns_count,
-                ),
+                args=[
+                    self._chat_id,
+                    MESSAGES["completed"].format(
+                        name=self._name,
+                        geos=", ".join(self._geos),
+                        verticals=", ".join(self._verticals),
+                        keitaro_source=self._keitaro_source,
+                        campaigns_count=self._campaigns_count,
+                    ),
+                ],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -370,8 +364,7 @@ class BuyerOnboardingWorkflow:
 
         await workflow.execute_activity(
             send_telegram_message,
-            self._chat_id,
-            MESSAGES["timeout"],
+            args=[self._chat_id, MESSAGES["timeout"]],
             start_to_close_timeout=timedelta(seconds=30),
         )
 
