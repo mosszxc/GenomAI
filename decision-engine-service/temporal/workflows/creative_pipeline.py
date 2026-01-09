@@ -62,27 +62,28 @@ class CreativePipelineWorkflow:
         self._status = "started"
 
         try:
-            # Import activities inside workflow
-            from temporal.activities.supabase import (
-                get_creative,
-                save_decomposed_creative,
-                check_idea_exists,
-                create_idea,
-                update_creative_status,
-                emit_event,
-            )
-            from temporal.activities.decision_engine import make_decision
-            from temporal.activities.transcription import transcribe_audio
-            from temporal.activities.llm_decomposition import decompose_creative
-            from temporal.activities.hypothesis_generation import (
-                generate_hypotheses,
-                save_hypotheses,
-            )
-            from temporal.activities.telegram import (
-                send_hypothesis_to_telegram,
-                get_buyer_chat_id,
-                emit_delivery_event,
-            )
+            # Import activities inside workflow with pass-through to avoid sandbox restrictions
+            with workflow.unsafe.imports_passed_through():
+                from temporal.activities.supabase import (
+                    get_creative,
+                    save_decomposed_creative,
+                    check_idea_exists,
+                    create_idea,
+                    update_creative_status,
+                    emit_event,
+                )
+                from temporal.activities.decision_engine import make_decision
+                from temporal.activities.transcription import transcribe_audio
+                from temporal.activities.llm_decomposition import decompose_creative
+                from temporal.activities.hypothesis_generation import (
+                    generate_hypotheses,
+                    save_hypotheses,
+                )
+                from temporal.activities.telegram import (
+                    send_hypothesis_to_telegram,
+                    get_buyer_chat_id,
+                    emit_delivery_event,
+                )
 
             # Default retry policy for most activities
             default_retry = RetryPolicy(
