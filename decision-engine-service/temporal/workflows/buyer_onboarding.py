@@ -132,15 +132,16 @@ class BuyerOnboardingWorkflow:
         self._telegram_username = input.telegram_username
         self._chat_id = input.chat_id or input.telegram_id
 
-        # Import activities inside workflow
-        from temporal.activities.buyer import (
-            create_buyer,
-            load_buyer_by_telegram_id,
-            update_buyer,
-            send_telegram_message,
-            CreateBuyerInput,
-            UpdateBuyerInput,
-        )
+        # Import activities inside workflow (pass-through for sandbox)
+        with workflow.unsafe.imports_passed_through():
+            from temporal.activities.buyer import (
+                create_buyer,
+                load_buyer_by_telegram_id,
+                update_buyer,
+                send_telegram_message,
+                CreateBuyerInput,
+                UpdateBuyerInput,
+            )
 
         # Default retry policy
         default_retry = RetryPolicy(
