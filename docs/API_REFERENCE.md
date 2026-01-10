@@ -410,6 +410,60 @@ Aggregates outcome metrics from a daily snapshot and triggers Learning Loop.
 
 ---
 
+## Historical Import
+
+### Submit Video for Historical Import
+
+```
+POST /api/historical/submit-video
+```
+
+Submits a video URL for a pending historical import campaign.
+
+**Request:**
+```json
+{
+  "campaign_id": "keitaro-campaign-123",
+  "video_url": "https://example.com/video.mp4",
+  "buyer_id": "uuid"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "workflow_id": "historical-video-keitaro-campaign-123",
+  "message": "Video processing started for campaign keitaro-campaign-123"
+}
+```
+
+### Get Pending Imports
+
+```
+GET /api/historical/queue/{buyer_id}
+```
+
+Returns pending imports for a buyer.
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 5,
+  "imports": [
+    {
+      "id": "uuid",
+      "campaign_id": "keitaro-123",
+      "status": "pending_video",
+      "metrics": {...}
+    }
+  ]
+}
+```
+
+---
+
 ## Error Responses
 
 All endpoints return errors in this format:

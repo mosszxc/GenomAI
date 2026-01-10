@@ -53,6 +53,14 @@ GenomAI использует Temporal для оркестрации бизнес
 │  │  Activities: keitaro, metrics, learning,             │   │
 │  │              recommendation, maintenance              │   │
 │  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │                Telegram Worker                       │   │
+│  │  Queue: telegram                                     │   │
+│  │  Workflows: BuyerOnboarding, HistoricalImport,      │   │
+│  │             CreativeRegistration,                    │   │
+│  │             HistoricalVideoHandler                   │   │
+│  │  Activities: buyer, keitaro, supabase               │   │
+│  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -161,11 +169,55 @@ class CreativePipelineWorkflow:
 
 **Replaces:** `H1uuOanSy627H4kg` Pipeline Health Monitor
 
+### BuyerOnboardingWorkflow
+
+**Queue:** `telegram`
+**Trigger:** Telegram /start command
+
+Workflow для онбординга новых баеров через Telegram.
+
+### HistoricalImportWorkflow
+
+**Queue:** `telegram`
+**Trigger:** After buyer onboarding (keitaro_source provided)
+
+Batch import campaigns from Keitaro for a buyer.
+
+### CreativeRegistrationWorkflow
+
+**Queue:** `telegram`
+**Trigger:** Video URL from Telegram
+
+Quick registration of creative from video URL.
+
+### HistoricalVideoHandlerWorkflow
+
+**Queue:** `telegram`
+**Trigger:** API `/api/historical/submit-video`
+
+Обработка video_url для historical import:
+1. Find queue record by campaign_id
+2. Update queue with video_url (status → ready)
+3. Load buyer geos/verticals
+4. Create creative with source_type='historical'
+5. Emit HistoricalCreativeRegistered event
+6. Execute CreativePipelineWorkflow (child)
+7. Update queue status → completed
+
+**Input:**
+- `campaign_id`: Keitaro campaign ID
+- `video_url`: Video URL to process
+- `buyer_id`: Buyer UUID
+
+**Replaces:** `UYgvqpsU3TMzb2Qd` Historical Import Video Handler
+
 ## Activities
 
 ### Supabase Activities
 | Activity | Description |
 |----------|-------------|
+| `create_creative` | Create new creative |
+| `create_historical_creative` | Create creative with tracker_id for historical import |
 | `get_creative` | Get creative by ID |
 | `get_idea` | Get idea by ID |
 | `check_idea_exists` | Check if idea exists by hash |
@@ -240,6 +292,20 @@ class CreativePipelineWorkflow:
 | `expire_old_recommendations` | Expire old pending recommendations |
 | `check_data_integrity` | Run integrity checks |
 | `emit_maintenance_event` | Emit maintenance event |
+
+### Buyer Activities
+| Activity | Description |
+|----------|-------------|
+| `create_buyer` | Create new buyer record |
+| `load_buyer_by_telegram_id` | Load buyer by Telegram ID |
+| `load_buyer_by_id` | Load buyer by UUID |
+| `update_buyer` | Update buyer fields |
+| `send_telegram_message` | Send message to Telegram |
+| `queue_historical_import` | Queue campaign for import |
+| `get_pending_imports` | Get pending imports for buyer |
+| `update_import_status` | Update import queue status |
+| `get_import_by_campaign_id` | Get import by campaign ID |
+| `update_import_with_video` | Update import with video URL |
 
 ## Schedules
 

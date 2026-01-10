@@ -40,11 +40,13 @@ from temporal.workflows.buyer_onboarding import BuyerOnboardingWorkflow
 from temporal.workflows.historical_import import (
     HistoricalImportWorkflow,
     CreativeRegistrationWorkflow,
+    HistoricalVideoHandlerWorkflow,
 )
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
     create_creative,
+    create_historical_creative,
     get_creative,
     get_idea,
     check_idea_exists,
@@ -94,6 +96,8 @@ from temporal.activities.buyer import (
     queue_historical_import,
     get_pending_imports,
     update_import_status,
+    get_import_by_campaign_id,
+    update_import_with_video,
 )
 
 # Import activities - Metrics
@@ -299,6 +303,7 @@ async def run_all_workers():
             BuyerOnboardingWorkflow,
             HistoricalImportWorkflow,
             CreativeRegistrationWorkflow,
+            HistoricalVideoHandlerWorkflow,
         ],
         activities=[
             # Buyer activities
@@ -310,11 +315,14 @@ async def run_all_workers():
             queue_historical_import,
             get_pending_imports,
             update_import_status,
+            get_import_by_campaign_id,
+            update_import_with_video,
             # Keitaro activities for historical import
             get_campaigns_by_source,
             get_campaign_creatives,
             # Supabase for creative registration and events
             create_creative,
+            create_historical_creative,
             emit_event,
         ],
     )

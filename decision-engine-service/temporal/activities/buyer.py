@@ -444,3 +444,121 @@ async def update_import_status(
         )
 
     activity.logger.info(f"Updated import status: {import_id}")
+
+
+@dataclass
+class ImportQueueRecord:
+    """Import queue record from database."""
+
+    id: str
+    buyer_id: str
+    campaign_id: str
+    video_url: Optional[str]
+    keitaro_source: Optional[str]
+    metrics: Optional[dict]
+    status: str
+    created_at: str
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ImportQueueRecord":
+        return cls(
+            id=data["id"],
+            buyer_id=data["buyer_id"],
+            campaign_id=data["campaign_id"],
+            video_url=data.get("video_url"),
+            keitaro_source=data.get("keitaro_source"),
+            metrics=data.get("metrics"),
+            status=data.get("status", "pending"),
+            created_at=data.get("created_at", ""),
+        )
+
+
+@activity.defn
+async def get_import_by_campaign_id(
+    campaign_id: str,
+    buyer_id: str,
+) -> Optional[ImportQueueRecord]:
+    """
+    Get historical import queue record by campaign ID and buyer ID.
+
+    Args:
+        campaign_id: Keitaro campaign ID
+        buyer_id: Buyer UUID
+
+    Returns:
+        ImportQueueRecord or None if not found
+    """
+    activity.logger.info(
+        f"Getting import by campaign_id: {campaign_id}, buyer_id: {buyer_id}"
+    )
+
+    headers = _get_supabase_headers()
+    base_url = _get_supabase_url()
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{base_url}/historical_import_queue"
+            f"?campaign_id=eq.{campaign_id}"
+            f"&buyer_id=eq.{buyer_id}"
+            f"&limit=1",
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if not data:
+            activity.logger.info(f"Import not found: {campaign_id}")
+            return None
+
+        return ImportQueueRecord.from_dict(data[0])
+
+
+@dataclass
+class UpdateImportVideoInput:
+    """Input for update_import_with_video activity."""
+
+    import_id: str
+    video_url: str
+    status: str = "ready"
+
+
+@activity.defn
+async def update_import_with_video(input: UpdateImportVideoInput) -> ImportQueueRecord:
+    """
+    Update historical import with video URL and change status.
+
+    Args:
+        input: UpdateImportVideoInput with import_id, video_url, status
+
+    Returns:
+        Updated ImportQueueRecord
+    """
+    activity.logger.info(
+        f"Updating import with video: {input.import_id} -> {input.video_url}"
+    )
+
+    headers = _get_supabase_headers()
+    base_url = _get_supabase_url()
+
+    update_data = {
+        "video_url": input.video_url,
+        "status": input.status,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{base_url}/historical_import_queue?id=eq.{input.import_id}",
+            headers=headers,
+            json=update_data,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if not data:
+            raise ApplicationError(f"Import not found: {input.import_id}")
+
+        activity.logger.info(f"Updated import with video: {input.import_id}")
+        return ImportQueueRecord.from_dict(data[0])

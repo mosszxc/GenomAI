@@ -20,9 +20,15 @@ with workflow.unsafe.imports_passed_through():
     from temporal.models.buyer import (
         HistoricalImportInput,
         HistoricalImportResult,
+        HistoricalVideoHandlerInput,
+        HistoricalVideoHandlerResult,
     )
     from temporal.models.creative import CreativeInput
-    from temporal.activities.supabase import emit_event, create_creative
+    from temporal.activities.supabase import (
+        emit_event,
+        create_creative,
+        create_historical_creative,
+    )
     from temporal.activities.keitaro import (
         get_campaigns_by_source,
         GetCampaignsBySourceInput,
@@ -30,6 +36,11 @@ with workflow.unsafe.imports_passed_through():
     from temporal.activities.buyer import (
         queue_historical_import,
         QueueHistoricalImportInput,
+        get_import_by_campaign_id,
+        update_import_with_video,
+        update_import_status,
+        UpdateImportVideoInput,
+        load_buyer_by_id,
     )
     from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
 
@@ -308,5 +319,215 @@ class CreativeRegistrationWorkflow:
         return {
             "creative_id": self._creative_id,
             "status": self._status,
+            "error": self._error,
+        }
+
+
+@workflow.defn
+class HistoricalVideoHandlerWorkflow:
+    """
+    Workflow for handling video URL submission for historical imports.
+
+    Called when user submits a video URL for a pending historical import.
+    Creates a creative with source_type='historical' and tracker_id=campaign_id,
+    then triggers the CreativePipelineWorkflow.
+
+    Replaces n8n workflow: UYgvqpsU3TMzb2Qd (Historical Import Video Handler)
+    """
+
+    def __init__(self):
+        self._campaign_id: str = ""
+        self._creative_id: Optional[str] = None
+        self._queue_status: str = "pending"
+        self._error: Optional[str] = None
+
+    @workflow.run
+    async def run(
+        self, input: HistoricalVideoHandlerInput
+    ) -> HistoricalVideoHandlerResult:
+        """
+        Process video URL for historical import.
+
+        Args:
+            input: HistoricalVideoHandlerInput with campaign_id, video_url, buyer_id
+
+        Returns:
+            HistoricalVideoHandlerResult with creative_id and pipeline result
+        """
+        self._campaign_id = input.campaign_id
+
+        default_retry = RetryPolicy(
+            initial_interval=timedelta(seconds=1),
+            maximum_interval=timedelta(seconds=30),
+            maximum_attempts=3,
+        )
+
+        try:
+            # Step 1: Find queue record by campaign_id
+            workflow.logger.info(
+                f"Looking up import queue for campaign: {input.campaign_id}"
+            )
+
+            queue_record = await workflow.execute_activity(
+                get_import_by_campaign_id,
+                input.campaign_id,
+                input.buyer_id,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            if not queue_record:
+                self._error = f"No import queue record found for campaign: {input.campaign_id}"
+                workflow.logger.error(self._error)
+                return self._build_result()
+
+            workflow.logger.info(f"Found queue record: {queue_record.id}")
+
+            # Step 2: Update queue with video_url and status='ready'
+            self._queue_status = "ready"
+
+            await workflow.execute_activity(
+                update_import_with_video,
+                UpdateImportVideoInput(
+                    import_id=queue_record.id,
+                    video_url=input.video_url,
+                    status="ready",
+                ),
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            workflow.logger.info(f"Updated queue record with video URL")
+
+            # Step 3: Load buyer to get geos/verticals
+            buyer = await workflow.execute_activity(
+                load_buyer_by_id,
+                input.buyer_id,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            target_geo = buyer.geos[0] if buyer and buyer.geos else None
+            target_vertical = buyer.verticals[0] if buyer and buyer.verticals else None
+
+            # Step 4: Create creative with source_type='historical'
+            self._queue_status = "processing"
+
+            await workflow.execute_activity(
+                update_import_status,
+                queue_record.id,
+                "processing",
+                None,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            creative = await workflow.execute_activity(
+                create_historical_creative,
+                input.video_url,
+                input.campaign_id,  # tracker_id = campaign_id
+                input.buyer_id,
+                queue_record.metrics,
+                target_geo,
+                target_vertical,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            self._creative_id = creative["id"]
+            workflow.logger.info(f"Created historical creative: {self._creative_id}")
+
+            # Step 5: Emit event
+            await workflow.execute_activity(
+                emit_event,
+                "HistoricalCreativeRegistered",
+                {
+                    "creative_id": self._creative_id,
+                    "campaign_id": input.campaign_id,
+                    "buyer_id": input.buyer_id,
+                    "video_url": input.video_url,
+                    "metrics": queue_record.metrics,
+                },
+                start_to_close_timeout=timedelta(seconds=10),
+                retry_policy=default_retry,
+            )
+
+            # Step 6: Start creative pipeline as child workflow
+            pipeline_result = await workflow.execute_child_workflow(
+                CreativePipelineWorkflow.run,
+                CreativeInput(
+                    creative_id=self._creative_id,
+                    buyer_id=input.buyer_id,
+                ),
+                id=f"historical-creative-pipeline-{self._creative_id}",
+                task_queue="creative-pipeline",
+                execution_timeout=timedelta(hours=1),
+            )
+
+            # Step 7: Update queue status to completed
+            self._queue_status = "completed"
+
+            await workflow.execute_activity(
+                update_import_status,
+                queue_record.id,
+                "completed",
+                None,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            workflow.logger.info(
+                f"Historical import completed: {input.campaign_id} -> {self._creative_id}"
+            )
+
+            return HistoricalVideoHandlerResult(
+                campaign_id=input.campaign_id,
+                creative_id=self._creative_id,
+                idea_id=pipeline_result.idea_id if pipeline_result else None,
+                decision_type=(
+                    pipeline_result.decision_type if pipeline_result else None
+                ),
+                queue_status=self._queue_status,
+                completed=True,
+            )
+
+        except Exception as e:
+            self._error = str(e)
+            self._queue_status = "failed"
+            workflow.logger.error(f"Historical video handler failed: {e}")
+
+            # Try to update queue status to failed
+            if queue_record:
+                try:
+                    await workflow.execute_activity(
+                        update_import_status,
+                        queue_record.id,
+                        "failed",
+                        str(e),
+                        start_to_close_timeout=timedelta(seconds=30),
+                        retry_policy=default_retry,
+                    )
+                except Exception:
+                    pass
+
+            return self._build_result()
+
+    def _build_result(self) -> HistoricalVideoHandlerResult:
+        """Build result object."""
+        return HistoricalVideoHandlerResult(
+            campaign_id=self._campaign_id,
+            creative_id=self._creative_id,
+            queue_status=self._queue_status,
+            error=self._error,
+            completed=False,
+        )
+
+    @workflow.query
+    def get_status(self) -> dict:
+        """Query handler status."""
+        return {
+            "campaign_id": self._campaign_id,
+            "creative_id": self._creative_id,
+            "queue_status": self._queue_status,
             "error": self._error,
         }

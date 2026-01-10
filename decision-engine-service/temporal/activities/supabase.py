@@ -98,6 +98,73 @@ async def create_creative(
 
 
 @activity.defn
+async def create_historical_creative(
+    video_url: str,
+    tracker_id: str,
+    buyer_id: str,
+    metrics: Optional[Dict[str, Any]] = None,
+    target_geo: Optional[str] = None,
+    target_vertical: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create creative from historical import with tracker_id and metrics.
+
+    Args:
+        video_url: Video URL (required)
+        tracker_id: Keitaro campaign/tracker ID (required)
+        buyer_id: Buyer UUID (required)
+        metrics: Optional Keitaro metrics from import queue
+        target_geo: Optional target GEO
+        target_vertical: Optional target vertical
+
+    Returns:
+        Created creative dict with id
+    """
+    import uuid
+
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    creative = {
+        "id": str(uuid.uuid4()),
+        "video_url": video_url,
+        "tracker_id": tracker_id,
+        "buyer_id": buyer_id,
+        "source_type": "historical",
+        "status": "registered",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    if target_geo:
+        creative["target_geo"] = target_geo
+    if target_vertical:
+        creative["target_vertical"] = target_vertical
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{rest_url}/creatives",
+            headers=headers,
+            json=creative,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if not data:
+            raise RuntimeError("Failed to create historical creative: no data returned")
+
+        created_creative = data[0]
+
+        # If we have metrics, create outcome_aggregate record
+        if metrics:
+            activity.logger.info(
+                f"Historical creative {created_creative['id']} has metrics: {metrics}"
+            )
+            # Metrics will be processed by outcome_aggregator later
+
+        return created_creative
+
+
+@activity.defn
 async def get_creative(creative_id: str) -> Optional[Dict[str, Any]]:
     """
     Load creative from Supabase.

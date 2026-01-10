@@ -208,3 +208,25 @@ VALID_VERTICALS = [
     "insurance",
     "health",
 ]
+
+
+@dataclass
+class HistoricalVideoHandlerInput:
+    """Input for HistoricalVideoHandlerWorkflow."""
+
+    campaign_id: str
+    video_url: str
+    buyer_id: str
+
+
+@dataclass
+class HistoricalVideoHandlerResult:
+    """Result of historical video handler workflow."""
+
+    campaign_id: str
+    creative_id: Optional[str] = None
+    idea_id: Optional[str] = None
+    decision_type: Optional[str] = None
+    queue_status: str = "pending"
+    error: Optional[str] = None
+    completed: bool = False
