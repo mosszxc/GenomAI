@@ -340,6 +340,31 @@ created_at        TIMESTAMPTZ
 updated_at        TIMESTAMPTZ
 ```
 
+### outcome_aggregates
+```
+id                UUID      PK
+creative_id       UUID      FK → creatives.id
+decision_id       UUID      FK → decisions.id (required if origin_type='system')
+window_id         TEXT      -- D1, D3, D7, D7+
+window_start      DATE      -- Decision date
+window_end        DATE      -- Snapshot date
+impressions       INT
+conversions       INT
+spend             NUMERIC
+cpa               NUMERIC   -- Cost Per Acquisition
+trend             TEXT      -- improving | stable | declining
+volatility        NUMERIC   -- Coefficient of variation (CV = std_dev / mean)
+environment_ctx   JSONB
+origin_type       TEXT      -- system | user
+learning_applied  BOOLEAN
+created_at        TIMESTAMPTZ
+```
+
+**volatility interpretation:**
+- `< 0.1`: Low volatility (stable performance)
+- `0.1-0.3`: Medium volatility
+- `> 0.3`: High volatility (unstable performance)
+
 ### exploration_log
 ```
 id                      UUID      PK
