@@ -9,9 +9,81 @@ from src.services.supabase import (
     load_system_state,
     save_decision,
     save_decision_trace,
+    get_existing_decision,
+    get_decision_trace,
 )
 from src.checks import schema_validity, death_memory, fatigue_constraint, risk_budget
 from src.utils.errors import IdeaNotFoundError
+
+# Current decision epoch (MVP: fixed at 1)
+CURRENT_DECISION_EPOCH = 1
+
+
+def _format_existing_decision(
+    existing_decision: dict, existing_trace: dict | None, idea: dict
+) -> dict:
+    """
+    Format existing decision into the same response structure as new decisions.
+
+    Args:
+        existing_decision: Existing decision from database
+        existing_trace: Existing decision trace (may be None)
+        idea: The idea object
+
+    Returns:
+        dict: Formatted decision response matching new decision structure
+    """
+    decision_id = existing_decision["id"]
+    decision_type = existing_decision["decision"]
+    timestamp = existing_decision.get("created_at", "")
+
+    # Parse trace to extract check results
+    passed_checks = []
+    failed_checks = []
+    failed_check = None
+
+    if existing_trace and existing_trace.get("checks"):
+        checks = existing_trace["checks"]
+        for check in checks:
+            if check.get("result") == "PASSED":
+                passed_checks.append(check.get("check_name", ""))
+            else:
+                failed_checks.append(check.get("check_name", ""))
+                if not failed_check:
+                    failed_check = check.get("check_name")
+
+    # Determine decision reason
+    if decision_type == "approve":
+        decision_reason = "all_checks_passed"
+    else:
+        decision_reason = failed_check or "unknown"
+
+    return {
+        "decision": {
+            "decision_id": decision_id,
+            "idea_id": idea["id"],
+            "decision_type": decision_type,
+            "decision_reason": decision_reason,
+            "passed_checks": passed_checks,
+            "failed_checks": failed_checks,
+            "failed_check": failed_check,
+            "dominant_constraint": failed_check,
+            "cluster_at_decision": idea.get("active_cluster_id"),
+            "horizon": idea.get("horizon"),
+            "system_state": "exploit",
+            "policy_version": "v1.0",
+            "timestamp": timestamp,
+            "idempotent": True,  # Flag indicating this is a cached result
+        },
+        "decision_trace": existing_trace
+        or {
+            "id": None,
+            "decision_id": decision_id,
+            "checks": [],
+            "result": decision_type,
+            "created_at": timestamp,
+        },
+    }
 
 
 async def make_decision(input_data: dict) -> dict:
@@ -41,6 +113,13 @@ async def make_decision(input_data: dict) -> dict:
 
     if not idea:
         raise IdeaNotFoundError("No idea provided")
+
+    # IDEMPOTENCY GUARD: Check if decision already exists for this idea+epoch
+    existing_decision = await get_existing_decision(idea["id"], CURRENT_DECISION_EPOCH)
+    if existing_decision:
+        # Return existing decision instead of creating duplicate
+        existing_trace = await get_decision_trace(existing_decision["id"])
+        return _format_existing_decision(existing_decision, existing_trace, idea)
 
     # Load system state if not provided
     if not system_state:
@@ -104,7 +183,7 @@ async def _create_decision(
         "id": decision_id,
         "idea_id": idea["id"],
         "decision": decision_type,
-        "decision_epoch": 1,
+        "decision_epoch": CURRENT_DECISION_EPOCH,
         "created_at": timestamp,
     }
 

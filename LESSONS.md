@@ -40,6 +40,8 @@
 | A007 | Work directly in main without worktree | `./scripts/task-start.sh {N}` → worktree → `task-done.sh` | PR review skip, risky deploys |
 | A008 | Mark Post-Task Loop completed before checking all 4 items | TEST → qa-notes → docs check → summary → THEN completed | missed docs updates |
 | A009 | Do Post-Task Loop silently, say "done" without showing checklist | Explicitly show checklist BEFORE "готово/done" | user confusion, re-verification |
+| A010 | Wait for user to ask "post task loop?" after test/PR | Proactively start Post-Task Loop immediately after test passes | user has to remind, breaks flow |
+| A011 | Stop after PR without asking about merge | After Post-Task Loop done, ask "Мержить?" or proceed with merge | incomplete task cycle |
 
 ## Quick Lookup
 
