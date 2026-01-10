@@ -217,22 +217,22 @@ async def get_schedule(schedule_id: str) -> ScheduleDetailResponse:
         if desc.schedule.state:
             paused = desc.schedule.state.paused
 
-        # Determine status
-        if paused:
-            status = "paused"
-        elif desc.info.running_workflows:
-            status = "running"
-        else:
-            status = "idle"
-
         # Get timing info
         last_run = None
         if desc.info.recent_actions:
-            last_run = desc.info.recent_actions[0].start_time.isoformat()
+            last_run = desc.info.recent_actions[0].started_at.isoformat()
 
         next_run = None
         if desc.info.next_action_times:
             next_run = desc.info.next_action_times[0].isoformat()
+
+        # Determine status
+        if paused:
+            status = "paused"
+        elif next_run:
+            status = "active"
+        else:
+            status = "idle"
 
         schedule_info = ScheduleInfo(
             id=schedule_id,
