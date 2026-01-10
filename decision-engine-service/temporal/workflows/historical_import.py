@@ -377,7 +377,9 @@ class HistoricalVideoHandlerWorkflow:
             )
 
             if not queue_record:
-                self._error = f"No import queue record found for campaign: {input.campaign_id}"
+                self._error = (
+                    f"No import queue record found for campaign: {input.campaign_id}"
+                )
                 workflow.logger.error(self._error)
                 return self._build_result()
 
@@ -397,7 +399,7 @@ class HistoricalVideoHandlerWorkflow:
                 retry_policy=default_retry,
             )
 
-            workflow.logger.info(f"Updated queue record with video URL")
+            workflow.logger.info("Updated queue record with video URL")
 
             # Step 3: Load buyer to get geos/verticals
             buyer = await workflow.execute_activity(

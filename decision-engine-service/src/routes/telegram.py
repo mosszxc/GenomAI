@@ -359,7 +359,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             await log_buyer_interaction(
                 telegram_id=message.user_id,
                 direction="out",
-                message_type="stats_response",
+                message_type="system",
                 content=stats_message,
                 context={
                     "total": total,
