@@ -162,6 +162,20 @@ FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
 ## Render Deploy
 Free tier = **3 минуты** на deploy. После push: один `sleep 180`, не несколько коротких.
 
+### Multi-Agent Coordination (CRITICAL)
+**Несколько агентов работают параллельно.** Перед деплоем:
+
+```
+1. mcp__render__list_deploys(serviceId: "srv-d54vf524d50c739kc2m0")
+2. Если status = "build_in_progress" или "update_in_progress" → ЖДАТЬ
+3. Только когда status = "live" → push
+4. sleep 180
+```
+
+**Скрипт:** `./scripts/safe-deploy.sh` (требует RENDER_API_KEY)
+
+**Правило:** Никогда не пушить в main если есть активный деплой другого агента.
+
 ## Temporal
 Документация: `docs/TEMPORAL_WORKFLOWS.md` | `docs/TEMPORAL_RUNBOOK.md`
 
