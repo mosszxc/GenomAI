@@ -52,5 +52,20 @@ Buyer получает только часть — payout per sale × колич
 
 ### Где хранится payout per sale
 
-Payout per sale зависит от оффера и договорённости с buyer'ом.
-Нужно хранить в `genomai.buyers` или получать из CRM/оффера.
+**Payout per sale зависит от оффера, не от buyer'а.**
+
+Нужно получать из оффера или хранить маппинг offer → payout.
+
+### Как получить payout per offer
+
+```bash
+curl -s -X POST "https://{domain}/admin_api/v1/report/build" \
+  -H "Api-Key: {api_key}" \
+  -d '{
+    "range": {"from": "...", "to": "...", "timezone": "UTC"},
+    "metrics": ["sales", "revenue"],
+    "dimensions": ["offer"]
+  }'
+```
+
+Примерный payout = revenue / sales (если revenue = payout, а не gross).
