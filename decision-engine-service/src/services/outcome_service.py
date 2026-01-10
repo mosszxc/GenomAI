@@ -29,6 +29,7 @@ class OutcomeAggregate:
     conversions: int = 0
     spend: Decimal = Decimal("0")
     cpa: Optional[Decimal] = None
+    trend: Optional[str] = None
     origin_type: str = "system"
     learning_applied: bool = False
 
@@ -44,6 +45,7 @@ class OutcomeAggregate:
             "conversions": self.conversions,
             "spend": float(self.spend) if self.spend else 0,
             "cpa": float(self.cpa) if self.cpa else None,
+            "trend": self.trend,
             "origin_type": self.origin_type,
             "learning_applied": self.learning_applied
         }
@@ -138,6 +140,36 @@ class OutcomeService:
             return None
         return spend / Decimal(conversions)
 
+    @staticmethod
+    def calculate_trend(current_cpa: Optional[Decimal], previous_cpa: Optional[Decimal]) -> Optional[str]:
+        """
+        Calculate trend based on CPA change.
+
+        Args:
+            current_cpa: Current CPA value
+            previous_cpa: Previous CPA value
+
+        Returns:
+            "improving" - CPA decreased (better)
+            "declining" - CPA increased (worse)
+            "stable" - change < 10%
+            None - if either CPA is None
+        """
+        if current_cpa is None or previous_cpa is None:
+            return None
+
+        if previous_cpa == 0:
+            return None
+
+        change_ratio = (current_cpa - previous_cpa) / previous_cpa
+
+        if change_ratio < Decimal("-0.1"):
+            return "improving"
+        elif change_ratio > Decimal("0.1"):
+            return "declining"
+        else:
+            return "stable"
+
     async def get_snapshot(self, snapshot_id: str) -> Optional[dict]:
         """Load snapshot from daily_metrics_snapshot"""
         async with httpx.AsyncClient() as client:
@@ -171,6 +203,25 @@ class OutcomeService:
             data = response.json()
             return data[0] if data else None
 
+    async def get_previous_outcome(self, creative_id: str) -> Optional[dict]:
+        """
+        Get the most recent outcome for a creative to calculate trend.
+
+        Args:
+            creative_id: UUID of the creative
+
+        Returns:
+            Previous outcome record or None
+        """
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&select=cpa,created_at&order=created_at.desc&limit=1",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data[0] if data else None
+
     async def insert_outcome(self, outcome: OutcomeAggregate) -> dict:
         """Insert outcome aggregate into database"""
         payload = {
@@ -182,6 +233,7 @@ class OutcomeService:
             "conversions": outcome.conversions,
             "spend": float(outcome.spend),
             "cpa": float(outcome.cpa) if outcome.cpa else None,
+            "trend": outcome.trend,
             "origin_type": outcome.origin_type,
             "learning_applied": outcome.learning_applied
         }
@@ -320,6 +372,13 @@ class OutcomeService:
             # Calculate CPA
             cpa = self.calculate_cpa(spend, conversions)
 
+            # Calculate trend by comparing with previous outcome
+            previous_outcome = await self.get_previous_outcome(creative_id)
+            previous_cpa = None
+            if previous_outcome and previous_outcome.get("cpa") is not None:
+                previous_cpa = Decimal(str(previous_outcome["cpa"]))
+            trend = self.calculate_trend(cpa, previous_cpa)
+
             # 6. Create and insert outcome
             outcome = OutcomeAggregate(
                 creative_id=creative_id,
@@ -330,6 +389,7 @@ class OutcomeService:
                 conversions=conversions,
                 spend=spend,
                 cpa=cpa,
+                trend=trend,
                 origin_type="system",
                 learning_applied=False
             )
