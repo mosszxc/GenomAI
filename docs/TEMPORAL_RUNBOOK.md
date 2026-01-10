@@ -17,15 +17,18 @@
 ```bash
 cd decision-engine-service
 
-# Set environment variables
-export TEMPORAL_ADDRESS="your-namespace.tmprl.cloud:7233"
-export TEMPORAL_NAMESPACE="genomai.xxxxx"
-export TEMPORAL_API_KEY="your-api-key"
-export SUPABASE_URL="https://xxx.supabase.co"
-export SUPABASE_SERVICE_ROLE_KEY="xxx"
+# Install dependencies (python-dotenv required for .env auto-loading)
+pip install python-dotenv
+
+# .env file is auto-loaded from decision-engine-service/.env
+# Required variables: TEMPORAL_ADDRESS, TEMPORAL_NAMESPACE, TEMPORAL_API_KEY
 
 # Start workers
 python -m temporal.worker
+
+# Manage schedules
+python -m temporal.schedules list
+python -m temporal.schedules trigger <schedule-id>
 ```
 
 ### Production (Render)
