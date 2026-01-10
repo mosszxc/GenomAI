@@ -464,6 +464,91 @@ Returns pending imports for a buyer.
 
 ---
 
+## Schedules API
+
+Manage Temporal workflow schedules.
+
+### List Schedules
+
+```
+GET /api/schedules
+```
+
+No auth required. Returns all Temporal schedules with status.
+
+**Response:**
+```json
+{
+  "success": true,
+  "schedules": [
+    {
+      "id": "keitaro-poller",
+      "status": "active",
+      "interval": "10m",
+      "cron": null,
+      "last_run": "2026-01-10T16:50:00.070919+00:00",
+      "next_run": "2026-01-10T17:00:00+00:00",
+      "paused": false,
+      "description": "Polls Keitaro for metrics every 10 minutes"
+    }
+  ]
+}
+```
+
+### Get Schedule Details
+
+```
+GET /api/schedules/{schedule_id}
+```
+
+No auth required. Returns detailed info including paused state.
+
+**Response:**
+```json
+{
+  "success": true,
+  "schedule": {
+    "id": "keitaro-poller",
+    "status": "active",
+    "interval": "10m",
+    "cron": null,
+    "last_run": "2026-01-10T16:50:00.070919+00:00",
+    "next_run": "2026-01-10T17:00:00+00:00",
+    "paused": false,
+    "description": "Polls Keitaro for metrics every 10 minutes"
+  }
+}
+```
+
+### Trigger Schedule
+
+```
+POST /api/schedules/{schedule_id}/trigger
+X-API-Key: {API_KEY}
+```
+
+Manually trigger a schedule to run immediately.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Schedule 'keitaro-poller' triggered successfully"
+}
+```
+
+### Available Schedules
+
+| ID | Interval/Cron | Description |
+|----|---------------|-------------|
+| `keitaro-poller` | 10m | Polls Keitaro for metrics |
+| `metrics-processor` | 30m | Processes metrics into outcomes |
+| `learning-loop` | 1h | Runs learning loop |
+| `daily-recommendations` | 0 9 * * * | Daily recommendations at 09:00 UTC |
+| `maintenance` | 6h | Cleanup and maintenance tasks |
+
+---
+
 ## Error Responses
 
 All endpoints return errors in this format:
