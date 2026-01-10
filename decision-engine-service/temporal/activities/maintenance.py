@@ -164,6 +164,78 @@ async def expire_old_recommendations(expiry_days: int = 7) -> int:
 
 
 @activity.defn
+async def mark_stuck_transcriptions_failed(timeout_minutes: int = 10) -> int:
+    """
+    Mark creatives stuck in transcription queue as failed.
+
+    Creatives with status 'registered' and no transcript for more than
+    timeout_minutes are marked as 'transcription_failed'.
+
+    Args:
+        timeout_minutes: Minutes after which a transcription is considered stuck
+
+    Returns:
+        Number of creatives marked as failed
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+    cutoff_iso = cutoff.isoformat()
+
+    activity.logger.info(f"Looking for stuck transcriptions older than {cutoff_iso}")
+
+    async with httpx.AsyncClient() as client:
+        # Find creatives without transcripts that are older than timeout
+        # Using left join simulation: get registered creatives, then check for transcripts
+        response = await client.get(
+            f"{rest_url}/creatives"
+            f"?status=eq.registered"
+            f"&created_at=lt.{cutoff_iso}"
+            "&select=id,video_url,created_at",
+            headers=_get_headers(supabase_key),
+        )
+
+        if response.status_code != 200:
+            activity.logger.warning(f"Error checking creatives: {response.text}")
+            return 0
+
+        registered_creatives = response.json()
+
+        if not registered_creatives:
+            activity.logger.info("No stuck transcriptions found")
+            return 0
+
+        # Check which ones have transcripts
+        stuck_ids = []
+        for creative in registered_creatives:
+            transcript_resp = await client.get(
+                f"{rest_url}/transcripts?creative_id=eq.{creative['id']}&limit=1",
+                headers=_get_headers(supabase_key),
+            )
+            if transcript_resp.status_code == 200 and not transcript_resp.json():
+                stuck_ids.append(creative["id"])
+
+        if not stuck_ids:
+            activity.logger.info("No stuck transcriptions found")
+            return 0
+
+        # Mark as transcription_failed
+        for creative_id in stuck_ids:
+            await client.patch(
+                f"{rest_url}/creatives?id=eq.{creative_id}",
+                headers=headers,
+                json={
+                    "status": "transcription_failed",
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+            )
+
+        activity.logger.info(f"Marked {len(stuck_ids)} creatives as transcription_failed")
+        return len(stuck_ids)
+
+
+@activity.defn
 async def check_data_integrity() -> List[str]:
     """
     Check for data integrity issues.

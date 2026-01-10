@@ -23,6 +23,7 @@ with workflow.unsafe.imports_passed_through():
     from temporal.activities.maintenance import (
         reset_stale_buyer_states,
         expire_old_recommendations,
+        mark_stuck_transcriptions_failed,
         check_data_integrity,
         emit_maintenance_event,
     )
@@ -36,6 +37,8 @@ class MaintenanceInput:
     buyer_state_timeout_hours: int = 6
     # Recommendation expiry in days
     recommendation_expiry_days: int = 7
+    # Stuck transcription timeout in minutes
+    stuck_transcription_timeout_minutes: int = 10
     # Run data integrity checks
     run_integrity_checks: bool = True
 
@@ -46,6 +49,7 @@ class MaintenanceResult:
 
     stale_buyers_reset: int
     recommendations_expired: int
+    stuck_transcriptions_failed: int
     integrity_issues: List[str]
     completed_at: str
 
@@ -75,6 +79,7 @@ class MaintenanceWorkflow:
         result = MaintenanceResult(
             stale_buyers_reset=0,
             recommendations_expired=0,
+            stuck_transcriptions_failed=0,
             integrity_issues=[],
             completed_at="",
         )
@@ -107,7 +112,24 @@ class MaintenanceWorkflow:
             workflow.logger.error(f"Failed to expire recommendations: {e}")
             result.integrity_issues.append(f"Recommendation expiry failed: {e}")
 
-        # Step 3: Data integrity checks (optional)
+        # Step 3: Mark stuck transcriptions as failed
+        try:
+            stuck_count = await workflow.execute_activity(
+                mark_stuck_transcriptions_failed,
+                input.stuck_transcription_timeout_minutes,
+                start_to_close_timeout=timedelta(seconds=60),
+                retry_policy=retry_policy,
+            )
+            result.stuck_transcriptions_failed = stuck_count
+            if stuck_count > 0:
+                workflow.logger.warning(f"Marked {stuck_count} stuck transcriptions as failed")
+            else:
+                workflow.logger.info("No stuck transcriptions found")
+        except Exception as e:
+            workflow.logger.error(f"Failed to mark stuck transcriptions: {e}")
+            result.integrity_issues.append(f"Stuck transcription check failed: {e}")
+
+        # Step 4: Data integrity checks (optional)
         if input.run_integrity_checks:
             try:
                 issues = await workflow.execute_activity(
@@ -124,7 +146,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Integrity check failed: {e}")
                 result.integrity_issues.append(f"Integrity check error: {e}")
 
-        # Step 4: Emit maintenance event
+        # Step 5: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
@@ -140,7 +162,8 @@ class MaintenanceWorkflow:
 
         workflow.logger.info(
             f"Maintenance complete: reset={result.stale_buyers_reset}, "
-            f"expired={result.recommendations_expired}, issues={len(result.integrity_issues)}"
+            f"expired={result.recommendations_expired}, stuck={result.stuck_transcriptions_failed}, "
+            f"issues={len(result.integrity_issues)}"
         )
 
         return result
