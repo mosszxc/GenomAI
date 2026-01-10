@@ -41,6 +41,7 @@ WIN_THRESHOLD_HIGH_SPEND = {"min_spend": 50, "max_cpa": 5}
 @dataclass
 class ComponentUpdate:
     """Single component learning update"""
+
     component_type: str
     component_value: str
     geo: Optional[str]
@@ -68,7 +69,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -116,7 +117,7 @@ async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
             f"{rest_url}/decomposed_creatives"
             f"?creative_id=eq.{creative_id}"
             f"&select=payload,idea_id",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
@@ -133,16 +134,13 @@ async def get_idea_avatar(idea_id: str) -> Optional[str]:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{rest_url}/ideas"
-            f"?id=eq.{idea_id}"
-            f"&select=avatar_id",
-            headers=headers
+            f"{rest_url}/ideas?id=eq.{idea_id}&select=avatar_id", headers=headers
         )
         response.raise_for_status()
         data = response.json()
 
-        if data and data[0].get('avatar_id'):
-            return data[0]['avatar_id']
+        if data and data[0].get("avatar_id"):
+            return data[0]["avatar_id"]
         return None
 
 
@@ -155,32 +153,27 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
         async with httpx.AsyncClient() as client:
             # Get buyer_id from creative
             response = await client.get(
-                f"{rest_url}/creatives"
-                f"?id=eq.{creative_id}"
-                f"&select=buyer_id",
-                headers=headers
+                f"{rest_url}/creatives?id=eq.{creative_id}&select=buyer_id",
+                headers=headers,
             )
             response.raise_for_status()
             data = response.json()
 
-            if not data or not data[0].get('buyer_id'):
+            if not data or not data[0].get("buyer_id"):
                 return None
 
-            buyer_id = data[0]['buyer_id']
+            buyer_id = data[0]["buyer_id"]
 
             # Get geos from buyer
             response = await client.get(
-                f"{rest_url}/buyers"
-                f"?id=eq.{buyer_id}"
-                f"&select=geos",
-                headers=headers
+                f"{rest_url}/buyers?id=eq.{buyer_id}&select=geos", headers=headers
             )
             response.raise_for_status()
             data = response.json()
 
-            if data and data[0].get('geos'):
+            if data and data[0].get("geos"):
                 # Return first geo if multiple
-                geos = data[0]['geos']
+                geos = data[0]["geos"]
                 return geos[0] if geos else None
             return None
     except Exception:
@@ -195,7 +188,7 @@ async def upsert_component_learning(
     avatar_id: Optional[str],
     was_win: bool,
     spend: float,
-    revenue: float
+    revenue: float,
 ) -> dict:
     """
     Upsert component learning record.
@@ -225,7 +218,7 @@ async def upsert_component_learning(
         # Check if record exists
         response = await client.get(
             f"{rest_url}/component_learnings?{filter_str}",
-            headers=_get_headers(supabase_key)
+            headers=_get_headers(supabase_key),
         )
         response.raise_for_status()
         existing = response.json()
@@ -233,11 +226,11 @@ async def upsert_component_learning(
         if existing:
             # Update existing record
             record = existing[0]
-            new_sample = (record.get('sample_size') or 0) + 1
-            new_wins = (record.get('win_count') or 0) + (1 if was_win else 0)
-            new_losses = (record.get('loss_count') or 0) + (0 if was_win else 1)
-            new_spend = float(record.get('total_spend') or 0) + spend
-            new_revenue = float(record.get('total_revenue') or 0) + revenue
+            new_sample = (record.get("sample_size") or 0) + 1
+            new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
+            new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
+            new_spend = float(record.get("total_spend") or 0) + spend
+            new_revenue = float(record.get("total_revenue") or 0) + revenue
 
             # win_rate and avg_roi are generated columns, don't update them
             response = await client.patch(
@@ -249,8 +242,8 @@ async def upsert_component_learning(
                     "loss_count": new_losses,
                     "total_spend": new_spend,
                     "total_revenue": new_revenue,
-                    "updated_at": "now()"
-                }
+                    "updated_at": "now()",
+                },
             )
             response.raise_for_status()
             return response.json()[0] if response.json() else {}
@@ -268,18 +261,15 @@ async def upsert_component_learning(
                     "win_count": 1 if was_win else 0,
                     "loss_count": 0 if was_win else 1,
                     "total_spend": spend,
-                    "total_revenue": revenue
-                }
+                    "total_revenue": revenue,
+                },
             )
             response.raise_for_status()
             return response.json()[0] if response.json() else {}
 
 
 async def process_component_learnings(
-    creative_id: str,
-    cpa: float,
-    spend: float,
-    revenue: float
+    creative_id: str, cpa: float, spend: float, revenue: float
 ) -> dict:
     """
     Main entry point: process component learnings for an outcome.
@@ -296,17 +286,17 @@ async def process_component_learnings(
         "components_updated": 0,
         "global_updates": 0,
         "avatar_updates": 0,
-        "errors": []
+        "errors": [],
     }
 
     # Get decomposed creative
     dc = await get_decomposed_creative(creative_id)
-    if not dc or not dc.get('payload'):
+    if not dc or not dc.get("payload"):
         result["errors"].append(f"No decomposed_creative found for {creative_id}")
         return result
 
-    payload = dc['payload']
-    idea_id = dc.get('idea_id')
+    payload = dc["payload"]
+    idea_id = dc.get("idea_id")
 
     # Extract components
     components = extract_components(payload)
@@ -332,7 +322,7 @@ async def process_component_learnings(
                 avatar_id=None,
                 was_win=was_win,
                 spend=spend,
-                revenue=revenue
+                revenue=revenue,
             )
             result["global_updates"] += 1
             result["components_updated"] += 1
@@ -346,12 +336,14 @@ async def process_component_learnings(
                     avatar_id=avatar_id,
                     was_win=was_win,
                     spend=spend,
-                    revenue=revenue
+                    revenue=revenue,
                 )
                 result["avatar_updates"] += 1
                 result["components_updated"] += 1
 
         except Exception as e:
-            result["errors"].append(f"Error updating {component_type}={component_value}: {str(e)}")
+            result["errors"].append(
+                f"Error updating {component_type}={component_value}: {str(e)}"
+            )
 
     return result

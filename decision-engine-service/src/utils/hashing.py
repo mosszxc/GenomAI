@@ -14,20 +14,20 @@ from typing import Optional
 
 # Canonical fields for idea hash - must match JS implementation exactly
 CANONICAL_FIELDS = [
-    'angle_type',
-    'core_belief',
-    'promise_type',
-    'emotion_primary',
-    'emotion_intensity',
-    'message_structure',
-    'opening_type',
-    'state_before',
-    'state_after',
-    'context_frame',
-    'source_type',
-    'risk_level',
-    'horizon',
-    'schema_version'
+    "angle_type",
+    "core_belief",
+    "promise_type",
+    "emotion_primary",
+    "emotion_intensity",
+    "message_structure",
+    "opening_type",
+    "state_before",
+    "state_after",
+    "context_frame",
+    "source_type",
+    "risk_level",
+    "horizon",
+    "schema_version",
 ]
 
 
@@ -71,10 +71,10 @@ def compute_canonical_hash(payload: dict) -> str:
 
     # JSON stringify with same format as JS
     # JSON.stringify in JS uses no spaces, Python default is the same
-    json_string = json.dumps(sorted_data, separators=(',', ':'))
+    json_string = json.dumps(sorted_data, separators=(",", ":"))
 
     # SHA256 hash
-    return hashlib.sha256(json_string.encode('utf-8')).hexdigest()
+    return hashlib.sha256(json_string.encode("utf-8")).hexdigest()
 
 
 def compute_avatar_hash(
@@ -82,7 +82,7 @@ def compute_avatar_hash(
     geo: Optional[str],
     deep_desire_type: Optional[str],
     primary_trigger: Optional[str],
-    awareness_level: Optional[str]
+    awareness_level: Optional[str],
 ) -> Optional[str]:
     """
     Compute MD5 hash for avatar deduplication.
@@ -121,4 +121,4 @@ def compute_avatar_hash(
     avatar_hash_input = f"{vertical or 'unknown'}|{geo or 'unknown'}|{deep_desire_type}|{primary_trigger}|{awareness_level}"
 
     # MD5 hash
-    return hashlib.md5(avatar_hash_input.encode('utf-8')).hexdigest()
+    return hashlib.md5(avatar_hash_input.encode("utf-8")).hexdigest()

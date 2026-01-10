@@ -44,6 +44,7 @@ cd decision-engine-service && python -m temporal.schedules trigger <schedule-id>
 ## Reference by Task Type
 | Задача | Прочитай сначала |
 |--------|------------------|
+| **Любая задача** | `grep -i "keyword" LESSONS.md` (NOT Read — use grep!) |
 | Temporal workflows | `docs/TEMPORAL_WORKFLOWS.md`, `docs/TEMPORAL_RUNBOOK.md` |
 | DB schema changes | `docs/SCHEMA_REFERENCE.md` (check generated columns!) |
 | API endpoints | `docs/API_REFERENCE.md` |
@@ -59,21 +60,13 @@ cd decision-engine-service && python -m temporal.schedules trigger <schedule-id>
 
 ### Полный цикл
 ```
-1. /idea "описание"           # создаёт issue + worktree + открывает Cursor
-2. [работа в изолированном worktree]
+1. /idea "описание"     → issue + worktree + Cursor
+2. Работа в worktree
 3. TEST (обязательно!)
 4. qa-notes/issue-XXX-*.md
-5. git commit + push (в worktree)
+5. git commit + push
 6. ./scripts/task-done.sh XXX --process {process}
-   ↓
-   ╔═══════════════════════════════════════╗
-   ║      VERIFICATION CHECKPOINT          ║
-   ║  1. /rw {process} ...                 ║
-   ║  2. /valid {process}                  ║
-   ║  ✓ qa-notes found                     ║
-   ╚═══════════════════════════════════════╝
-   ↓
-7. [y] → PR → merge → cleanup
+   → /rw {process} → /valid {process} → PR → merge
 ```
 
 ### task-done.sh флаги
@@ -93,242 +86,44 @@ gh issue create -t "title" -l enhancement
 ./scripts/task-done.sh <issue-number>
 ```
 
-## Auto-Worktree Rule (CRITICAL)
+## Issue Workflow
+**Детали:** `.claude/docs/issue-workflow.md`
 
-**При ЛЮБОМ запросе работы над issue — СНАЧАЛА создать worktree:**
-
-```
-Триггеры: "сделай issue #123", "работай над #123", "fix #123", "issue 123"
-
-АВТОМАТИЧЕСКИ выполнить:
-1. git worktree list                           # проверить есть ли уже
-2. Если нет → ./scripts/task-start.sh 123     # создать worktree
-3. Сообщить пользователю о созданном worktree
-4. Продолжить работу В КОНТЕКСТЕ worktree
-```
-
-**Исключения (worktree НЕ нужен):**
-- Только чтение/исследование issue
-- Вопросы про issue без изменений кода
-
-## Issue Workflow (7 Phases)
-
-**Правило: ВСЕГДА создавать worktree. Даже для мелких фиксов.**
-
-### Phase 1: STARTUP
-```
-User: "Работай над issue #123"
-
-1. gh issue view 123               # понять задачу
-2. git worktree list               # проверить существующие
-3. ./scripts/task-start.sh 123    # создать worktree (если нет)
-4. TodoWrite                       # инициализировать tracking
-```
-
-### Phase 2: UNDERSTANDING (READ-ONLY)
-```
-1. Read issue body + comments
-2. Grep/Glob связанные файлы
-3. execute_sql - проверить схему БД (Schema-First!)
-4. Read docs/KNOWN_ISSUES.md - прошлые уроки
-5. Read qa-notes/* - похожие задачи
-
-Output: Requirements, Affected Files, DB Tables, Risks
-```
-
-### Phase 3: PLANNING
-```
-1. Разбить на 3-7 шагов (TodoWrite)
-2. Определить test strategy для каждого шага
-3. EnterPlanMode если сложная задача (много файлов/подходов)
-
-Критерий выхода: TodoWrite initialized + test plan defined
-```
-
-### Phase 4: IMPLEMENTATION
-```
-For each TodoWrite item:
-  1. Mark in_progress
-  2. Write failing test (if applicable)
-  3. Implement change
-  4. Verify locally
-  5. Mark completed
-  6. git commit + push СРАЗУ (short-lived branches!)
-```
-
-### Phase 5: TESTING (BLOCKING!)
-```
-| Change Type | Test                    | Verify               |
-|-------------|-------------------------|----------------------|
-| Workflow    | WebFetch webhook        | execute_sql SELECT   |
-| API         | curl endpoint           | Response body        |
-| Migration   | execute_sql             | Schema + data        |
-| Python      | curl /health            | No errors            |
-
-Self-check:
-- [ ] Я ЗАПУСТИЛ тест (не validate)?
-- [ ] Я ВИДЕЛ результат (данные в БД, HTTP 200)?
-- [ ] Если workflow — WebFetch webhook + проверка данных?
-
-⛔ БЕЗ ПРОХОЖДЕНИЯ ЭТОЙ ФАЗЫ — НЕ ПЕРЕХОДИТЬ К PHASE 6
-```
-
-### Phase 6: DOCUMENTATION
-```
-1. qa-notes/issue-{N}-*.md - edge cases, gotchas, test commands
-2. knowledge/*.md - если новые архитектурные знания
-3. KNOWN_ISSUES.md - если lesson learned
-```
-
-### Phase 7: COMPLETION
-```
-1. ./scripts/task-done.sh {N} --process {process}
-2. /rw {process} - verification loop
-3. /valid {process} - process validation
-4. Create PR → Merge → Cleanup
-```
-
-### Quick Reference
-```
-/task start 123    → Phase 1
-/task plan 123     → Phase 3 template
-/task test 123     → Phase 5 checklist
-/task done 123     → Phase 7
-```
+**Правило:** Работа над issue → `./scripts/task-start.sh {N}` → worktree.
 
 ## Git
 Always push after commit. No exceptions.
 
-## ⛔ TEST-AFTER-CHANGE (BLOCKING)
-**СТОП. Читай это ПЕРЕД закрытием issue или todo.**
+## Testing (BLOCKING)
+**Детали:** `.claude/docs/testing-rules.md`
 
-### Правило
 ```
 НЕТ ТЕСТА = НЕТ ЗАКРЫТИЯ
 ```
-Validation (структура) ≠ Test (реальный запуск). Validate — это НЕ тест.
-
-### Обязательные тесты по типу изменения
-| Изменение | Тест | Критерий успеха |
-|-----------|------|-----------------|
-| Workflow | WebFetch webhook + `execute_sql` SELECT | ✅ HTTP 200 + данные в БД |
-| API | `curl` endpoint | ✅ HTTP 200 + правильный body |
-| Migration | `execute_sql` SELECT | ✅ Данные есть + constraints |
-| Python | Запустить endpoint | ✅ Нет ошибок + output |
-
-**Примечание:** Для Temporal workflows используй `python -m temporal.schedules trigger`.
-
-### Before Closing Issue — MANDATORY
-1. **RUN THE TEST** (см. таблицу выше)
-2. **VERIFY RESULT** (execution success? данные в БД?)
-3. **SCREENSHOT/LOG** в qa-notes если нужно
-4. Только потом → close issue
-
-### Self-Check
-Перед словом "готово" спроси себя:
-- [ ] Я ЗАПУСТИЛ тест (не validate, а test)?
-- [ ] Я ВИДЕЛ результат (execution log, данные в БД)?
-- [ ] Если workflow — был WebFetch на webhook + проверка данных в БД?
-
-**Если хоть один ответ "нет" — СТОП, сначала тест.**
-
-## Post-Task Loop
-Always run Post-Task Knowledge Loop after completing any task. No exceptions.
-1. `/qa-notes/{task}.md` — edge-cases, gotchas, constraints
-2. `/knowledge/{topic}.md` — create or update relevant notes
-3. Summary в конце ответа
-
-## Post-Task Checklist (MANDATORY)
-**STOP before saying "done". Check ALL:**
-- [ ] ⛔ **TEST EXECUTED** (WebFetch webhook / curl / execute_sql) — ПЕРВЫЙ ПУНКТ
-- [ ] ⛔ **TEST PASSED** (execution success + данные в БД)
-- [ ] `qa-notes/{task}.md` created
-- [ ] `knowledge/{topic}.md` created/updated
-- [ ] `dependency_manifest.json` checked (if workflow/API changed)
-- [ ] `/valid {process}` run (if workflow changed)
-- [ ] Git commit + push
-- [ ] **Lesson learned** recorded (if issue closed, see below)
-
-**Первые два пункта — БЛОКИРУЮЩИЕ. Без них остальное не имеет смысла.**
-
-## Lessons Learned (on issue close)
-При закрытии issue — **сначала проверить** `docs/KNOWN_ISSUES.md` → "Lessons Learned":
-1. Если похожий урок уже есть → **не дублировать**, можно добавить ссылку на новый issue
-2. Если урок новый → записать по шаблону:
-```markdown
-### Short Title (что пошло не так)
-
-**Context:** Что делали, какой issue
-**Mistake:** В чём была ошибка
-**Reality:** Что оказалось на самом деле
-**Correct Approach:** Как надо было делать
-**Rule:** Короткое правило на будущее
-```
-Цель: не повторять одни и те же ошибки. Один урок = одна запись.
+| Изменение | Тест | Критерий |
+|-----------|------|----------|
+| Workflow | `temporal.schedules trigger` | данные в БД |
+| API | `curl` endpoint | HTTP 200 |
+| Migration | `execute_sql` SELECT | constraints OK |
 
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
 
+**Python:** Использовать `python3` (не `python`) — на macOS `python` не в PATH.
+
 ## Token Optimization
 
-### Workflow Editing (CRITICAL)
-```
-❌ Несколько Edit для node positions — каждый Edit = 14k tokens
-✅ Один batch Edit для всех positions — 15k tokens total
-✅ Используй scripts/workflow_tools.py для batch операций
-```
-**Правило:** Один Edit = одна логическая операция. Cosmetic fixes (positions) — batch.
+| Паттерн | Правило |
+|---------|---------|
+| Documentation | Один Edit на qa-notes + один на KNOWN_ISSUES.md |
+| GitHub | `gh` CLI, не `mcp__github__*` |
+| Bash network | Сразу `dangerouslyDisableSandbox: true` |
+| Render deploy | `sleep 180`, не polling |
+| Secrets | Спросить пользователя, не grep |
+| Issue close | Post-Task Loop ПЕРЕД закрытием (см. testing-rules.md) |
+| /rw | Только для DB writes, не для cosmetic changes |
 
-### MCP Tools
-
-**GitHub — ТОЛЬКО через CLI (MCP нестабилен):**
-```bash
-# Issues
-gh issue list
-gh issue view 123
-gh issue create -t "title" -b "body"
-gh issue close 123
-
-# PRs
-gh pr list
-gh pr view 123
-gh pr create --title "title" --body "body"
-gh pr merge 123
-
-# Commits & branches
-gh api repos/mosszxc/GenomAI/commits --jq '.[0:3]'
-git log --oneline -5
-```
-❌ НЕ использовать: `mcp__github__*` (fetch failed errors)
-✅ ВСЕГДА использовать: `gh` CLI через Bash
-
-**claude-mem:**
-```
-❌ search() → get_observations([all_ids])
-✅ search() → timeline(anchor=id) → get_observations([filtered_ids])
-```
-
-**vibe-kanban (смешанный режим):**
-```
-❌ list_tasks() каждый раз
-❌ update_task() если статус уже изменён в UI
-✅ list_tasks(limit:10) один раз в начале
-✅ Не дублировать UI действия через MCP
-```
-
-**Общие лимиты:**
-Supabase: `LIMIT 10` | Grep: `head_limit:10` | Explore: `Task subagent_type:"Explore"`
-
-### /rw Exclusions
-Skip /rw для:
-- Node position changes (cosmetic)
-- Documentation updates
-- Comments/formatting only
-
-Run /rw для:
-- DB writes (INSERT/UPDATE)
-- Workflow logic changes
-- API modifications
+**Лимиты:** Supabase `LIMIT 10` | Grep `head_limit:10` | Explore `Task subagent_type:"Explore"`
 
 ## Schema-First Coding
 **ПЕРЕД написанием кода, работающего с БД:**
@@ -375,9 +170,6 @@ python -m temporal.schedules trigger daily-recommendations
 python -m temporal.schedules pause keitaro-poller
 python -m temporal.schedules resume keitaro-poller
 ```
-
-### n8n (ARCHIVED)
-n8n workflows migrated to Temporal. Archive: `infrastructure/n8n-archive/`
 
 ## Validation
 `/valid {process}` — валидация процесса (learning-loop, hypothesis-factory, decision-engine, video-ingestion)

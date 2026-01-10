@@ -14,7 +14,7 @@ Schedule: Every 6 hours
 
 from datetime import timedelta, datetime
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
 @dataclass
 class MaintenanceInput:
     """Input for maintenance workflow"""
+
     # Buyer state timeout in hours
     buyer_state_timeout_hours: int = 6
     # Recommendation expiry in days
@@ -42,6 +43,7 @@ class MaintenanceInput:
 @dataclass
 class MaintenanceResult:
     """Result of maintenance workflow"""
+
     stale_buyers_reset: int
     recommendations_expired: int
     integrity_issues: List[str]
@@ -127,7 +129,11 @@ class MaintenanceWorkflow:
 
         await workflow.execute_activity(
             emit_maintenance_event,
-            args=[result.stale_buyers_reset, result.recommendations_expired, len(result.integrity_issues)],
+            args=[
+                result.stale_buyers_reset,
+                result.recommendations_expired,
+                len(result.integrity_issues),
+            ],
             start_to_close_timeout=timedelta(seconds=10),
             retry_policy=retry_policy,
         )

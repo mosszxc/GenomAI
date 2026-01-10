@@ -3,15 +3,15 @@ Idea Registry API routes
 
 POST /api/idea-registry/register - Register idea for a creative
 """
+
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
 from src.services.idea_registry import (
     register_idea,
-    IdeaRegistryResult,
     IdeaRegistryError,
-    DecomposedCreativeNotFoundError
+    DecomposedCreativeNotFoundError,
 )
 
 router = APIRouter()
@@ -19,12 +19,14 @@ router = APIRouter()
 
 class RegisterRequest(BaseModel):
     """Request body for register endpoint"""
+
     creative_id: str
     schema_version: str = "v1"
 
 
 class RegisterResponseData(BaseModel):
     """Data portion of response"""
+
     idea_id: str
     status: str
     canonical_hash: str
@@ -34,6 +36,7 @@ class RegisterResponseData(BaseModel):
 
 class RegisterResponse(BaseModel):
     """Response model for register endpoint"""
+
     success: bool
     data: RegisterResponseData
 
@@ -73,10 +76,7 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
 
 
 @router.post("/register", response_model=RegisterResponse)
-async def register(
-    request: RegisterRequest,
-    _: bool = Depends(verify_api_key)
-):
+async def register(request: RegisterRequest, _: bool = Depends(verify_api_key)):
     """
     POST /api/idea-registry/register
 
@@ -111,8 +111,7 @@ async def register(
     """
     try:
         result = await register_idea(
-            creative_id=request.creative_id,
-            schema_version=request.schema_version
+            creative_id=request.creative_id, schema_version=request.schema_version
         )
 
         return RegisterResponse(
@@ -122,33 +121,18 @@ async def register(
                 status=result.status,
                 canonical_hash=result.canonical_hash,
                 avatar_id=result.avatar_id,
-                avatar_status=result.avatar_status
-            )
+                avatar_status=result.avatar_status,
+            ),
         )
 
     except DecomposedCreativeNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "success": False,
-                "error": str(e)
-            }
-        )
+        raise HTTPException(status_code=404, detail={"success": False, "error": str(e)})
 
     except IdeaRegistryError as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(e)})
 
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail={
-                "success": False,
-                "error": f"Internal error: {str(e)}"
-            }
+            detail={"success": False, "error": f"Internal error: {str(e)}"},
         )

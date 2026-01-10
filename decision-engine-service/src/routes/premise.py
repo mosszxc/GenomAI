@@ -3,6 +3,7 @@ Premise API routes
 
 Issue: #169
 """
+
 import os
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Depends
@@ -14,7 +15,6 @@ from src.services.premise_selector import (
     select_premise_for_hypothesis,
     get_top_premises,
     get_active_premises,
-    PremiseSelection
 )
 from src.utils.errors import SupabaseError
 
@@ -45,6 +45,7 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
 
 
 # Request/Response models
+
 
 class SelectRequest(BaseModel):
     idea_id: str
@@ -97,11 +98,9 @@ class TopPremiseResponse(BaseModel):
 
 # Routes
 
+
 @router.post("/select", response_model=SelectResponse)
-async def select_premise(
-    request: SelectRequest,
-    _: bool = Depends(verify_api_key)
-):
+async def select_premise(request: SelectRequest, _: bool = Depends(verify_api_key)):
     """
     POST /premise/select
 
@@ -131,7 +130,7 @@ async def select_premise(
             avatar_id=request.avatar_id,
             geo=request.geo,
             vertical=request.vertical,
-            force_exploration=request.force_exploration
+            force_exploration=request.force_exploration,
         )
 
         return SelectResponse(**asdict(result))
@@ -148,7 +147,7 @@ async def get_top(
     geo: Optional[str] = None,
     avatar_id: Optional[str] = None,
     limit: int = 10,
-    _: bool = Depends(verify_api_key)
+    _: bool = Depends(verify_api_key),
 ):
     """
     GET /premise/top
@@ -165,10 +164,7 @@ async def get_top(
     """
     try:
         results = await get_top_premises(
-            vertical=vertical,
-            geo=geo,
-            avatar_id=avatar_id,
-            limit=limit
+            vertical=vertical, geo=geo, avatar_id=avatar_id, limit=limit
         )
         return {"premises": results, "count": len(results)}
 
@@ -183,7 +179,7 @@ async def get_active(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
     limit: int = 50,
-    _: bool = Depends(verify_api_key)
+    _: bool = Depends(verify_api_key),
 ):
     """
     GET /premise/active
@@ -198,11 +194,7 @@ async def get_active(
     Returns list of active premises.
     """
     try:
-        results = await get_active_premises(
-            vertical=vertical,
-            geo=geo,
-            limit=limit
-        )
+        results = await get_active_premises(vertical=vertical, geo=geo, limit=limit)
         return {"premises": results, "count": len(results)}
 
     except SupabaseError as e:
@@ -213,8 +205,7 @@ async def get_active(
 
 @router.post("/", response_model=PremiseResponse)
 async def create_premise(
-    request: CreatePremiseRequest,
-    _: bool = Depends(verify_api_key)
+    request: CreatePremiseRequest, _: bool = Depends(verify_api_key)
 ):
     """
     POST /premise/
@@ -234,19 +225,28 @@ async def create_premise(
     Returns created premise.
     """
     # Validate premise_type
-    valid_types = ['method', 'discovery', 'confession', 'secret', 'ingredient', 'mechanism', 'breakthrough', 'transformation']
+    valid_types = [
+        "method",
+        "discovery",
+        "confession",
+        "secret",
+        "ingredient",
+        "mechanism",
+        "breakthrough",
+        "transformation",
+    ]
     if request.premise_type not in valid_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid premise_type. Must be one of: {', '.join(valid_types)}"
+            detail=f"Invalid premise_type. Must be one of: {', '.join(valid_types)}",
         )
 
     # Validate source
-    valid_sources = ['manual', 'llm_generated', 'extracted']
+    valid_sources = ["manual", "llm_generated", "extracted"]
     if request.source not in valid_sources:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid source. Must be one of: {', '.join(valid_sources)}"
+            detail=f"Invalid source. Must be one of: {', '.join(valid_sources)}",
         )
 
     try:
@@ -263,7 +263,7 @@ async def create_premise(
             "Accept-Profile": SCHEMA,
             "Content-Profile": SCHEMA,
             "Content-Type": "application/json",
-            "Prefer": "return=representation"
+            "Prefer": "return=representation",
         }
 
         async with httpx.AsyncClient() as client:
@@ -279,14 +279,14 @@ async def create_premise(
                     "source": request.source,
                     "vertical": request.vertical,
                     "geo": request.geo,
-                    "status": "emerging"
-                }
+                    "status": "emerging",
+                },
             )
 
             if response.status_code == 409:
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Premise with name '{request.name}' already exists for this vertical"
+                    detail=f"Premise with name '{request.name}' already exists for this vertical",
                 )
 
             response.raise_for_status()
@@ -303,10 +303,7 @@ async def create_premise(
 
 
 @router.get("/{premise_id}")
-async def get_premise(
-    premise_id: str,
-    _: bool = Depends(verify_api_key)
-):
+async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
     """
     GET /premise/{premise_id}
 
@@ -324,13 +321,12 @@ async def get_premise(
             "apikey": supabase_key,
             "Authorization": f"Bearer {supabase_key}",
             "Accept-Profile": SCHEMA,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{rest_url}/premises?id=eq.{premise_id}",
-                headers=headers
+                f"{rest_url}/premises?id=eq.{premise_id}", headers=headers
             )
             response.raise_for_status()
             data = response.json()

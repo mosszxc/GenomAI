@@ -21,7 +21,6 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from temporalio.client import Client
 from temporalio.worker import Worker
 
 from temporal.config import settings
@@ -38,7 +37,10 @@ from temporal.workflows.recommendation import (
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow
 from temporal.workflows.buyer_onboarding import BuyerOnboardingWorkflow
-from temporal.workflows.historical_import import HistoricalImportWorkflow, CreativeRegistrationWorkflow
+from temporal.workflows.historical_import import (
+    HistoricalImportWorkflow,
+    CreativeRegistrationWorkflow,
+)
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
@@ -187,7 +189,9 @@ async def run_worker():
         ],
     )
 
-    logger.info(f"Starting worker on queue: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
+    logger.info(
+        f"Starting worker on queue: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
+    )
     logger.info("Registered workflows: CreativePipelineWorkflow")
     logger.info("Press Ctrl+C to stop")
 
@@ -316,7 +320,9 @@ async def run_all_workers():
     )
 
     logger.info("Workers configured:")
-    logger.info(f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
+    logger.info(
+        f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
+    )
     logger.info(f"  - Metrics & Learning: {settings.temporal.TASK_QUEUE_METRICS}")
     logger.info(f"  - Telegram & Buyer: {settings.temporal.TASK_QUEUE_TELEGRAM}")
 

@@ -4,6 +4,7 @@ Supabase client and data access functions
 Uses direct HTTP requests with proper schema headers to ensure
 all operations use the genomai schema.
 """
+
 import os
 import httpx
 from src.utils.errors import SupabaseError
@@ -35,7 +36,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -57,8 +58,7 @@ async def load_idea(idea_id: str) -> dict | None:
         async with httpx.AsyncClient() as client:
             # First, load the idea
             response = await client.get(
-                f"{rest_url}/ideas?id=eq.{idea_id}&select=*",
-                headers=headers
+                f"{rest_url}/ideas?id=eq.{idea_id}&select=*", headers=headers
             )
             response.raise_for_status()
             ideas_data = response.json()
@@ -71,7 +71,7 @@ async def load_idea(idea_id: str) -> dict | None:
             # Then, load decomposed_creative linked to this idea
             response = await client.get(
                 f"{rest_url}/decomposed_creatives?idea_id=eq.{idea_id}&select=*&order=created_at.desc&limit=1",
-                headers=headers
+                headers=headers,
             )
             response.raise_for_status()
             decomposed_data = response.json()
@@ -79,11 +79,12 @@ async def load_idea(idea_id: str) -> dict | None:
             # Merge payload fields into idea if decomposed_creative exists
             if decomposed_data and len(decomposed_data) > 0:
                 decomposed = decomposed_data[0]
-                payload = decomposed.get('payload', {})
+                payload = decomposed.get("payload", {})
 
                 # Handle payload as string or dict
                 if isinstance(payload, str):
                     import json
+
                     try:
                         payload = json.loads(payload)
                     except json.JSONDecodeError:
@@ -92,33 +93,55 @@ async def load_idea(idea_id: str) -> dict | None:
                 # Merge Canonical Schema fields into idea
                 # V1 required fields
                 canonical_fields = [
-                    'angle_type', 'core_belief', 'promise_type',
-                    'emotion_primary', 'emotion_intensity',
-                    'message_structure', 'opening_type',
-                    'state_before', 'state_after', 'context_frame',
-                    'source_type', 'risk_level', 'horizon', 'schema_version',
+                    "angle_type",
+                    "core_belief",
+                    "promise_type",
+                    "emotion_primary",
+                    "emotion_intensity",
+                    "message_structure",
+                    "opening_type",
+                    "state_before",
+                    "state_after",
+                    "context_frame",
+                    "source_type",
+                    "risk_level",
+                    "horizon",
+                    "schema_version",
                     # V2 optional fields (copywriting psychology)
-                    'ump_present', 'ump_type', 'ums_present', 'ums_type',
-                    'paradigm_shift_present', 'paradigm_shift_type',
-                    'specificity_level', 'specificity_markers',
-                    'hook_mechanism', 'hook_stopping_power',
-                    'proof_type', 'proof_source',
-                    'story_type', 'story_bridge_present',
-                    'desire_level', 'emotional_trigger',
-                    'social_proof_pattern', 'proof_progression',
-                    'cta_style', 'risk_reversal_type',
-                    'focus_score', 'idea_count', 'emotion_count'
+                    "ump_present",
+                    "ump_type",
+                    "ums_present",
+                    "ums_type",
+                    "paradigm_shift_present",
+                    "paradigm_shift_type",
+                    "specificity_level",
+                    "specificity_markers",
+                    "hook_mechanism",
+                    "hook_stopping_power",
+                    "proof_type",
+                    "proof_source",
+                    "story_type",
+                    "story_bridge_present",
+                    "desire_level",
+                    "emotional_trigger",
+                    "social_proof_pattern",
+                    "proof_progression",
+                    "cta_style",
+                    "risk_reversal_type",
+                    "focus_score",
+                    "idea_count",
+                    "emotion_count",
                 ]
                 for field in canonical_fields:
                     if field in payload:
                         idea[field] = payload[field]
 
                 # Add decomposed_creative reference
-                idea['decomposed_creative_id'] = decomposed.get('id')
-                idea['creative_id'] = decomposed.get('creative_id')
+                idea["decomposed_creative_id"] = decomposed.get("id")
+                idea["creative_id"] = decomposed.get("creative_id")
 
             # Map cluster_id to active_cluster_id for backward compatibility
-            idea['active_cluster_id'] = idea.get('cluster_id')
+            idea["active_cluster_id"] = idea.get("cluster_id")
 
             return idea
     except httpx.HTTPStatusError as e:
@@ -136,8 +159,7 @@ async def load_system_state() -> dict:
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{rest_url}/ideas?status=eq.active&select=id",
-                headers=headers
+                f"{rest_url}/ideas?status=eq.active&select=id", headers=headers
             )
             response.raise_for_status()
 
@@ -149,9 +171,9 @@ async def load_system_state() -> dict:
                 total = int(content_range.split("/")[1])
 
             return {
-                'active_ideas_count': total,
-                'max_active_ideas': 100,
-                'current_state': 'exploit'
+                "active_ideas_count": total,
+                "max_active_ideas": 100,
+                "current_state": "exploit",
             }
     except Exception as e:
         raise SupabaseError(f"Failed to load system state: {str(e)}")
@@ -165,9 +187,7 @@ async def save_decision(decision: dict) -> dict:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{rest_url}/decisions",
-                headers=headers,
-                json=decision
+                f"{rest_url}/decisions", headers=headers, json=decision
             )
             response.raise_for_status()
             data = response.json()
@@ -191,11 +211,10 @@ async def delete_decision(decision_id: str) -> None:
 
         async with httpx.AsyncClient() as client:
             response = await client.delete(
-                f"{rest_url}/decisions?id=eq.{decision_id}",
-                headers=headers
+                f"{rest_url}/decisions?id=eq.{decision_id}", headers=headers
             )
             response.raise_for_status()
-    except Exception as e:
+    except Exception:
         # Log but don't raise - this is cleanup
         pass
 
@@ -208,9 +227,7 @@ async def save_decision_trace(trace: dict) -> dict:
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{rest_url}/decision_traces",
-                headers=headers,
-                json=trace
+                f"{rest_url}/decision_traces", headers=headers, json=trace
             )
             response.raise_for_status()
             data = response.json()
@@ -224,4 +241,3 @@ async def save_decision_trace(trace: dict) -> dict:
         raise SupabaseError(f"Failed to save decision trace: {error_detail}")
     except Exception as e:
         raise SupabaseError(f"Failed to save decision trace: {str(e)}")
-

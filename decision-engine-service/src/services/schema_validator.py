@@ -1,18 +1,18 @@
 """
 Schema Validator Service — Validates LLM output against JSON Schema
 """
+
 import json
-import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 from pathlib import Path
-import jsonschema
 from jsonschema import Draft7Validator, ValidationError as JsonSchemaValidationError
 
 
 @dataclass
 class ValidationError:
     """Represents a validation error"""
+
     field: str
     message: str
     code: str
@@ -22,6 +22,7 @@ class ValidationError:
 @dataclass
 class ValidationWarning:
     """Represents a validation warning"""
+
     field: str
     message: str
 
@@ -29,6 +30,7 @@ class ValidationWarning:
 @dataclass
 class ValidationResult:
     """Result of schema validation"""
+
     valid: bool
     errors: List[ValidationError] = field(default_factory=list)
     warnings: List[ValidationWarning] = field(default_factory=list)
@@ -38,13 +40,17 @@ class ValidationResult:
         return {
             "valid": self.valid,
             "errors": [
-                {"field": e.field, "message": e.message, "code": e.code, "value": e.value}
+                {
+                    "field": e.field,
+                    "message": e.message,
+                    "code": e.code,
+                    "value": e.value,
+                }
                 for e in self.errors
             ],
             "warnings": [
-                {"field": w.field, "message": w.message}
-                for w in self.warnings
-            ]
+                {"field": w.field, "message": w.message} for w in self.warnings
+            ],
         }
 
 
@@ -57,7 +63,9 @@ class SchemaValidator:
     # Schema directory relative to project root
     # __file__ = decision-engine-service/src/services/schema_validator.py
     # .parent (x4) = GenomAI/
-    SCHEMA_DIR = Path(__file__).parent.parent.parent.parent / "infrastructure" / "schemas"
+    SCHEMA_DIR = (
+        Path(__file__).parent.parent.parent.parent / "infrastructure" / "schemas"
+    )
 
     # Schema file mapping
     SCHEMA_FILES = {
@@ -86,14 +94,16 @@ class SchemaValidator:
             return self._schema_cache[schema_version]
 
         if schema_version not in self.SCHEMA_FILES:
-            raise ValueError(f"Unknown schema version: {schema_version}. Available: {list(self.SCHEMA_FILES.keys())}")
+            raise ValueError(
+                f"Unknown schema version: {schema_version}. Available: {list(self.SCHEMA_FILES.keys())}"
+            )
 
         schema_path = self.SCHEMA_DIR / self.SCHEMA_FILES[schema_version]
 
         if not schema_path.exists():
             raise FileNotFoundError(f"Schema file not found: {schema_path}")
 
-        with open(schema_path, 'r') as f:
+        with open(schema_path, "r") as f:
             schema = json.load(f)
 
         self._schema_cache[schema_version] = schema
@@ -130,12 +140,18 @@ class SchemaValidator:
 
         return code_mapping.get(validator, "VALIDATION_ERROR")
 
-    def _format_error_message(self, error: JsonSchemaValidationError, field: str) -> str:
+    def _format_error_message(
+        self, error: JsonSchemaValidationError, field: str
+    ) -> str:
         """Format user-friendly error message"""
         validator = error.validator
 
         if validator == "required":
-            missing = list(error.validator_value) if hasattr(error.validator_value, '__iter__') else [error.validator_value]
+            missing = (
+                list(error.validator_value)
+                if hasattr(error.validator_value, "__iter__")
+                else [error.validator_value]
+            )
             return f"Missing required field(s): {', '.join(missing)}"
 
         if validator == "type":
@@ -167,11 +183,13 @@ class SchemaValidator:
         if not payload:
             return ValidationResult(
                 valid=False,
-                errors=[ValidationError(
-                    field="root",
-                    message="Payload cannot be empty",
-                    code="EMPTY_PAYLOAD"
-                )]
+                errors=[
+                    ValidationError(
+                        field="root",
+                        message="Payload cannot be empty",
+                        code="EMPTY_PAYLOAD",
+                    )
+                ],
             )
 
         # Load schema
@@ -180,11 +198,13 @@ class SchemaValidator:
         except (ValueError, FileNotFoundError) as e:
             return ValidationResult(
                 valid=False,
-                errors=[ValidationError(
-                    field="schema_version",
-                    message=str(e),
-                    code="INVALID_SCHEMA_VERSION"
-                )]
+                errors=[
+                    ValidationError(
+                        field="schema_version",
+                        message=str(e),
+                        code="INVALID_SCHEMA_VERSION",
+                    )
+                ],
             )
 
         # Create validator
@@ -202,12 +222,9 @@ class SchemaValidator:
             # Get the invalid value for context
             value = error.instance if error.absolute_path else None
 
-            errors.append(ValidationError(
-                field=field,
-                message=message,
-                code=code,
-                value=value
-            ))
+            errors.append(
+                ValidationError(field=field, message=message, code=code, value=value)
+            )
 
         # Check for extra fields (warning, not error if additionalProperties is not false)
         if schema.get("additionalProperties") is not False:
@@ -216,15 +233,14 @@ class SchemaValidator:
             extra_props = payload_props - schema_props
 
             for prop in extra_props:
-                warnings.append(ValidationWarning(
-                    field=prop,
-                    message=f"Field '{prop}' is not defined in schema"
-                ))
+                warnings.append(
+                    ValidationWarning(
+                        field=prop, message=f"Field '{prop}' is not defined in schema"
+                    )
+                )
 
         return ValidationResult(
-            valid=len(errors) == 0,
-            errors=errors,
-            warnings=warnings
+            valid=len(errors) == 0, errors=errors, warnings=warnings
         )
 
 

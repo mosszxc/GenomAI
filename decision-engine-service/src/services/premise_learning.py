@@ -26,6 +26,7 @@ WIN_THRESHOLD_HIGH_SPEND = {"min_spend": 50, "max_cpa": 5}
 @dataclass
 class PremiseLearningResult:
     """Result of premise learning update"""
+
     premise_id: str
     premise_type: str
     geo: Optional[str]
@@ -53,7 +54,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -90,17 +91,17 @@ async def get_hypothesis_premise(hypothesis_id: str) -> Optional[dict]:
             f"{rest_url}/hypotheses"
             f"?id=eq.{hypothesis_id}"
             f"&select=premise_id,premises(id,premise_type)",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
-        if data and data[0].get('premise_id'):
+        if data and data[0].get("premise_id"):
             hypothesis = data[0]
-            premise = hypothesis.get('premises', {})
+            premise = hypothesis.get("premises", {})
             return {
-                "premise_id": hypothesis['premise_id'],
-                "premise_type": premise.get('premise_type') if premise else None
+                "premise_id": hypothesis["premise_id"],
+                "premise_type": premise.get("premise_type") if premise else None,
             }
         return None
 
@@ -121,10 +122,8 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
     async with httpx.AsyncClient() as client:
         # Get creative -> hypothesis_id and idea_id
         response = await client.get(
-            f"{rest_url}/creatives"
-            f"?id=eq.{creative_id}"
-            f"&select=hypothesis_id,idea_id",
-            headers=headers
+            f"{rest_url}/creatives?id=eq.{creative_id}&select=hypothesis_id,idea_id",
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
@@ -133,16 +132,14 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
             return None
 
         creative = data[0]
-        hypothesis_id = creative.get('hypothesis_id')
-        idea_id = creative.get('idea_id')
+        hypothesis_id = creative.get("hypothesis_id")
+        idea_id = creative.get("idea_id")
 
         # Path 1: Direct hypothesis_id link
         if hypothesis_id:
             response = await client.get(
-                f"{rest_url}/hypotheses"
-                f"?id=eq.{hypothesis_id}"
-                f"&select=id,premise_id",
-                headers=headers
+                f"{rest_url}/hypotheses?id=eq.{hypothesis_id}&select=id,premise_id",
+                headers=headers,
             )
             response.raise_for_status()
             hypothesis_data = response.json()
@@ -156,7 +153,7 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
                 f"?idea_id=eq.{idea_id}"
                 f"&select=id,premise_id"
                 f"&limit=1",
-                headers=headers
+                headers=headers,
             )
             response.raise_for_status()
             hypothesis_data = response.json()
@@ -173,16 +170,14 @@ async def get_premise_type(premise_id: str) -> Optional[str]:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{rest_url}/premises"
-            f"?id=eq.{premise_id}"
-            f"&select=premise_type",
-            headers=headers
+            f"{rest_url}/premises?id=eq.{premise_id}&select=premise_type",
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
         if data:
-            return data[0].get('premise_type')
+            return data[0].get("premise_type")
         return None
 
 
@@ -193,7 +188,7 @@ async def upsert_premise_learning(
     avatar_id: Optional[str],
     was_win: bool,
     spend: float,
-    revenue: float
+    revenue: float,
 ) -> dict:
     """
     Upsert premise learning record.
@@ -223,7 +218,7 @@ async def upsert_premise_learning(
         # Check if record exists
         response = await client.get(
             f"{rest_url}/premise_learnings?{filter_str}",
-            headers=_get_headers(supabase_key)
+            headers=_get_headers(supabase_key),
         )
         response.raise_for_status()
         existing = response.json()
@@ -231,11 +226,11 @@ async def upsert_premise_learning(
         if existing:
             # Update existing record
             record = existing[0]
-            new_sample = (record.get('sample_size') or 0) + 1
-            new_wins = (record.get('win_count') or 0) + (1 if was_win else 0)
-            new_losses = (record.get('loss_count') or 0) + (0 if was_win else 1)
-            new_spend = float(record.get('total_spend') or 0) + spend
-            new_revenue = float(record.get('total_revenue') or 0) + revenue
+            new_sample = (record.get("sample_size") or 0) + 1
+            new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
+            new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
+            new_spend = float(record.get("total_spend") or 0) + spend
+            new_revenue = float(record.get("total_revenue") or 0) + revenue
 
             # win_rate and avg_roi are generated columns, don't update them
             response = await client.patch(
@@ -247,8 +242,8 @@ async def upsert_premise_learning(
                     "loss_count": new_losses,
                     "total_spend": new_spend,
                     "total_revenue": new_revenue,
-                    "updated_at": "now()"
-                }
+                    "updated_at": "now()",
+                },
             )
             response.raise_for_status()
             return response.json()[0] if response.json() else {}
@@ -266,8 +261,8 @@ async def upsert_premise_learning(
                     "win_count": 1 if was_win else 0,
                     "loss_count": 0 if was_win else 1,
                     "total_spend": spend,
-                    "total_revenue": revenue
-                }
+                    "total_revenue": revenue,
+                },
             )
             response.raise_for_status()
             return response.json()[0] if response.json() else {}
@@ -279,7 +274,7 @@ async def process_premise_learning(
     spend: float,
     revenue: float,
     geo: Optional[str] = None,
-    avatar_id: Optional[str] = None
+    avatar_id: Optional[str] = None,
 ) -> dict:
     """
     Main entry point: process premise learning for an outcome.
@@ -296,7 +291,7 @@ async def process_premise_learning(
         "premise_updated": False,
         "premise_id": None,
         "was_win": None,
-        "errors": []
+        "errors": [],
     }
 
     # Get hypothesis for creative
@@ -305,7 +300,7 @@ async def process_premise_learning(
         result["errors"].append(f"No hypothesis found for creative {creative_id}")
         return result
 
-    premise_id = hypothesis.get('premise_id')
+    premise_id = hypothesis.get("premise_id")
     if not premise_id:
         # No premise for this hypothesis - this is normal, not an error
         return result
@@ -331,7 +326,7 @@ async def process_premise_learning(
             avatar_id=None,
             was_win=was_win,
             spend=spend,
-            revenue=revenue
+            revenue=revenue,
         )
         result["premise_updated"] = True
 
@@ -344,7 +339,7 @@ async def process_premise_learning(
                 avatar_id=avatar_id,
                 was_win=was_win,
                 spend=spend,
-                revenue=revenue
+                revenue=revenue,
             )
 
     except Exception as e:

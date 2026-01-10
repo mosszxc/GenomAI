@@ -50,7 +50,7 @@ def days_since(reference_date: Union[datetime, date, str]) -> int:
 
     if isinstance(reference_date, str):
         # Parse ISO date string (YYYY-MM-DD or datetime)
-        reference_date = datetime.fromisoformat(reference_date.replace('Z', '+00:00'))
+        reference_date = datetime.fromisoformat(reference_date.replace("Z", "+00:00"))
 
     if isinstance(reference_date, datetime):
         reference_date = reference_date.date()
@@ -60,9 +60,7 @@ def days_since(reference_date: Union[datetime, date, str]) -> int:
 
 
 def apply_time_decay(
-    base_value: float,
-    outcome_date: Union[datetime, date, str],
-    half_life: int = 20
+    base_value: float, outcome_date: Union[datetime, date, str], half_life: int = 20
 ) -> float:
     """
     Apply time decay to a base value.

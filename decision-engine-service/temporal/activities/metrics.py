@@ -10,7 +10,7 @@ Uses Supabase REST API directly for database operations.
 """
 
 import httpx
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass
 
@@ -28,7 +28,7 @@ def _get_supabase_headers(for_write: bool = False) -> dict:
         "apikey": settings.supabase.service_role_key,
         "Authorization": f"Bearer {settings.supabase.service_role_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -44,6 +44,7 @@ def _get_supabase_url(table: str) -> str:
 @dataclass
 class UpsertRawMetricsInput:
     """Input for upsert_raw_metrics activity"""
+
     tracker_id: str
     metrics_date: str  # ISO date string
     metrics: dict  # {clicks, conversions, revenue, cost}
@@ -52,6 +53,7 @@ class UpsertRawMetricsInput:
 @dataclass
 class UpsertRawMetricsOutput:
     """Output from upsert_raw_metrics activity"""
+
     success: bool
     updated: bool  # True if updated existing, False if inserted new
 
@@ -81,7 +83,7 @@ async def upsert_raw_metrics(input: UpsertRawMetricsInput) -> UpsertRawMetricsOu
         "tracker_id": input.tracker_id,
         "date": input.metrics_date,
         "metrics": input.metrics,
-        "updated_at": datetime.now().isoformat()
+        "updated_at": datetime.now().isoformat(),
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -96,6 +98,7 @@ async def upsert_raw_metrics(input: UpsertRawMetricsInput) -> UpsertRawMetricsOu
 @dataclass
 class CreateSnapshotInput:
     """Input for create_daily_snapshot activity"""
+
     tracker_id: str
     snapshot_date: str  # ISO date string
     metrics: dict  # {clicks, conversions, revenue, cost}
@@ -104,6 +107,7 @@ class CreateSnapshotInput:
 @dataclass
 class CreateSnapshotOutput:
     """Output from create_daily_snapshot activity"""
+
     snapshot_id: str
     created: bool
 
@@ -133,7 +137,7 @@ async def create_daily_snapshot(input: CreateSnapshotInput) -> CreateSnapshotOut
         "tracker_id": input.tracker_id,
         "date": input.snapshot_date,
         "metrics": input.metrics,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -151,6 +155,7 @@ async def create_daily_snapshot(input: CreateSnapshotInput) -> CreateSnapshotOut
 @dataclass
 class CheckSnapshotExistsInput:
     """Input for check_snapshot_exists activity"""
+
     tracker_id: str
     snapshot_date: str
 
@@ -158,12 +163,15 @@ class CheckSnapshotExistsInput:
 @dataclass
 class CheckSnapshotExistsOutput:
     """Output from check_snapshot_exists activity"""
+
     exists: bool
     snapshot_id: Optional[str] = None
 
 
 @activity.defn
-async def check_snapshot_exists(input: CheckSnapshotExistsInput) -> CheckSnapshotExistsOutput:
+async def check_snapshot_exists(
+    input: CheckSnapshotExistsInput,
+) -> CheckSnapshotExistsOutput:
     """
     Check if a snapshot already exists for given tracker and date.
 
@@ -181,7 +189,7 @@ async def check_snapshot_exists(input: CheckSnapshotExistsInput) -> CheckSnapsho
     params = {
         "tracker_id": f"eq.{input.tracker_id}",
         "date": f"eq.{input.snapshot_date}",
-        "select": "id"
+        "select": "id",
     }
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -198,12 +206,14 @@ async def check_snapshot_exists(input: CheckSnapshotExistsInput) -> CheckSnapsho
 @dataclass
 class ProcessOutcomeInput:
     """Input for process_outcome activity"""
+
     snapshot_id: str
 
 
 @dataclass
 class ProcessOutcomeOutput:
     """Output from process_outcome activity"""
+
     success: bool
     outcome_id: Optional[str] = None
     learning_triggered: bool = False
@@ -240,7 +250,7 @@ async def process_outcome(input: ProcessOutcomeInput) -> ProcessOutcomeOutput:
             return ProcessOutcomeOutput(
                 success=True,
                 outcome_id=result.outcome.id if result.outcome else None,
-                learning_triggered=result.learning_triggered
+                learning_triggered=result.learning_triggered,
             )
         else:
             activity.logger.warning(
@@ -249,34 +259,34 @@ async def process_outcome(input: ProcessOutcomeInput) -> ProcessOutcomeOutput:
             return ProcessOutcomeOutput(
                 success=False,
                 error_code=result.error_code,
-                error_message=result.error_message
+                error_message=result.error_message,
             )
 
     except Exception as e:
         activity.logger.error(f"Outcome processing error: {str(e)}")
         return ProcessOutcomeOutput(
-            success=False,
-            error_code="INTERNAL_ERROR",
-            error_message=str(e)
+            success=False, error_code="INTERNAL_ERROR", error_message=str(e)
         )
 
 
 @dataclass
 class GetUnprocessedSnapshotsInput:
     """Input for get_unprocessed_snapshots activity"""
+
     limit: int = 100
 
 
 @dataclass
 class GetUnprocessedSnapshotsOutput:
     """Output from get_unprocessed_snapshots activity"""
+
     snapshot_ids: list[str]
     total: int
 
 
 @activity.defn
 async def get_unprocessed_snapshots(
-    input: GetUnprocessedSnapshotsInput
+    input: GetUnprocessedSnapshotsInput,
 ) -> GetUnprocessedSnapshotsOutput:
     """
     Get snapshots that haven't been processed into outcomes yet.
@@ -297,11 +307,7 @@ async def get_unprocessed_snapshots(
     headers = _get_supabase_headers()
 
     # Get recent snapshots ordered by date desc
-    params = {
-        "select": "id",
-        "order": "created_at.desc",
-        "limit": str(input.limit)
-    }
+    params = {"select": "id", "order": "created_at.desc", "limit": str(input.limit)}
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(url, headers=headers, params=params)
@@ -313,14 +319,14 @@ async def get_unprocessed_snapshots(
     activity.logger.info(f"Found {len(snapshot_ids)} snapshots to check")
 
     return GetUnprocessedSnapshotsOutput(
-        snapshot_ids=snapshot_ids,
-        total=len(snapshot_ids)
+        snapshot_ids=snapshot_ids, total=len(snapshot_ids)
     )
 
 
 @dataclass
 class EmitMetricsEventInput:
     """Input for emit_metrics_event activity"""
+
     event_type: str  # metrics.collected, snapshot.created, etc.
     entity_type: str  # tracker, snapshot, etc.
     entity_id: str
@@ -350,7 +356,7 @@ async def emit_metrics_event(input: EmitMetricsEventInput) -> bool:
         "entity_type": input.entity_type,
         "entity_id": input.entity_id,
         "payload": input.payload,
-        "occurred_at": datetime.now().isoformat()
+        "occurred_at": datetime.now().isoformat(),
     }
 
     async with httpx.AsyncClient(timeout=15.0) as client:

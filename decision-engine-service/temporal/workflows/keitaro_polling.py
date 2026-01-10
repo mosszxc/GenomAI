@@ -12,7 +12,6 @@ Replaces n8n Keitaro Poller workflow (0TrVJOtHiNEEAsTN).
 
 from datetime import timedelta
 from dataclasses import dataclass
-from typing import Optional
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -22,17 +21,13 @@ with workflow.unsafe.imports_passed_through():
     from temporal.activities.keitaro import (
         GetAllTrackersInput,
         GetAllTrackersOutput,
-        GetTrackerMetricsInput,
-        GetTrackerMetricsOutput,
         BatchMetricsInput,
         BatchMetricsOutput,
         get_all_trackers,
-        get_tracker_metrics,
         get_batch_metrics,
     )
     from temporal.activities.metrics import (
         UpsertRawMetricsInput,
-        UpsertRawMetricsOutput,
         CreateSnapshotInput,
         CreateSnapshotOutput,
         EmitMetricsEventInput,
@@ -45,6 +40,7 @@ with workflow.unsafe.imports_passed_through():
 @dataclass
 class KeitaroPollerInput:
     """Input for KeitaroPollerWorkflow"""
+
     interval: str = "yesterday"  # yesterday, today, last_7_days
     create_snapshots: bool = True  # Whether to create daily snapshots
 
@@ -52,6 +48,7 @@ class KeitaroPollerInput:
 @dataclass
 class KeitaroPollerResult:
     """Result from KeitaroPollerWorkflow"""
+
     trackers_found: int
     metrics_collected: int
     metrics_failed: int
@@ -64,7 +61,7 @@ KEITARO_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=5),
     backoff_coefficient=2.0,
     maximum_interval=timedelta(minutes=2),
-    maximum_attempts=3
+    maximum_attempts=3,
 )
 
 # Retry policy for Supabase operations
@@ -72,7 +69,7 @@ SUPABASE_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
     backoff_coefficient=2.0,
     maximum_interval=timedelta(seconds=30),
-    maximum_attempts=5
+    maximum_attempts=5,
 )
 
 
@@ -108,7 +105,7 @@ class KeitaroPollerWorkflow:
                 get_all_trackers,
                 GetAllTrackersInput(interval=input.interval),
                 start_to_close_timeout=timedelta(minutes=2),
-                retry_policy=KEITARO_RETRY_POLICY
+                retry_policy=KEITARO_RETRY_POLICY,
             )
         except Exception as e:
             workflow.logger.error(f"Failed to get trackers: {e}")
@@ -117,7 +114,7 @@ class KeitaroPollerWorkflow:
                 metrics_collected=0,
                 metrics_failed=0,
                 snapshots_created=0,
-                errors=[f"Failed to get trackers: {str(e)}"]
+                errors=[f"Failed to get trackers: {str(e)}"],
             )
 
         tracker_ids = trackers_result.tracker_ids
@@ -129,19 +126,16 @@ class KeitaroPollerWorkflow:
                 metrics_collected=0,
                 metrics_failed=0,
                 snapshots_created=0,
-                errors=[]
+                errors=[],
             )
 
         # Step 2: Batch fetch metrics (more efficient than individual calls)
         try:
             batch_result: BatchMetricsOutput = await workflow.execute_activity(
                 get_batch_metrics,
-                BatchMetricsInput(
-                    tracker_ids=tracker_ids,
-                    interval=input.interval
-                ),
+                BatchMetricsInput(tracker_ids=tracker_ids, interval=input.interval),
                 start_to_close_timeout=timedelta(minutes=5),
-                retry_policy=KEITARO_RETRY_POLICY
+                retry_policy=KEITARO_RETRY_POLICY,
             )
         except Exception as e:
             workflow.logger.error(f"Failed to get batch metrics: {e}")
@@ -161,32 +155,36 @@ class KeitaroPollerWorkflow:
                     UpsertRawMetricsInput(
                         tracker_id=metrics.tracker_id,
                         metrics_date=metrics.date,
-                        metrics=metrics.to_dict()
+                        metrics=metrics.to_dict(),
                     ),
                     start_to_close_timeout=timedelta(seconds=30),
-                    retry_policy=SUPABASE_RETRY_POLICY
+                    retry_policy=SUPABASE_RETRY_POLICY,
                 )
                 metrics_collected += 1
 
                 # Step 4: Create snapshot if enabled
                 if input.create_snapshots:
                     try:
-                        snapshot_result: CreateSnapshotOutput = await workflow.execute_activity(
-                            create_daily_snapshot,
-                            CreateSnapshotInput(
-                                tracker_id=metrics.tracker_id,
-                                snapshot_date=metrics.date,
-                                metrics=metrics.to_dict()
-                            ),
-                            start_to_close_timeout=timedelta(seconds=30),
-                            retry_policy=SUPABASE_RETRY_POLICY
+                        snapshot_result: CreateSnapshotOutput = (
+                            await workflow.execute_activity(
+                                create_daily_snapshot,
+                                CreateSnapshotInput(
+                                    tracker_id=metrics.tracker_id,
+                                    snapshot_date=metrics.date,
+                                    metrics=metrics.to_dict(),
+                                ),
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=SUPABASE_RETRY_POLICY,
+                            )
                         )
                         if snapshot_result.created:
                             snapshots_created += 1
                     except Exception as e:
                         # Duplicate snapshot is expected - not an error
                         if "duplicate" not in str(e).lower():
-                            errors.append(f"Snapshot error {metrics.tracker_id}: {str(e)}")
+                            errors.append(
+                                f"Snapshot error {metrics.tracker_id}: {str(e)}"
+                            )
 
             except Exception as e:
                 errors.append(f"Upsert error {metrics.tracker_id}: {str(e)}")
@@ -204,11 +202,11 @@ class KeitaroPollerWorkflow:
                         "trackers_found": len(tracker_ids),
                         "metrics_collected": metrics_collected,
                         "snapshots_created": snapshots_created,
-                        "errors_count": len(errors)
-                    }
+                        "errors_count": len(errors),
+                    },
                 ),
                 start_to_close_timeout=timedelta(seconds=15),
-                retry_policy=SUPABASE_RETRY_POLICY
+                retry_policy=SUPABASE_RETRY_POLICY,
             )
         except Exception:
             pass  # Event emission is best-effort
@@ -223,5 +221,5 @@ class KeitaroPollerWorkflow:
             metrics_collected=metrics_collected,
             metrics_failed=len(batch_result.failed_ids),
             snapshots_created=snapshots_created,
-            errors=errors
+            errors=errors,
         )

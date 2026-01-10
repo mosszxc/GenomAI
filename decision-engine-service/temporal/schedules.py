@@ -21,8 +21,6 @@ from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow
 from temporalio.client import (
     ScheduleSpec,
     ScheduleIntervalSpec,
-    ScheduleCalendarSpec,
-    ScheduleRange,
     ScheduleState,
     SchedulePolicy,
     ScheduleOverlapPolicy,
@@ -31,15 +29,20 @@ from temporalio.client import (
 from temporal.config import settings
 from temporal.client import get_temporal_client
 from temporal.workflows.keitaro_polling import KeitaroPollerWorkflow, KeitaroPollerInput
-from temporal.workflows.metrics_processing import MetricsProcessingWorkflow, MetricsProcessingInput
+from temporal.workflows.metrics_processing import (
+    MetricsProcessingWorkflow,
+    MetricsProcessingInput,
+)
 from temporal.workflows.learning_loop import LearningLoopWorkflow, LearningLoopInput
-from temporal.workflows.recommendation import DailyRecommendationWorkflow, DailyRecommendationInput
+from temporal.workflows.recommendation import (
+    DailyRecommendationWorkflow,
+    DailyRecommendationInput,
+)
 from temporal.workflows.maintenance import MaintenanceWorkflow, MaintenanceInput
 
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -76,11 +79,13 @@ SCHEDULES = {
     },
     "maintenance": {
         "workflow": MaintenanceWorkflow.run,
-        "args": [MaintenanceInput(
-            buyer_state_timeout_hours=6,
-            recommendation_expiry_days=7,
-            run_integrity_checks=True,
-        )],
+        "args": [
+            MaintenanceInput(
+                buyer_state_timeout_hours=6,
+                recommendation_expiry_days=7,
+                run_integrity_checks=True,
+            )
+        ],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=6),
         "description": "Maintenance tasks every 6 hours: cleanup stale states, expire recommendations",
@@ -94,18 +99,14 @@ async def create_schedule(client: Client, schedule_id: str, config: dict) -> boo
         # Build schedule spec based on interval or cron
         if "cron" in config:
             # Parse cron expression (minute hour day month dayofweek)
-            cron_parts = config["cron"].split()
-            spec = ScheduleSpec(
-                cron_expressions=[config["cron"]]
-            )
+            config["cron"].split()
+            spec = ScheduleSpec(cron_expressions=[config["cron"]])
         else:
             spec = ScheduleSpec(
-                intervals=[
-                    ScheduleIntervalSpec(every=config["interval"])
-                ]
+                intervals=[ScheduleIntervalSpec(every=config["interval"])]
             )
 
-        handle = await client.create_schedule(
+        await client.create_schedule(
             schedule_id,
             Schedule(
                 action=ScheduleActionStartWorkflow(
@@ -115,13 +116,11 @@ async def create_schedule(client: Client, schedule_id: str, config: dict) -> boo
                     task_queue=config["task_queue"],
                 ),
                 spec=spec,
-                state=ScheduleState(
-                    note=config["description"]
-                ),
+                state=ScheduleState(note=config["description"]),
                 policy=SchedulePolicy(
                     overlap=ScheduleOverlapPolicy.SKIP,  # Skip if previous run still running
-                    catchup_window=timedelta(minutes=5)  # Don't catch up missed runs
-                )
+                    catchup_window=timedelta(minutes=5),  # Don't catch up missed runs
+                ),
             ),
         )
         logger.info(f"Created schedule: {schedule_id}")
@@ -153,12 +152,18 @@ async def list_schedules(client: Client) -> list:
     """List all schedules"""
     schedules = []
     async for schedule in client.list_schedules():
-        schedules.append({
-            "id": schedule.id,
-            "state": schedule.info.schedule.state.note if schedule.info.schedule.state else "",
-            "running": len(schedule.info.running_workflows) > 0,
-            "recent": schedule.info.recent_actions[0].start_time.isoformat() if schedule.info.recent_actions else None
-        })
+        schedules.append(
+            {
+                "id": schedule.id,
+                "state": schedule.info.schedule.state.note
+                if schedule.info.schedule.state
+                else "",
+                "running": len(schedule.info.running_workflows) > 0,
+                "recent": schedule.info.recent_actions[0].start_time.isoformat()
+                if schedule.info.recent_actions
+                else None,
+            }
+        )
     return schedules
 
 
@@ -205,10 +210,7 @@ async def show_schedules():
     logger.info(f"Found {len(schedules)} schedules:")
     for s in schedules:
         status = "RUNNING" if s["running"] else "IDLE"
-        logger.info(
-            f"  - {s['id']}: {status} "
-            f"(last: {s['recent'] or 'never'})"
-        )
+        logger.info(f"  - {s['id']}: {status} (last: {s['recent'] or 'never'})")
 
 
 async def pause_schedule(schedule_id: str):

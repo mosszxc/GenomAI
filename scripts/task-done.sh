@@ -126,6 +126,13 @@ if [ "$SKIP_VERIFY" != "true" ]; then
 
     if [ -n "$QA_NOTE" ]; then
         echo "✓ qa-notes found: $(basename "$QA_NOTE")"
+
+        # Check for lesson
+        if grep -q "## Lesson" "$QA_NOTE" && ! grep -q "<!-- Заполни если" "$QA_NOTE"; then
+            echo ""
+            echo "📚 LESSON DETECTED in qa-notes!"
+            echo "   → Add to LESSONS.md before completing"
+        fi
     else
         echo ""
         echo "╔══════════════════════════════════════════════════════════════╗"
@@ -168,7 +175,9 @@ if [ "$NO_PR" != "true" ]; then
         read -p "Merge PR now? [y/N] " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            gh pr merge "$BRANCH_NAME" --squash --delete-branch
+            # Note: не используем --delete-branch т.к. мы в worktree
+            # Ветка удаляется ниже через git worktree remove + git branch -d
+            gh pr merge "$BRANCH_NAME" --squash
             echo "PR merged!"
         fi
     else

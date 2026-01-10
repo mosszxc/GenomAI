@@ -10,13 +10,13 @@ Issue: #124
 import os
 import httpx
 from typing import Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from src.services.exploration import (
     should_explore,
     select_component_with_exploration,
     EXPLORATION_RATE,
-    MIN_SAMPLES_FOR_CONFIDENCE
+    MIN_SAMPLES_FOR_CONFIDENCE,
 )
 from src.services.component_learning import TRACKABLE_COMPONENTS
 from src.utils.errors import SupabaseError
@@ -37,13 +37,14 @@ COMPONENT_DESCRIPTIONS = {
     "core_belief": "belief",
     "context_frame": "context",
     "horizon": "horizon",
-    "risk_level": "risk"
+    "risk_level": "risk",
 }
 
 
 @dataclass
 class RecommendedComponent:
     """Single component recommendation"""
+
     component_type: str
     component_value: str
     confidence: float
@@ -54,6 +55,7 @@ class RecommendedComponent:
 @dataclass
 class Recommendation:
     """Full recommendation for a buyer"""
+
     id: Optional[str]
     buyer_id: Optional[str]
     avatar_id: Optional[str]
@@ -85,7 +87,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -93,7 +95,9 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
     return headers
 
 
-def generate_description(components: list[RecommendedComponent], mode: str, avatar_name: Optional[str] = None) -> str:
+def generate_description(
+    components: list[RecommendedComponent], mode: str, avatar_name: Optional[str] = None
+) -> str:
     """
     Generate human-readable description for buyer.
 
@@ -103,7 +107,9 @@ def generate_description(components: list[RecommendedComponent], mode: str, avat
     parts = []
 
     for comp in components[:5]:  # Top 5 components
-        readable_type = COMPONENT_DESCRIPTIONS.get(comp.component_type, comp.component_type)
+        readable_type = COMPONENT_DESCRIPTIONS.get(
+            comp.component_type, comp.component_type
+        )
         confidence_pct = int(comp.confidence * 100)
         parts.append(f"{comp.component_value} {readable_type} ({confidence_pct}%)")
 
@@ -126,14 +132,13 @@ async def get_avatar_name(avatar_id: str) -> Optional[str]:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{rest_url}/avatars?id=eq.{avatar_id}&select=name",
-            headers=headers
+            f"{rest_url}/avatars?id=eq.{avatar_id}&select=name", headers=headers
         )
         response.raise_for_status()
         data = response.json()
 
         if data:
-            return data[0].get('name')
+            return data[0].get("name")
         return None
 
 
@@ -141,7 +146,7 @@ async def get_top_components(
     component_type: str,
     geo: Optional[str] = None,
     avatar_id: Optional[str] = None,
-    limit: int = 5
+    limit: int = 5,
 ) -> list[dict]:
     """
     Get top performing components by win_rate.
@@ -153,7 +158,7 @@ async def get_top_components(
 
     filters = [
         f"component_type=eq.{component_type}",
-        f"sample_size=gte.{MIN_SAMPLES_FOR_CONFIDENCE}"
+        f"sample_size=gte.{MIN_SAMPLES_FOR_CONFIDENCE}",
     ]
     if geo:
         filters.append(f"geo=eq.{geo}")
@@ -170,7 +175,7 @@ async def get_top_components(
             f"&select=component_value,win_rate,sample_size"
             f"&order=win_rate.desc"
             f"&limit={limit}",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -189,21 +194,20 @@ async def get_all_component_values(component_type: str) -> list[str]:
             f"?component_type=eq.{component_type}"
             f"&select=component_value"
             f"&limit=100",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
         values = set()
         for row in data:
-            if row.get('component_value'):
-                values.add(row['component_value'])
+            if row.get("component_value"):
+                values.add(row["component_value"])
         return list(values)
 
 
 async def generate_exploitation_recommendation(
-    avatar_id: Optional[str] = None,
-    geo: Optional[str] = None
+    avatar_id: Optional[str] = None, geo: Optional[str] = None
 ) -> list[RecommendedComponent]:
     """
     Generate exploitation recommendation: use best known components.
@@ -222,20 +226,21 @@ async def generate_exploitation_recommendation(
 
         if top:
             best = top[0]
-            components.append(RecommendedComponent(
-                component_type=component_type,
-                component_value=best['component_value'],
-                confidence=float(best.get('win_rate') or 0),
-                sample_size=best.get('sample_size') or 0,
-                is_exploration=False
-            ))
+            components.append(
+                RecommendedComponent(
+                    component_type=component_type,
+                    component_value=best["component_value"],
+                    confidence=float(best.get("win_rate") or 0),
+                    sample_size=best.get("sample_size") or 0,
+                    is_exploration=False,
+                )
+            )
 
     return components
 
 
 async def generate_exploration_recommendation(
-    avatar_id: Optional[str] = None,
-    geo: Optional[str] = None
+    avatar_id: Optional[str] = None, geo: Optional[str] = None
 ) -> tuple[list[RecommendedComponent], str]:
     """
     Generate exploration recommendation using Thompson Sampling.
@@ -257,18 +262,20 @@ async def generate_exploration_recommendation(
             component_type=component_type,
             available_values=available_values,
             geo=geo,
-            avatar_id=avatar_id
+            avatar_id=avatar_id,
         )
 
         if decision.selected_option:
             opt = decision.selected_option
-            components.append(RecommendedComponent(
-                component_type=component_type,
-                component_value=opt.value,
-                confidence=decision.exploration_score or 0.5,
-                sample_size=opt.sample_size,
-                is_exploration=decision.should_explore
-            ))
+            components.append(
+                RecommendedComponent(
+                    component_type=component_type,
+                    component_value=opt.value,
+                    confidence=decision.exploration_score or 0.5,
+                    sample_size=opt.sample_size,
+                    is_exploration=decision.should_explore,
+                )
+            )
 
             if decision.exploration_type:
                 exploration_types.append(decision.exploration_type)
@@ -313,22 +320,20 @@ async def save_recommendation(recommendation: Recommendation) -> str:
         "description": recommendation.description,
         "confidence_scores": confidence_scores,
         "avg_confidence": recommendation.avg_confidence,
-        "status": recommendation.status
+        "status": recommendation.status,
     }
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{rest_url}/recommendations",
-            headers=headers,
-            json=payload
+            f"{rest_url}/recommendations", headers=headers, json=payload
         )
         response.raise_for_status()
         data = response.json()
 
         if data:
-            return data[0]['id']
+            return data[0]["id"]
         raise SupabaseError("Failed to save recommendation")
 
 
@@ -337,7 +342,7 @@ async def generate_recommendation(
     avatar_id: Optional[str] = None,
     geo: Optional[str] = None,
     vertical: Optional[str] = None,
-    force_exploration: bool = False
+    force_exploration: bool = False,
 ) -> Recommendation:
     """
     Main entry point: generate recommendation for buyer.
@@ -357,7 +362,9 @@ async def generate_recommendation(
     # Decide mode
     if force_exploration or should_explore():
         mode = "exploration"
-        components, exploration_type = await generate_exploration_recommendation(avatar_id, geo)
+        components, exploration_type = await generate_exploration_recommendation(
+            avatar_id, geo
+        )
     else:
         mode = "exploitation"
         components = await generate_exploitation_recommendation(avatar_id, geo)
@@ -395,7 +402,7 @@ async def generate_recommendation(
         components=components,
         description=description,
         avg_confidence=avg_confidence,
-        status="pending"
+        status="pending",
     )
 
     # Save to database
@@ -406,8 +413,7 @@ async def generate_recommendation(
 
 
 async def mark_recommendation_executed(
-    recommendation_id: str,
-    creative_id: str
+    recommendation_id: str, creative_id: str
 ) -> dict:
     """
     Mark recommendation as executed when buyer creates creative.
@@ -426,8 +432,8 @@ async def mark_recommendation_executed(
             json={
                 "status": "executed",
                 "creative_id": creative_id,
-                "executed_at": "now()"
-            }
+                "executed_at": "now()",
+            },
         )
         response.raise_for_status()
         return response.json()[0] if response.json() else {}
@@ -438,7 +444,7 @@ async def record_recommendation_outcome(
     was_successful: bool,
     cpa: Optional[float] = None,
     spend: Optional[float] = None,
-    revenue: Optional[float] = None
+    revenue: Optional[float] = None,
 ) -> dict:
     """
     Record outcome for a recommendation.
@@ -453,7 +459,7 @@ async def record_recommendation_outcome(
         "outcome_cpa": cpa,
         "outcome_spend": spend,
         "outcome_revenue": revenue,
-        "outcome_recorded_at": "now()"
+        "outcome_recorded_at": "now()",
     }
     payload = {k: v for k, v in payload.items() if v is not None}
 
@@ -461,7 +467,7 @@ async def record_recommendation_outcome(
         response = await client.patch(
             f"{rest_url}/recommendations?id=eq.{recommendation_id}",
             headers=headers,
-            json=payload
+            json=payload,
         )
         response.raise_for_status()
         return response.json()[0] if response.json() else {}
@@ -474,8 +480,7 @@ async def get_recommendation(recommendation_id: str) -> Optional[dict]:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{rest_url}/recommendations?id=eq.{recommendation_id}",
-            headers=headers
+            f"{rest_url}/recommendations?id=eq.{recommendation_id}", headers=headers
         )
         response.raise_for_status()
         data = response.json()
@@ -498,10 +503,8 @@ async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[di
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{rest_url}/recommendations?{filter_str}"
-            f"&order=created_at.desc"
-            f"&limit=10",
-            headers=headers
+            f"{rest_url}/recommendations?{filter_str}&order=created_at.desc&limit=10",
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -518,34 +521,33 @@ async def get_recommendation_stats() -> dict:
         # Total recommendations
         response = await client.get(
             f"{rest_url}/recommendations?select=id",
-            headers={**headers, "Prefer": "count=exact"}
+            headers={**headers, "Prefer": "count=exact"},
         )
-        total = int(response.headers.get('content-range', '*/0').split('/')[-1])
+        total = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
         # By mode
         response = await client.get(
-            f"{rest_url}/recommendations?select=mode&limit=1000",
-            headers=headers
+            f"{rest_url}/recommendations?select=mode&limit=1000", headers=headers
         )
         data = response.json()
         by_mode = {"exploitation": 0, "exploration": 0}
         for row in data:
-            mode = row.get('mode')
+            mode = row.get("mode")
             if mode in by_mode:
                 by_mode[mode] += 1
 
         # Success rate
         response = await client.get(
             f"{rest_url}/recommendations?was_successful=eq.true&select=id",
-            headers={**headers, "Prefer": "count=exact"}
+            headers={**headers, "Prefer": "count=exact"},
         )
-        successful = int(response.headers.get('content-range', '*/0').split('/')[-1])
+        successful = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
         response = await client.get(
             f"{rest_url}/recommendations?was_successful=is.not.null&select=id",
-            headers={**headers, "Prefer": "count=exact"}
+            headers={**headers, "Prefer": "count=exact"},
         )
-        with_outcome = int(response.headers.get('content-range', '*/0').split('/')[-1])
+        with_outcome = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
     return {
         "total_recommendations": total,
@@ -554,5 +556,5 @@ async def get_recommendation_stats() -> dict:
         "target_exploration_rate": EXPLORATION_RATE,
         "with_outcome": with_outcome,
         "successful": successful,
-        "success_rate": successful / max(with_outcome, 1)
+        "success_rate": successful / max(with_outcome, 1),
     }

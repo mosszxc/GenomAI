@@ -1,0 +1,11 @@
+# CODEOWNERS - автоматическое назначение reviewers
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @mosszxc
+
+# Specific areas (expand when team grows)
+/decision-engine-service/ @mosszxc
+/docs/ @mosszxc
+/infrastructure/ @mosszxc
+/.github/ @mosszxc

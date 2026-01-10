@@ -33,6 +33,7 @@ BETA_PRIOR = 1.0
 @dataclass
 class ExplorationOption:
     """Option for Thompson Sampling selection"""
+
     id: str
     option_type: str  # 'avatar', 'component', etc.
     value: str
@@ -46,6 +47,7 @@ class ExplorationOption:
 @dataclass
 class ExplorationDecision:
     """Result of exploration decision"""
+
     should_explore: bool
     selected_option: Optional[ExplorationOption]
     exploration_type: Optional[str]
@@ -71,7 +73,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -104,7 +106,7 @@ def thompson_sample(win_count: int, loss_count: int) -> float:
 
 
 def select_with_thompson_sampling(
-    options: list[ExplorationOption]
+    options: list[ExplorationOption],
 ) -> tuple[ExplorationOption, float, bool]:
     """
     Select option using Thompson Sampling.
@@ -153,9 +155,7 @@ def get_exploration_type(option: ExplorationOption) -> str:
 
 
 async def get_component_options(
-    component_type: str,
-    geo: Optional[str] = None,
-    avatar_id: Optional[str] = None
+    component_type: str, geo: Optional[str] = None, avatar_id: Optional[str] = None
 ) -> list[ExplorationOption]:
     """
     Fetch component learning data for Thompson Sampling.
@@ -185,23 +185,25 @@ async def get_component_options(
         response = await client.get(
             f"{rest_url}/component_learnings?{filter_str}"
             f"&select=id,component_value,win_count,loss_count,sample_size,geo,avatar_id",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
     options = []
     for row in data:
-        options.append(ExplorationOption(
-            id=row['id'],
-            option_type='component',
-            value=row['component_value'],
-            win_count=row.get('win_count') or 0,
-            loss_count=row.get('loss_count') or 0,
-            sample_size=row.get('sample_size') or 0,
-            geo=row.get('geo'),
-            avatar_id=row.get('avatar_id')
-        ))
+        options.append(
+            ExplorationOption(
+                id=row["id"],
+                option_type="component",
+                value=row["component_value"],
+                win_count=row.get("win_count") or 0,
+                loss_count=row.get("loss_count") or 0,
+                sample_size=row.get("sample_size") or 0,
+                geo=row.get("geo"),
+                avatar_id=row.get("avatar_id"),
+            )
+        )
 
     return options
 
@@ -215,7 +217,7 @@ async def log_exploration(
     geo: Optional[str] = None,
     exploration_score: Optional[float] = None,
     exploitation_score: Optional[float] = None,
-    sample_size_at_decision: Optional[int] = None
+    sample_size_at_decision: Optional[int] = None,
 ) -> dict:
     """
     Log exploration decision to exploration_log table.
@@ -234,16 +236,14 @@ async def log_exploration(
         "geo": geo,
         "exploration_score": exploration_score,
         "exploitation_score": exploitation_score,
-        "sample_size_at_decision": sample_size_at_decision
+        "sample_size_at_decision": sample_size_at_decision,
     }
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{rest_url}/exploration_log",
-            headers=headers,
-            json=payload
+            f"{rest_url}/exploration_log", headers=headers, json=payload
         )
         response.raise_for_status()
         return response.json()[0] if response.json() else {}
@@ -254,7 +254,7 @@ async def record_exploration_outcome(
     was_successful: bool,
     cpa: Optional[float] = None,
     spend: Optional[float] = None,
-    revenue: Optional[float] = None
+    revenue: Optional[float] = None,
 ) -> dict:
     """
     Record outcome for an exploration decision.
@@ -274,7 +274,7 @@ async def record_exploration_outcome(
         "outcome_cpa": cpa,
         "outcome_spend": spend,
         "outcome_revenue": revenue,
-        "outcome_recorded_at": "now()"
+        "outcome_recorded_at": "now()",
     }
     payload = {k: v for k, v in payload.items() if v is not None}
 
@@ -282,7 +282,7 @@ async def record_exploration_outcome(
         response = await client.patch(
             f"{rest_url}/exploration_log?id=eq.{exploration_id}",
             headers=headers,
-            json=payload
+            json=payload,
         )
         response.raise_for_status()
         return response.json()[0] if response.json() else {}
@@ -292,7 +292,7 @@ async def select_component_with_exploration(
     component_type: str,
     available_values: list[str],
     geo: Optional[str] = None,
-    avatar_id: Optional[str] = None
+    avatar_id: Optional[str] = None,
 ) -> ExplorationDecision:
     """
     Select a component value using exploration/exploitation strategy.
@@ -316,16 +316,18 @@ async def select_component_with_exploration(
     all_options = list(known_options)
     for value in available_values:
         if value not in known_values:
-            all_options.append(ExplorationOption(
-                id=f"new_{value}",
-                option_type='component',
-                value=value,
-                win_count=0,
-                loss_count=0,
-                sample_size=0,
-                geo=geo,
-                avatar_id=avatar_id
-            ))
+            all_options.append(
+                ExplorationOption(
+                    id=f"new_{value}",
+                    option_type="component",
+                    value=value,
+                    win_count=0,
+                    loss_count=0,
+                    sample_size=0,
+                    geo=geo,
+                    avatar_id=avatar_id,
+                )
+            )
 
     if not all_options:
         return ExplorationDecision(
@@ -333,19 +335,24 @@ async def select_component_with_exploration(
             selected_option=None,
             exploration_type=None,
             exploration_score=None,
-            exploitation_score=None
+            exploitation_score=None,
         )
 
     # Find best known option (highest win rate with sufficient samples)
-    confident_options = [o for o in all_options if o.sample_size >= MIN_SAMPLES_FOR_CONFIDENCE]
+    confident_options = [
+        o for o in all_options if o.sample_size >= MIN_SAMPLES_FOR_CONFIDENCE
+    ]
     exploitation_score = None
     if confident_options:
-        best_known = max(confident_options,
-                         key=lambda o: o.win_count / max(o.sample_size, 1))
+        best_known = max(
+            confident_options, key=lambda o: o.win_count / max(o.sample_size, 1)
+        )
         exploitation_score = best_known.win_count / max(best_known.sample_size, 1)
 
     # Thompson Sampling selection
-    selected, exploration_score, is_exploration = select_with_thompson_sampling(all_options)
+    selected, exploration_score, is_exploration = select_with_thompson_sampling(
+        all_options
+    )
 
     exploration_type = get_exploration_type(selected) if is_exploration else None
 
@@ -354,7 +361,7 @@ async def select_component_with_exploration(
         selected_option=selected,
         exploration_type=exploration_type,
         exploration_score=exploration_score,
-        exploitation_score=exploitation_score
+        exploitation_score=exploitation_score,
     )
 
 
@@ -372,28 +379,26 @@ async def get_exploration_stats() -> dict:
         # Total explorations
         response = await client.get(
             f"{rest_url}/exploration_log?select=id",
-            headers={**headers, "Prefer": "count=exact"}
+            headers={**headers, "Prefer": "count=exact"},
         )
-        total = int(response.headers.get('content-range', '*/0').split('/')[-1])
+        total = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
         # Successful explorations
         response = await client.get(
             f"{rest_url}/exploration_log?was_successful=eq.true&select=id",
-            headers={**headers, "Prefer": "count=exact"}
+            headers={**headers, "Prefer": "count=exact"},
         )
-        successful = int(response.headers.get('content-range', '*/0').split('/')[-1])
+        successful = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
         # By type
         response = await client.get(
-            f"{rest_url}/exploration_log"
-            f"?select=exploration_type"
-            f"&limit=1000",
-            headers=headers
+            f"{rest_url}/exploration_log?select=exploration_type&limit=1000",
+            headers=headers,
         )
         data = response.json()
         by_type = {}
         for row in data:
-            t = row['exploration_type']
+            t = row["exploration_type"]
             by_type[t] = by_type.get(t, 0) + 1
 
     return {
@@ -402,5 +407,5 @@ async def get_exploration_stats() -> dict:
         "success_rate": successful / max(total, 1),
         "by_type": by_type,
         "target_exploration_rate": EXPLORATION_RATE,
-        "min_samples_for_confidence": MIN_SAMPLES_FOR_CONFIDENCE
+        "min_samples_for_confidence": MIN_SAMPLES_FOR_CONFIDENCE,
     }

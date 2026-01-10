@@ -11,7 +11,6 @@ Replaces n8n workflows:
 """
 
 from datetime import timedelta
-from typing import List
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -29,7 +28,6 @@ with workflow.unsafe.imports_passed_through():
     )
     from temporal.activities.buyer import (
         queue_historical_import,
-        update_import_status,
         QueueHistoricalImportInput,
     )
     from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
@@ -114,7 +112,7 @@ class HistoricalImportWorkflow:
                 for campaign in batch:
                     try:
                         # Queue each campaign
-                        queue_id = await workflow.execute_activity(
+                        await workflow.execute_activity(
                             queue_historical_import,
                             QueueHistoricalImportInput(
                                 buyer_id=self._buyer_id,

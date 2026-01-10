@@ -25,6 +25,7 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 @dataclass
 class BuyerInfo:
     """Buyer information for recommendation generation"""
+
     id: str
     telegram_id: str
     name: str
@@ -37,6 +38,7 @@ class BuyerInfo:
 @dataclass
 class RecommendationResult:
     """Result of recommendation generation"""
+
     recommendation_id: str
     buyer_id: str
     mode: str
@@ -62,7 +64,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -117,7 +119,7 @@ async def generate_recommendation_for_buyer(
         Recommendation data including id, mode, description, components
     """
     rest_url, supabase_key = _get_credentials()
-    headers = _get_headers(supabase_key, for_write=True)
+    _get_headers(supabase_key, for_write=True)
     api_key = os.getenv("API_KEY")
     api_url = os.getenv("API_URL", "http://localhost:10000")
 
@@ -296,7 +298,9 @@ def _format_recommendation_message(
         }.get(comp_type, "•")
 
         readable_type = comp_type.replace("_", " ").title()
-        component_lines.append(f"{type_emoji} {readable_type}: {comp_value} ({confidence_pct}%)")
+        component_lines.append(
+            f"{type_emoji} {readable_type}: {comp_value} ({confidence_pct}%)"
+        )
 
     components_text = "\n".join(component_lines)
 
@@ -308,7 +312,7 @@ def _format_recommendation_message(
         "",
         f"👋 {buyer_name}, вот что попробовать сегодня:",
         "",
-        f"🎯 <b>Компоненты:</b>",
+        "🎯 <b>Компоненты:</b>",
         components_text,
         "",
         f"{mode_emoji} Тип: {mode_text}",
@@ -357,9 +361,7 @@ async def update_recommendation_delivery(
         )
         response.raise_for_status()
 
-    activity.logger.info(
-        f"Updated recommendation {recommendation_id}: status={status}"
-    )
+    activity.logger.info(f"Updated recommendation {recommendation_id}: status={status}")
 
 
 @activity.defn

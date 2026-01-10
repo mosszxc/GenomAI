@@ -94,10 +94,20 @@ Return ONLY valid JSON. No explanation. No markdown.
 
 # Required fields for schema validation
 REQUIRED_FIELDS = [
-    "angle_type", "core_belief", "promise_type", "emotion_primary",
-    "emotion_intensity", "message_structure", "opening_type",
-    "state_before", "state_after", "context_frame", "source_type",
-    "risk_level", "horizon", "schema_version"
+    "angle_type",
+    "core_belief",
+    "promise_type",
+    "emotion_primary",
+    "emotion_intensity",
+    "message_structure",
+    "opening_type",
+    "state_before",
+    "state_after",
+    "context_frame",
+    "source_type",
+    "risk_level",
+    "horizon",
+    "schema_version",
 ]
 
 
@@ -181,9 +191,7 @@ async def decompose_creative(
             json.dumps(payload, sort_keys=True).encode()
         ).hexdigest()
 
-        activity.logger.info(
-            f"Decomposition completed: hash={canonical_hash[:16]}..."
-        )
+        activity.logger.info(f"Decomposition completed: hash={canonical_hash[:16]}...")
 
         return {
             "payload": payload,

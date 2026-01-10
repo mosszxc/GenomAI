@@ -8,7 +8,7 @@ Based on docs/layer-4-implementation-planning/KEITARO_API_DATA_CLASSIFICATION.md
 """
 
 import httpx
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 from dataclasses import dataclass
 
@@ -20,6 +20,7 @@ from temporal.config import settings
 @dataclass
 class KeitaroMetrics:
     """Metrics from Keitaro API"""
+
     tracker_id: str
     date: str  # ISO date string
     clicks: int = 0
@@ -32,19 +33,21 @@ class KeitaroMetrics:
             "clicks": self.clicks,
             "conversions": self.conversions,
             "revenue": self.revenue,
-            "cost": self.cost
+            "cost": self.cost,
         }
 
 
 @dataclass
 class GetAllTrackersInput:
     """Input for get_all_trackers activity"""
+
     interval: str = "yesterday"  # yesterday, today, last_7_days, etc.
 
 
 @dataclass
 class GetAllTrackersOutput:
     """Output from get_all_trackers activity"""
+
     tracker_ids: list[str]
     total: int
 
@@ -52,6 +55,7 @@ class GetAllTrackersOutput:
 @dataclass
 class GetTrackerMetricsInput:
     """Input for get_tracker_metrics activity"""
+
     tracker_id: str
     interval: str = "yesterday"
 
@@ -59,6 +63,7 @@ class GetTrackerMetricsInput:
 @dataclass
 class GetTrackerMetricsOutput:
     """Output from get_tracker_metrics activity"""
+
     metrics: Optional[KeitaroMetrics]
     found: bool
 
@@ -69,10 +74,7 @@ def _get_keitaro_headers() -> dict:
     if not api_key:
         raise ValueError("KEITARO_API_KEY not configured")
 
-    return {
-        "Api-Key": api_key,
-        "Content-Type": "application/json"
-    }
+    return {"Api-Key": api_key, "Content-Type": "application/json"}
 
 
 def _get_keitaro_url(path: str) -> str:
@@ -105,7 +107,7 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
     payload = {
         "range": {"interval": input.interval},
         "metrics": ["clicks"],
-        "dimensions": ["sub_id_1"]
+        "dimensions": ["sub_id_1"],
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -114,18 +116,11 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
         data = response.json()
 
     rows = data.get("rows", [])
-    tracker_ids = [
-        row.get("sub_id_1")
-        for row in rows
-        if row.get("sub_id_1")
-    ]
+    tracker_ids = [row.get("sub_id_1") for row in rows if row.get("sub_id_1")]
 
     activity.logger.info(f"Found {len(tracker_ids)} trackers")
 
-    return GetAllTrackersOutput(
-        tracker_ids=tracker_ids,
-        total=len(tracker_ids)
-    )
+    return GetAllTrackersOutput(tracker_ids=tracker_ids, total=len(tracker_ids))
 
 
 @activity.defn
@@ -150,12 +145,8 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
         "range": {"interval": input.interval},
         "metrics": ["clicks", "conversions", "revenue", "cost"],
         "filters": [
-            {
-                "name": "sub_id_1",
-                "operator": "EQUALS",
-                "expression": input.tracker_id
-            }
-        ]
+            {"name": "sub_id_1", "operator": "EQUALS", "expression": input.tracker_id}
+        ],
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -185,7 +176,7 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
         clicks=int(row.get("clicks", 0) or 0),
         conversions=int(row.get("conversions", 0) or 0),
         revenue=float(row.get("revenue", 0) or 0),
-        cost=float(row.get("cost", 0) or 0)
+        cost=float(row.get("cost", 0) or 0),
     )
 
     activity.logger.info(
@@ -200,6 +191,7 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
 @dataclass
 class BatchMetricsInput:
     """Input for batch metrics fetch"""
+
     tracker_ids: list[str]
     interval: str = "yesterday"
 
@@ -207,6 +199,7 @@ class BatchMetricsInput:
 @dataclass
 class BatchMetricsOutput:
     """Output from batch metrics fetch"""
+
     metrics: list[KeitaroMetrics]
     failed_ids: list[str]
 
@@ -214,6 +207,7 @@ class BatchMetricsOutput:
 @dataclass
 class GetCampaignsBySourceInput:
     """Input for get_campaigns_by_source activity"""
+
     source: str  # Keitaro source/affiliate parameter
     date_from: Optional[str] = None  # ISO date string
     date_to: Optional[str] = None  # ISO date string
@@ -222,6 +216,7 @@ class GetCampaignsBySourceInput:
 @dataclass
 class CampaignInfo:
     """Campaign information from Keitaro"""
+
     campaign_id: str
     name: str
     clicks: int = 0
@@ -245,13 +240,16 @@ class CampaignInfo:
 @dataclass
 class GetCampaignsBySourceOutput:
     """Output from get_campaigns_by_source activity"""
+
     campaigns: list[CampaignInfo]
     total: int
     source: str
 
 
 @activity.defn
-async def get_campaigns_by_source(input: GetCampaignsBySourceInput) -> GetCampaignsBySourceOutput:
+async def get_campaigns_by_source(
+    input: GetCampaignsBySourceInput,
+) -> GetCampaignsBySourceOutput:
     """
     Get all campaigns for a specific source/affiliate from Keitaro.
 
@@ -271,11 +269,7 @@ async def get_campaigns_by_source(input: GetCampaignsBySourceInput) -> GetCampai
     # Build date range
     range_config = {}
     if input.date_from and input.date_to:
-        range_config = {
-            "from": input.date_from,
-            "to": input.date_to,
-            "timezone": "UTC"
-        }
+        range_config = {"from": input.date_from, "to": input.date_to, "timezone": "UTC"}
     else:
         range_config = {"interval": "last_30_days"}
 
@@ -284,12 +278,8 @@ async def get_campaigns_by_source(input: GetCampaignsBySourceInput) -> GetCampai
         "metrics": ["clicks", "conversions", "revenue", "cost"],
         "dimensions": ["campaign_id", "campaign"],
         "filters": [
-            {
-                "name": "source",
-                "operator": "EQUALS",
-                "expression": input.source
-            }
-        ]
+            {"name": "source", "operator": "EQUALS", "expression": input.source}
+        ],
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -305,27 +295,28 @@ async def get_campaigns_by_source(input: GetCampaignsBySourceInput) -> GetCampai
         if not campaign_id:
             continue
 
-        campaigns.append(CampaignInfo(
-            campaign_id=str(campaign_id),
-            name=row.get("campaign", f"Campaign {campaign_id}"),
-            clicks=int(row.get("clicks", 0) or 0),
-            conversions=int(row.get("conversions", 0) or 0),
-            revenue=float(row.get("revenue", 0) or 0),
-            cost=float(row.get("cost", 0) or 0),
-        ))
+        campaigns.append(
+            CampaignInfo(
+                campaign_id=str(campaign_id),
+                name=row.get("campaign", f"Campaign {campaign_id}"),
+                clicks=int(row.get("clicks", 0) or 0),
+                conversions=int(row.get("conversions", 0) or 0),
+                revenue=float(row.get("revenue", 0) or 0),
+                cost=float(row.get("cost", 0) or 0),
+            )
+        )
 
     activity.logger.info(f"Found {len(campaigns)} campaigns for source: {input.source}")
 
     return GetCampaignsBySourceOutput(
-        campaigns=campaigns,
-        total=len(campaigns),
-        source=input.source
+        campaigns=campaigns, total=len(campaigns), source=input.source
     )
 
 
 @dataclass
 class GetCampaignCreativesInput:
     """Input for get_campaign_creatives activity"""
+
     campaign_id: str
     date_from: Optional[str] = None
     date_to: Optional[str] = None
@@ -334,6 +325,7 @@ class GetCampaignCreativesInput:
 @dataclass
 class CreativeInfo:
     """Creative/landing information from Keitaro"""
+
     landing_id: str
     name: str
     url: Optional[str] = None
@@ -344,13 +336,16 @@ class CreativeInfo:
 @dataclass
 class GetCampaignCreativesOutput:
     """Output from get_campaign_creatives activity"""
+
     creatives: list[CreativeInfo]
     campaign_id: str
     total: int
 
 
 @activity.defn
-async def get_campaign_creatives(input: GetCampaignCreativesInput) -> GetCampaignCreativesOutput:
+async def get_campaign_creatives(
+    input: GetCampaignCreativesInput,
+) -> GetCampaignCreativesOutput:
     """
     Get creatives (landings) for a specific campaign from Keitaro.
 
@@ -368,11 +363,7 @@ async def get_campaign_creatives(input: GetCampaignCreativesInput) -> GetCampaig
     # Build date range
     range_config = {}
     if input.date_from and input.date_to:
-        range_config = {
-            "from": input.date_from,
-            "to": input.date_to,
-            "timezone": "UTC"
-        }
+        range_config = {"from": input.date_from, "to": input.date_to, "timezone": "UTC"}
     else:
         range_config = {"interval": "last_30_days"}
 
@@ -384,9 +375,9 @@ async def get_campaign_creatives(input: GetCampaignCreativesInput) -> GetCampaig
             {
                 "name": "campaign_id",
                 "operator": "EQUALS",
-                "expression": input.campaign_id
+                "expression": input.campaign_id,
             }
-        ]
+        ],
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -402,19 +393,21 @@ async def get_campaign_creatives(input: GetCampaignCreativesInput) -> GetCampaig
         if not landing_id:
             continue
 
-        creatives.append(CreativeInfo(
-            landing_id=str(landing_id),
-            name=row.get("landing", f"Landing {landing_id}"),
-            clicks=int(row.get("clicks", 0) or 0),
-            conversions=int(row.get("conversions", 0) or 0),
-        ))
+        creatives.append(
+            CreativeInfo(
+                landing_id=str(landing_id),
+                name=row.get("landing", f"Landing {landing_id}"),
+                clicks=int(row.get("clicks", 0) or 0),
+                conversions=int(row.get("conversions", 0) or 0),
+            )
+        )
 
-    activity.logger.info(f"Found {len(creatives)} creatives for campaign: {input.campaign_id}")
+    activity.logger.info(
+        f"Found {len(creatives)} creatives for campaign: {input.campaign_id}"
+    )
 
     return GetCampaignCreativesOutput(
-        creatives=creatives,
-        campaign_id=input.campaign_id,
-        total=len(creatives)
+        creatives=creatives, campaign_id=input.campaign_id, total=len(creatives)
     )
 
 
@@ -432,7 +425,9 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     Returns:
         BatchMetricsOutput with all metrics and any failed IDs
     """
-    activity.logger.info(f"Fetching batch metrics for {len(input.tracker_ids)} trackers")
+    activity.logger.info(
+        f"Fetching batch metrics for {len(input.tracker_ids)} trackers"
+    )
 
     url = _get_keitaro_url("/report/build")
     headers = _get_keitaro_headers()
@@ -441,7 +436,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     payload = {
         "range": {"interval": input.interval},
         "metrics": ["clicks", "conversions", "revenue", "cost"],
-        "dimensions": ["sub_id_1"]
+        "dimensions": ["sub_id_1"],
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -460,9 +455,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     # Build lookup from response
     rows = data.get("rows", [])
     metrics_by_tracker = {
-        row.get("sub_id_1"): row
-        for row in rows
-        if row.get("sub_id_1")
+        row.get("sub_id_1"): row for row in rows if row.get("sub_id_1")
     }
 
     # Match with requested tracker IDs
@@ -478,7 +471,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
                 clicks=int(row.get("clicks", 0) or 0),
                 conversions=int(row.get("conversions", 0) or 0),
                 revenue=float(row.get("revenue", 0) or 0),
-                cost=float(row.get("cost", 0) or 0)
+                cost=float(row.get("cost", 0) or 0),
             )
             results.append(metrics)
         else:

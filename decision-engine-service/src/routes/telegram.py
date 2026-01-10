@@ -15,7 +15,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -252,7 +252,9 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             )
             decisions = decisions_resp.json()
 
-            approved = len([d for d in decisions if d.get("decision_type") == "APPROVE"])
+            approved = len(
+                [d for d in decisions if d.get("decision_type") == "APPROVE"]
+            )
             rejected = len([d for d in decisions if d.get("decision_type") == "REJECT"])
 
             stats_message = (
@@ -296,9 +298,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not supabase_key:
-        await send_telegram_message(
-            message.chat_id, "Service temporarily unavailable."
-        )
+        await send_telegram_message(message.chat_id, "Service temporarily unavailable.")
         return
 
     try:
@@ -394,8 +394,7 @@ async def handle_user_message(message: TelegramMessage) -> None:
     # Unknown message
     await send_telegram_message(
         message.chat_id,
-        "I don't understand that command.\n"
-        "Send /help to see available commands.",
+        "I don't understand that command.\nSend /help to see available commands.",
     )
 
 
@@ -405,9 +404,7 @@ async def process_telegram_update(update: dict) -> None:
     if not message:
         return
 
-    logger.info(
-        f"Telegram message from {message.user_id}: {message.text or '[media]'}"
-    )
+    logger.info(f"Telegram message from {message.user_id}: {message.text or '[media]'}")
 
     # Handle commands
     if message.text:

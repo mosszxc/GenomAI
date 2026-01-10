@@ -1,9 +1,13 @@
 """
 Learning Loop API routes
 """
+
 from fastapi import APIRouter, Header, HTTPException, Depends
 from typing import Optional
-from src.services.learning_loop import process_learning_batch, fetch_unprocessed_outcomes
+from src.services.learning_loop import (
+    process_learning_batch,
+    fetch_unprocessed_outcomes,
+)
 from src.utils.errors import SupabaseError
 
 router = APIRouter()
@@ -34,9 +38,7 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
 
 
 @router.post("/process")
-async def process_learning(
-    _: bool = Depends(verify_api_key)
-):
+async def process_learning(_: bool = Depends(verify_api_key)):
     """
     POST /learning/process
 
@@ -64,39 +66,28 @@ async def process_learning(
     try:
         result = await process_learning_batch(limit=100)
 
-        return {
-            "success": True,
-            "data": result.to_dict()
-        }
+        return {"success": True, "data": result.to_dict()}
 
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
             detail={
                 "success": False,
-                "error": {
-                    "code": "SUPABASE_ERROR",
-                    "message": str(e)
-                }
-            }
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail={
                 "success": False,
-                "error": {
-                    "code": "INTERNAL_ERROR",
-                    "message": str(e)
-                }
-            }
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )
 
 
 @router.get("/status")
-async def learning_status(
-    _: bool = Depends(verify_api_key)
-):
+async def learning_status(_: bool = Depends(verify_api_key)):
     """
     GET /learning/status
 
@@ -109,32 +100,21 @@ async def learning_status(
     try:
         outcomes = await fetch_unprocessed_outcomes(limit=1000)
 
-        return {
-            "success": True,
-            "data": {
-                "pending_outcomes": len(outcomes)
-            }
-        }
+        return {"success": True, "data": {"pending_outcomes": len(outcomes)}}
 
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
             detail={
                 "success": False,
-                "error": {
-                    "code": "SUPABASE_ERROR",
-                    "message": str(e)
-                }
-            }
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail={
                 "success": False,
-                "error": {
-                    "code": "INTERNAL_ERROR",
-                    "message": str(e)
-                }
-            }
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )

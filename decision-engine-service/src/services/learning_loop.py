@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
 from src.utils.time_decay import time_decay, days_since
-from src.utils.environment import apply_environment_weight, is_environment_degraded
+from src.utils.environment import apply_environment_weight
 from src.services.component_learning import process_component_learnings
 from src.services.premise_learning import process_premise_learning
 
@@ -36,6 +36,7 @@ CONSECUTIVE_FAILURES_HARD_DEAD = 5
 @dataclass
 class LearningResult:
     """Result of learning loop batch processing"""
+
     processed_count: int = 0
     updated_ideas: list = None
     new_deaths: list = None
@@ -57,7 +58,7 @@ class LearningResult:
             "component_updates": self.component_updates,
             "premise_updates": self.premise_updates,
             "fatigue_updates": self.fatigue_updates,
-            "errors": self.errors
+            "errors": self.errors,
         }
 
 
@@ -79,7 +80,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -107,7 +108,7 @@ async def fetch_unprocessed_outcomes(limit: int = 100) -> list:
             f"&cpa=not.is.null"
             f"&select=id,creative_id,cpa,spend,environment_ctx,window_end,decision_id"
             f"&limit={limit}",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -119,7 +120,7 @@ async def resolve_idea_for_outcome(outcome: dict) -> Optional[str]:
 
     Path: outcome.creative_id -> decomposed_creatives.creative_id -> idea_id
     """
-    creative_id = outcome.get('creative_id')
+    creative_id = outcome.get("creative_id")
     if not creative_id:
         return None
 
@@ -132,28 +133,28 @@ async def resolve_idea_for_outcome(outcome: dict) -> Optional[str]:
             f"{rest_url}/decomposed_creatives"
             f"?creative_id=eq.{creative_id}"
             f"&select=idea_id",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
-        if data and data[0].get('idea_id'):
-            return data[0]['idea_id']
+        if data and data[0].get("idea_id"):
+            return data[0]["idea_id"]
 
         # Fallback: extract from payload
         response = await client.get(
             f"{rest_url}/decomposed_creatives"
             f"?creative_id=eq.{creative_id}"
             f"&select=payload",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
-        if data and data[0].get('payload'):
-            payload = data[0]['payload']
+        if data and data[0].get("payload"):
+            payload = data[0]["payload"]
             if isinstance(payload, dict):
-                return payload.get('idea_id')
+                return payload.get("idea_id")
 
         return None
 
@@ -174,13 +175,13 @@ async def get_current_confidence(idea_id: str) -> tuple[float, int]:
             f"&select=confidence_value,version"
             f"&order=version.desc"
             f"&limit=1",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
         if data:
-            return float(data[0]['confidence_value']), int(data[0]['version'])
+            return float(data[0]["confidence_value"]), int(data[0]["version"])
 
         return 0.0, 0
 
@@ -202,13 +203,13 @@ async def get_current_fatigue(idea_id: str) -> tuple[float, int]:
             f"&select=fatigue_value,version"
             f"&order=version.desc"
             f"&limit=1",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
 
         if data:
-            return float(data[0]['fatigue_value']), int(data[0]['version'])
+            return float(data[0]["fatigue_value"]), int(data[0]["version"])
 
         return 0.0, 0
 
@@ -221,10 +222,8 @@ async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
     async with httpx.AsyncClient() as client:
         # Get outcomes via decomposed_creatives
         response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?idea_id=eq.{idea_id}"
-            f"&select=creative_id",
-            headers=headers
+            f"{rest_url}/decomposed_creatives?idea_id=eq.{idea_id}&select=creative_id",
+            headers=headers,
         )
         response.raise_for_status()
         creatives = response.json()
@@ -232,7 +231,7 @@ async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
         if not creatives:
             return []
 
-        creative_ids = [c['creative_id'] for c in creatives if c.get('creative_id')]
+        creative_ids = [c["creative_id"] for c in creatives if c.get("creative_id")]
         if not creative_ids:
             return []
 
@@ -245,16 +244,14 @@ async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
             f"&select=id,cpa,window_end"
             f"&order=window_end.desc"
             f"&limit={limit}",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
 
 
 def calculate_confidence_delta(
-    cpa: float,
-    outcome_date: str,
-    env_ctx: Optional[dict]
+    cpa: float, outcome_date: str, env_ctx: Optional[dict]
 ) -> float:
     """
     Calculate confidence delta based on CPA, time decay, and environment.
@@ -284,7 +281,9 @@ def calculate_confidence_delta(
     return weighted_delta
 
 
-def check_death_condition(outcomes: list, was_resurrected: bool = False) -> Optional[str]:
+def check_death_condition(
+    outcomes: list, was_resurrected: bool = False
+) -> Optional[str]:
     """
     Check if idea should die based on consecutive failures.
 
@@ -301,7 +300,7 @@ def check_death_condition(outcomes: list, was_resurrected: bool = False) -> Opti
     # Count consecutive failures from most recent
     consecutive_failures = 0
     for outcome in outcomes:
-        cpa = outcome.get('cpa')
+        cpa = outcome.get("cpa")
         if cpa is None:
             continue
         if float(cpa) >= TARGET_CPA:
@@ -310,9 +309,9 @@ def check_death_condition(outcomes: list, was_resurrected: bool = False) -> Opti
             break  # Success breaks the streak
 
     if was_resurrected and consecutive_failures >= CONSECUTIVE_FAILURES_HARD_DEAD:
-        return 'hard_dead'
+        return "hard_dead"
     elif consecutive_failures >= CONSECUTIVE_FAILURES_SOFT_DEAD:
-        return 'soft_dead'
+        return "soft_dead"
 
     return None
 
@@ -322,7 +321,7 @@ async def insert_confidence_version(
     confidence_value: float,
     version: int,
     outcome_id: str,
-    change_reason: str = "learning_applied"
+    change_reason: str = "learning_applied",
 ) -> dict:
     """Insert new confidence version"""
     rest_url, supabase_key = _get_credentials()
@@ -337,18 +336,15 @@ async def insert_confidence_version(
                 "confidence_value": confidence_value,
                 "version": version,
                 "source_outcome_id": outcome_id,
-                "change_reason": change_reason
-            }
+                "change_reason": change_reason,
+            },
         )
         response.raise_for_status()
         return response.json()[0]
 
 
 async def insert_fatigue_version(
-    idea_id: str,
-    fatigue_value: float,
-    version: int,
-    outcome_id: str
+    idea_id: str, fatigue_value: float, version: int, outcome_id: str
 ) -> dict:
     """
     Insert new fatigue version.
@@ -366,8 +362,8 @@ async def insert_fatigue_version(
                 "idea_id": idea_id,
                 "fatigue_value": fatigue_value,
                 "version": version,
-                "source_outcome_id": outcome_id
-            }
+                "source_outcome_id": outcome_id,
+            },
         )
         response.raise_for_status()
         return response.json()[0]
@@ -382,7 +378,7 @@ async def update_idea_death_state(idea_id: str, death_state: str) -> dict:
         response = await client.patch(
             f"{rest_url}/ideas?id=eq.{idea_id}",
             headers=headers,
-            json={"death_state": death_state}
+            json={"death_state": death_state},
         )
         response.raise_for_status()
         return response.json()[0] if response.json() else {}
@@ -397,7 +393,7 @@ async def mark_outcome_processed(outcome_id: str) -> None:
         response = await client.patch(
             f"{rest_url}/outcome_aggregates?id=eq.{outcome_id}",
             headers=headers,
-            json={"learning_applied": True}
+            json={"learning_applied": True},
         )
         response.raise_for_status()
 
@@ -408,7 +404,7 @@ async def emit_learning_event(
     old_confidence: float,
     new_confidence: float,
     delta: float,
-    death_state: Optional[str] = None
+    death_state: Optional[str] = None,
 ) -> None:
     """Emit learning.applied event to event_log"""
     rest_url, supabase_key = _get_credentials()
@@ -418,7 +414,7 @@ async def emit_learning_event(
         "outcome_id": outcome_id,
         "old_confidence": old_confidence,
         "new_confidence": new_confidence,
-        "delta": delta
+        "delta": delta,
     }
     if death_state:
         payload["death_state"] = death_state
@@ -431,8 +427,8 @@ async def emit_learning_event(
                 "event_type": "learning.applied",
                 "entity_type": "idea",
                 "entity_id": idea_id,
-                "payload": payload
-            }
+                "payload": payload,
+            },
         )
         response.raise_for_status()
 
@@ -443,12 +439,12 @@ async def process_single_outcome(outcome: dict) -> dict:
 
     Returns dict with result info or error
     """
-    outcome_id = outcome['id']
-    creative_id = outcome.get('creative_id')
-    cpa = float(outcome['cpa'])
-    spend = float(outcome.get('spend') or 0)
-    env_ctx = outcome.get('environment_ctx')
-    window_end = outcome.get('window_end', datetime.now().isoformat())
+    outcome_id = outcome["id"]
+    creative_id = outcome.get("creative_id")
+    cpa = float(outcome["cpa"])
+    spend = float(outcome.get("spend") or 0)
+    env_ctx = outcome.get("environment_ctx")
+    window_end = outcome.get("window_end", datetime.now().isoformat())
 
     # Resolve idea
     idea_id = await resolve_idea_for_outcome(outcome)
@@ -470,7 +466,7 @@ async def process_single_outcome(outcome: dict) -> dict:
         idea_id=idea_id,
         confidence_value=new_confidence,
         version=new_version,
-        outcome_id=outcome_id
+        outcome_id=outcome_id,
     )
 
     # Update fatigue versioning (issue #237)
@@ -483,7 +479,7 @@ async def process_single_outcome(outcome: dict) -> dict:
         idea_id=idea_id,
         fatigue_value=new_fatigue,
         version=new_fatigue_version,
-        outcome_id=outcome_id
+        outcome_id=outcome_id,
     )
 
     # Check death conditions
@@ -503,7 +499,7 @@ async def process_single_outcome(outcome: dict) -> dict:
         old_confidence=current_confidence,
         new_confidence=new_confidence,
         delta=delta,
-        death_state=death_state
+        death_state=death_state,
     )
 
     # Process component learnings (issue #122)
@@ -514,7 +510,7 @@ async def process_single_outcome(outcome: dict) -> dict:
                 creative_id=creative_id,
                 cpa=cpa,
                 spend=spend,
-                revenue=0  # Revenue not tracked in outcome_aggregates yet
+                revenue=0,  # Revenue not tracked in outcome_aggregates yet
             )
         except Exception as e:
             component_result = {"error": str(e)}
@@ -524,10 +520,7 @@ async def process_single_outcome(outcome: dict) -> dict:
     if creative_id:
         try:
             premise_result = await process_premise_learning(
-                creative_id=creative_id,
-                cpa=cpa,
-                spend=spend,
-                revenue=0
+                creative_id=creative_id, cpa=cpa, spend=spend, revenue=0
             )
         except Exception as e:
             premise_result = {"error": str(e)}
@@ -542,7 +535,7 @@ async def process_single_outcome(outcome: dict) -> dict:
         "new_fatigue": new_fatigue,
         "death_state": death_state,
         "component_learning": component_result,
-        "premise_learning": premise_result
+        "premise_learning": premise_result,
     }
 
 
@@ -569,26 +562,34 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                     result.updated_ideas.append(learn_result["idea_id"])
 
                     if learn_result.get("death_state"):
-                        result.new_deaths.append({
-                            "idea_id": learn_result["idea_id"],
-                            "death_state": learn_result["death_state"]
-                        })
+                        result.new_deaths.append(
+                            {
+                                "idea_id": learn_result["idea_id"],
+                                "death_state": learn_result["death_state"],
+                            }
+                        )
 
                     # Track component learning updates
                     comp_result = learn_result.get("component_learning")
                     if comp_result:
                         if "error" in comp_result:
-                            result.errors.append(f"Component learning error: {comp_result['error']}")
+                            result.errors.append(
+                                f"Component learning error: {comp_result['error']}"
+                            )
                         elif "errors" in comp_result and comp_result["errors"]:
                             result.errors.extend(comp_result["errors"])
                         if "components_updated" in comp_result:
-                            result.component_updates += comp_result["components_updated"]
+                            result.component_updates += comp_result[
+                                "components_updated"
+                            ]
 
                     # Track premise learning updates (issue #167)
                     prem_result = learn_result.get("premise_learning")
                     if prem_result:
                         if "error" in prem_result:
-                            result.errors.append(f"Premise learning error: {prem_result['error']}")
+                            result.errors.append(
+                                f"Premise learning error: {prem_result['error']}"
+                            )
                         elif "errors" in prem_result and prem_result["errors"]:
                             result.errors.extend(prem_result["errors"])
                         if prem_result.get("premise_updated"):
@@ -599,7 +600,9 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                         result.fatigue_updates += 1
 
             except Exception as e:
-                result.errors.append(f"Error processing outcome {outcome['id']}: {str(e)}")
+                result.errors.append(
+                    f"Error processing outcome {outcome['id']}: {str(e)}"
+                )
 
     except Exception as e:
         result.errors.append(f"Failed to fetch outcomes: {str(e)}")

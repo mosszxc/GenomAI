@@ -8,7 +8,7 @@ Delivers generated hypotheses to buyers via Telegram Bot API.
 import os
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 import httpx
@@ -43,9 +43,7 @@ async def send_hypothesis_to_telegram(
     if not bot_token:
         raise ApplicationError("TELEGRAM_BOT_TOKEN not configured")
 
-    activity.logger.info(
-        f"Sending hypothesis {hypothesis_id} to chat {chat_id}"
-    )
+    activity.logger.info(f"Sending hypothesis {hypothesis_id} to chat {chat_id}")
 
     # Format message
     message_text = _format_hypothesis_message(hypothesis_content, idea_id)
@@ -108,10 +106,12 @@ def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> s
     ]
 
     if idea_id:
-        lines.extend([
-            "",
-            f"<i>Idea: {idea_id[:8]}...</i>",
-        ])
+        lines.extend(
+            [
+                "",
+                f"<i>Idea: {idea_id[:8]}...</i>",
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -187,7 +187,9 @@ async def update_hypothesis_delivery_status(
 
     update_data = {
         "delivery_status": status,
-        "delivered_at": datetime.utcnow().isoformat() if status == "delivered" else None,
+        "delivered_at": datetime.utcnow().isoformat()
+        if status == "delivered"
+        else None,
     }
 
     if message_id:

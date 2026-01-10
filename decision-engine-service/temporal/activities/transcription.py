@@ -139,11 +139,13 @@ async def transcribe_audio(
             )
 
         # Send heartbeat with current status
-        activity.heartbeat({
-            "transcript_id": transcript_id,
-            "status": str(transcript.status),
-            "elapsed_seconds": elapsed,
-        })
+        activity.heartbeat(
+            {
+                "transcript_id": transcript_id,
+                "status": str(transcript.status),
+                "elapsed_seconds": elapsed,
+            }
+        )
 
         activity.logger.info(
             f"Transcription in progress: {transcript_id}, "
@@ -192,6 +194,8 @@ async def get_transcript(transcript_id: str) -> dict:
 
     return {
         "transcript_id": transcript_id,
-        "text": transcript.text if transcript.status == aai.TranscriptStatus.completed else None,
+        "text": transcript.text
+        if transcript.status == aai.TranscriptStatus.completed
+        else None,
         "status": str(transcript.status),
     }

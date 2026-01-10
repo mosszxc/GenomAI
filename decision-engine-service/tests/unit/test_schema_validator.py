@@ -4,13 +4,12 @@ Unit tests for Schema Validator service.
 Tests validation of LLM output against JSON Schema.
 """
 
-import pytest
 from src.services.schema_validator import (
     SchemaValidator,
     ValidationResult,
     ValidationError,
     ValidationWarning,
-    get_schema_validator
+    get_schema_validator,
 )
 
 
@@ -35,7 +34,7 @@ class TestSchemaValidatorValidPayload:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -64,7 +63,7 @@ class TestSchemaValidatorValidPayload:
             "risk_level": "medium",
             "horizon": "T2",
             "schema_version": "v1",
-            "created_at": "2024-01-15T10:30:00Z"
+            "created_at": "2024-01-15T10:30:00Z",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -94,7 +93,7 @@ class TestSchemaValidatorMissingFields:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -110,10 +109,7 @@ class TestSchemaValidatorMissingFields:
         validator = SchemaValidator()
 
         # Missing multiple required fields
-        payload = {
-            "angle_type": "pain",
-            "schema_version": "v1"
-        }
+        payload = {"angle_type": "pain", "schema_version": "v1"}
 
         result = validator.validate(payload, schema_version="v1")
 
@@ -124,10 +120,7 @@ class TestSchemaValidatorMissingFields:
         """Missing field error should have MISSING_REQUIRED_FIELD code"""
         validator = SchemaValidator()
 
-        payload = {
-            "core_belief": "problem_is_serious",
-            "schema_version": "v1"
-        }
+        payload = {"core_belief": "problem_is_serious", "schema_version": "v1"}
 
         result = validator.validate(payload, schema_version="v1")
 
@@ -158,7 +151,7 @@ class TestSchemaValidatorTypeMismatch:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -186,7 +179,7 @@ class TestSchemaValidatorTypeMismatch:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -218,7 +211,7 @@ class TestSchemaValidatorEnumViolation:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -245,7 +238,7 @@ class TestSchemaValidatorEnumViolation:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -314,7 +307,7 @@ class TestSchemaValidatorSchemaVersion:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         # Call without schema_version
@@ -346,7 +339,7 @@ class TestSchemaValidatorNestedValidation:
             "source_type": "internal",
             "risk_level": "low",
             "horizon": "T1",
-            "schema_version": "v1"
+            "schema_version": "v1",
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -375,7 +368,7 @@ class TestSchemaValidatorExtraFields:
             "risk_level": "low",
             "horizon": "T1",
             "schema_version": "v1",
-            "unknown_field": "should_be_rejected"  # Extra field
+            "unknown_field": "should_be_rejected",  # Extra field
         }
 
         result = validator.validate(payload, schema_version="v1")
@@ -398,15 +391,10 @@ class TestValidationResultToDict:
                     field="angle_type",
                     message="Missing required field",
                     code="MISSING_REQUIRED_FIELD",
-                    value=None
+                    value=None,
                 )
             ],
-            warnings=[
-                ValidationWarning(
-                    field="extra_field",
-                    message="Unknown field"
-                )
-            ]
+            warnings=[ValidationWarning(field="extra_field", message="Unknown field")],
         )
 
         d = result.to_dict()

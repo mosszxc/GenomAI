@@ -3,6 +3,7 @@ Recommendations API routes
 
 Issue: #124
 """
+
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -12,7 +13,7 @@ from src.services.recommendation import (
     record_recommendation_outcome,
     get_recommendation,
     get_pending_recommendations,
-    get_recommendation_stats
+    get_recommendation_stats,
 )
 from src.utils.errors import SupabaseError
 
@@ -62,11 +63,9 @@ class OutcomeRequest(BaseModel):
 
 # Static routes MUST come before dynamic routes with path parameters
 
+
 @router.post("/generate")
-async def generate(
-    request: GenerateRequest,
-    _: bool = Depends(verify_api_key)
-):
+async def generate(request: GenerateRequest, _: bool = Depends(verify_api_key)):
     """
     POST /recommendations/generate
 
@@ -93,7 +92,7 @@ async def generate(
             avatar_id=request.avatar_id,
             geo=request.geo,
             vertical=request.vertical,
-            force_exploration=request.force_exploration
+            force_exploration=request.force_exploration,
         )
 
         return {
@@ -110,29 +109,33 @@ async def generate(
                         "value": c.component_value,
                         "confidence": c.confidence,
                         "sample_size": c.sample_size,
-                        "is_exploration": c.is_exploration
+                        "is_exploration": c.is_exploration,
                     }
                     for c in rec.components
-                ]
-            }
+                ],
+            },
         }
 
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )
 
 
 @router.get("/stats")
-async def stats(
-    _: bool = Depends(verify_api_key)
-):
+async def stats(_: bool = Depends(verify_api_key)):
     """
     GET /recommendations/stats
 
@@ -141,27 +144,29 @@ async def stats(
     try:
         result = await get_recommendation_stats()
 
-        return {
-            "success": True,
-            "data": result
-        }
+        return {"success": True, "data": result}
 
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )
 
 
 @router.get("/")
 async def list_pending(
-    buyer_id: Optional[str] = None,
-    _: bool = Depends(verify_api_key)
+    buyer_id: Optional[str] = None, _: bool = Depends(verify_api_key)
 ):
     """
     GET /recommendations/
@@ -174,30 +179,32 @@ async def list_pending(
     try:
         recs = await get_pending_recommendations(buyer_id)
 
-        return {
-            "success": True,
-            "data": recs
-        }
+        return {"success": True, "data": recs}
 
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )
 
 
 # Dynamic routes with path parameters come after static routes
 
+
 @router.post("/{recommendation_id}/executed")
 async def mark_executed(
-    recommendation_id: str,
-    request: ExecutedRequest,
-    _: bool = Depends(verify_api_key)
+    recommendation_id: str, request: ExecutedRequest, _: bool = Depends(verify_api_key)
 ):
     """
     POST /recommendations/{id}/executed
@@ -209,32 +216,32 @@ async def mark_executed(
     """
     try:
         result = await mark_recommendation_executed(
-            recommendation_id=recommendation_id,
-            creative_id=request.creative_id
+            recommendation_id=recommendation_id, creative_id=request.creative_id
         )
 
-        return {
-            "success": True,
-            "data": result
-        }
+        return {"success": True, "data": result}
 
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )
 
 
 @router.post("/{recommendation_id}/outcome")
 async def record_outcome(
-    recommendation_id: str,
-    request: OutcomeRequest,
-    _: bool = Depends(verify_api_key)
+    recommendation_id: str, request: OutcomeRequest, _: bool = Depends(verify_api_key)
 ):
     """
     POST /recommendations/{id}/outcome
@@ -253,31 +260,31 @@ async def record_outcome(
             was_successful=request.was_successful,
             cpa=request.cpa,
             spend=request.spend,
-            revenue=request.revenue
+            revenue=request.revenue,
         )
 
-        return {
-            "success": True,
-            "data": result
-        }
+        return {"success": True, "data": result}
 
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )
 
 
 @router.get("/{recommendation_id}")
-async def get_one(
-    recommendation_id: str,
-    _: bool = Depends(verify_api_key)
-):
+async def get_one(recommendation_id: str, _: bool = Depends(verify_api_key)):
     """
     GET /recommendations/{id}
 
@@ -289,20 +296,23 @@ async def get_one(
         if not rec:
             raise HTTPException(status_code=404, detail="Recommendation not found")
 
-        return {
-            "success": True,
-            "data": rec
-        }
+        return {"success": True, "data": rec}
 
     except HTTPException:
         raise
     except SupabaseError as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "SUPABASE_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "SUPABASE_ERROR", "message": str(e)},
+            },
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail={"success": False, "error": {"code": "INTERNAL_ERROR", "message": str(e)}}
+            detail={
+                "success": False,
+                "error": {"code": "INTERNAL_ERROR", "message": str(e)},
+            },
         )

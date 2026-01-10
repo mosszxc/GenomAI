@@ -35,7 +35,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -67,14 +67,14 @@ async def reset_stale_buyer_states(timeout_hours: int = 6) -> int:
     activity.logger.info(f"Looking for buyer states older than {cutoff_iso}")
 
     async with httpx.AsyncClient() as client:
-        # Find stale buyer_states (not buyers, but buyer_states table if exists)
-        # For GenomAI, buyer state is stored in a separate table or as buyer.status
+        # Find stale buyer_states
+        # buyer_states uses telegram_id as primary key, not id
 
-        # First, check if buyer_states table exists
         response = await client.get(
             f"{rest_url}/buyer_states"
             f"?updated_at=lt.{cutoff_iso}"
-            "&select=id,buyer_id,state",
+            f"&state=neq.idle"
+            "&select=telegram_id,state",
             headers=_get_headers(supabase_key),
         )
 
@@ -93,16 +93,17 @@ async def reset_stale_buyer_states(timeout_hours: int = 6) -> int:
             activity.logger.info("No stale buyer states found")
             return 0
 
-        # Delete stale states
-        state_ids = [s["id"] for s in stale_states]
-        for state_id in state_ids:
-            await client.delete(
-                f"{rest_url}/buyer_states?id=eq.{state_id}",
+        # Reset stale states to idle
+        telegram_ids = [s["telegram_id"] for s in stale_states]
+        for telegram_id in telegram_ids:
+            await client.patch(
+                f"{rest_url}/buyer_states?telegram_id=eq.{telegram_id}",
                 headers=headers,
+                json={"state": "idle", "context": {}},
             )
 
-        activity.logger.info(f"Reset {len(state_ids)} stale buyer states")
-        return len(state_ids)
+        activity.logger.info(f"Reset {len(telegram_ids)} stale buyer states")
+        return len(telegram_ids)
 
 
 @activity.defn
@@ -149,8 +150,7 @@ async def expire_old_recommendations(expiry_days: int = 7) -> int:
         rec_ids = [r["id"] for r in old_recommendations]
 
         response = await client.patch(
-            f"{rest_url}/recommendations"
-            f"?id=in.({','.join(rec_ids)})",
+            f"{rest_url}/recommendations?id=in.({','.join(rec_ids)})",
             headers=headers,
             json={
                 "status": "expired",
@@ -212,7 +212,7 @@ async def check_data_integrity() -> List[str]:
 
         response = await client.get(
             f"{rest_url}/hypotheses"
-            f"?delivery_status=is.null"
+            f"?delivered_at=is.null"
             f"&created_at=lt.{cutoff_1h}"
             "&select=id"
             "&limit=100",
@@ -222,7 +222,9 @@ async def check_data_integrity() -> List[str]:
         if response.status_code == 200:
             undelivered = response.json()
             if undelivered:
-                issues.append(f"{len(undelivered)} hypotheses pending delivery for > 1h")
+                issues.append(
+                    f"{len(undelivered)} hypotheses pending delivery for > 1h"
+                )
 
     if issues:
         activity.logger.warning(f"Found {len(issues)} integrity issues")

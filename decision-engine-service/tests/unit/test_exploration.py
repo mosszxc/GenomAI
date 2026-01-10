@@ -5,7 +5,6 @@ Issue: #123
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
 import random
 
 from src.services.exploration import (
@@ -15,7 +14,6 @@ from src.services.exploration import (
     get_exploration_type,
     ExplorationOption,
     EXPLORATION_RATE,
-    MIN_SAMPLES_FOR_CONFIDENCE,
 )
 
 
@@ -83,8 +81,12 @@ class TestSelectWithThompsonSampling:
     def test_single_option_returns_that_option(self):
         """Single option should always be selected"""
         option = ExplorationOption(
-            id="1", option_type="component", value="test",
-            win_count=5, loss_count=5, sample_size=10
+            id="1",
+            option_type="component",
+            value="test",
+            win_count=5,
+            loss_count=5,
+            sample_size=10,
         )
         selected, score, is_exploration = select_with_thompson_sampling([option])
 
@@ -99,12 +101,20 @@ class TestSelectWithThompsonSampling:
     def test_favors_high_win_rate_with_many_samples(self):
         """With many samples, high win rate should usually win"""
         good_option = ExplorationOption(
-            id="good", option_type="component", value="good",
-            win_count=90, loss_count=10, sample_size=100
+            id="good",
+            option_type="component",
+            value="good",
+            win_count=90,
+            loss_count=10,
+            sample_size=100,
         )
         bad_option = ExplorationOption(
-            id="bad", option_type="component", value="bad",
-            win_count=10, loss_count=90, sample_size=100
+            id="bad",
+            option_type="component",
+            value="bad",
+            win_count=10,
+            loss_count=90,
+            sample_size=100,
         )
 
         good_wins = 0
@@ -119,12 +129,20 @@ class TestSelectWithThompsonSampling:
     def test_new_option_gets_chances(self):
         """New option (0 samples) should get some selections"""
         established = ExplorationOption(
-            id="established", option_type="component", value="established",
-            win_count=60, loss_count=40, sample_size=100
+            id="established",
+            option_type="component",
+            value="established",
+            win_count=60,
+            loss_count=40,
+            sample_size=100,
         )
         new = ExplorationOption(
-            id="new", option_type="component", value="new",
-            win_count=0, loss_count=0, sample_size=0
+            id="new",
+            option_type="component",
+            value="new",
+            win_count=0,
+            loss_count=0,
+            sample_size=0,
         )
 
         new_wins = 0
@@ -139,8 +157,12 @@ class TestSelectWithThompsonSampling:
     def test_is_exploration_flag_low_samples(self):
         """Options with low samples should be marked as exploration"""
         low_samples = ExplorationOption(
-            id="low", option_type="component", value="low",
-            win_count=5, loss_count=5, sample_size=10
+            id="low",
+            option_type="component",
+            value="low",
+            win_count=5,
+            loss_count=5,
+            sample_size=10,
         )
         selected, _, is_exploration = select_with_thompson_sampling([low_samples])
 
@@ -149,8 +171,12 @@ class TestSelectWithThompsonSampling:
     def test_is_exploration_flag_high_samples(self):
         """Options with high samples should not be marked as exploration"""
         high_samples = ExplorationOption(
-            id="high", option_type="component", value="high",
-            win_count=50, loss_count=50, sample_size=100
+            id="high",
+            option_type="component",
+            value="high",
+            win_count=50,
+            loss_count=50,
+            sample_size=100,
         )
         selected, _, is_exploration = select_with_thompson_sampling([high_samples])
 
@@ -163,32 +189,48 @@ class TestGetExplorationType:
     def test_new_component_zero_samples(self):
         """Zero samples component should be new_component"""
         option = ExplorationOption(
-            id="1", option_type="component", value="test",
-            win_count=0, loss_count=0, sample_size=0
+            id="1",
+            option_type="component",
+            value="test",
+            win_count=0,
+            loss_count=0,
+            sample_size=0,
         )
         assert get_exploration_type(option) == "new_component"
 
     def test_new_avatar_zero_samples(self):
         """Zero samples avatar should be new_avatar"""
         option = ExplorationOption(
-            id="1", option_type="avatar", value="test",
-            win_count=0, loss_count=0, sample_size=0
+            id="1",
+            option_type="avatar",
+            value="test",
+            win_count=0,
+            loss_count=0,
+            sample_size=0,
         )
         assert get_exploration_type(option) == "new_avatar"
 
     def test_mutation_medium_samples(self):
         """Medium samples should be mutation"""
         option = ExplorationOption(
-            id="1", option_type="component", value="test",
-            win_count=10, loss_count=5, sample_size=15
+            id="1",
+            option_type="component",
+            value="test",
+            win_count=10,
+            loss_count=5,
+            sample_size=15,
         )
         assert get_exploration_type(option) == "mutation"
 
     def test_random_high_samples(self):
         """High samples should be random"""
         option = ExplorationOption(
-            id="1", option_type="component", value="test",
-            win_count=50, loss_count=50, sample_size=100
+            id="1",
+            option_type="component",
+            value="test",
+            win_count=50,
+            loss_count=50,
+            sample_size=100,
         )
         assert get_exploration_type(option) == "random"
 
@@ -204,7 +246,7 @@ class TestExplorationOption:
             value="test_value",
             win_count=10,
             loss_count=5,
-            sample_size=15
+            sample_size=15,
         )
         assert option.id == "1"
         assert option.value == "test_value"
@@ -213,8 +255,12 @@ class TestExplorationOption:
     def test_optional_fields_default_none(self):
         """Optional fields should default to None"""
         option = ExplorationOption(
-            id="1", option_type="component", value="test",
-            win_count=0, loss_count=0, sample_size=0
+            id="1",
+            option_type="component",
+            value="test",
+            win_count=0,
+            loss_count=0,
+            sample_size=0,
         )
         assert option.geo is None
         assert option.avatar_id is None

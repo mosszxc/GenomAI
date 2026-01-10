@@ -79,10 +79,7 @@ MESSAGES = {
         "- Use /stats to view your performance\n"
         "- Use /help for more commands"
     ),
-    "timeout": (
-        "Session timed out due to inactivity.\n\n"
-        "Send /start to begin again."
-    ),
+    "timeout": ("Session timed out due to inactivity.\n\nSend /start to begin again."),
     "invalid_geo": (
         "Invalid GEO codes. Please use valid country codes.\n"
         "Examples: US, UK, DE, FR, IT, ES\n\n"
@@ -176,7 +173,10 @@ class BuyerOnboardingWorkflow:
 
                 await workflow.execute_activity(
                     send_telegram_message,
-                    args=[self._chat_id, f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."],
+                    args=[
+                        self._chat_id,
+                        f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up.",
+                    ],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
@@ -219,7 +219,9 @@ class BuyerOnboardingWorkflow:
                 ):
                     return await self._handle_timeout()
 
-                geos_input = self._pending_message.text.upper().replace(" ", "").split(",")
+                geos_input = (
+                    self._pending_message.text.upper().replace(" ", "").split(",")
+                )
                 self._pending_message = None
 
                 # Validate GEOs
@@ -240,7 +242,10 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.AWAITING_VERTICAL
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[self._chat_id, MESSAGES["ask_vertical"].format(geos=", ".join(self._geos))],
+                args=[
+                    self._chat_id,
+                    MESSAGES["ask_vertical"].format(geos=", ".join(self._geos)),
+                ],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -253,7 +258,9 @@ class BuyerOnboardingWorkflow:
                 ):
                     return await self._handle_timeout()
 
-                verticals_input = self._pending_message.text.lower().replace(" ", "").split(",")
+                verticals_input = (
+                    self._pending_message.text.lower().replace(" ", "").split(",")
+                )
                 self._pending_message = None
 
                 # Validate verticals
@@ -274,7 +281,12 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.AWAITING_KEITARO
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[self._chat_id, MESSAGES["ask_keitaro"].format(verticals=", ".join(self._verticals))],
+                args=[
+                    self._chat_id,
+                    MESSAGES["ask_keitaro"].format(
+                        verticals=", ".join(self._verticals)
+                    ),
+                ],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -293,7 +305,12 @@ class BuyerOnboardingWorkflow:
             self._state = OnboardingState.LOADING_HISTORY
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[self._chat_id, MESSAGES["loading_history"].format(keitaro_source=self._keitaro_source)],
+                args=[
+                    self._chat_id,
+                    MESSAGES["loading_history"].format(
+                        keitaro_source=self._keitaro_source
+                    ),
+                ],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -317,7 +334,9 @@ class BuyerOnboardingWorkflow:
 
             # Start historical import as child workflow
             with workflow.unsafe.imports_passed_through():
-                from temporal.workflows.historical_import import HistoricalImportWorkflow
+                from temporal.workflows.historical_import import (
+                    HistoricalImportWorkflow,
+                )
 
             import_result = await workflow.execute_child_workflow(
                 HistoricalImportWorkflow.run,
@@ -330,7 +349,11 @@ class BuyerOnboardingWorkflow:
                 execution_timeout=timedelta(hours=2),
             )
 
-            self._campaigns_count = import_result["total_campaigns"] if isinstance(import_result, dict) else import_result.total_campaigns
+            self._campaigns_count = (
+                import_result["total_campaigns"]
+                if isinstance(import_result, dict)
+                else import_result.total_campaigns
+            )
 
             # Step 6: Completed
             self._state = OnboardingState.COMPLETED

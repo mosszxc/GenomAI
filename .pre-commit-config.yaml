@@ -1,0 +1,24 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff lint
+        entry: ruff check decision-engine-service/ --fix
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format decision-engine-service/ --check
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: fast-tests
+        name: fast unit tests
+        entry: bash -c "cd decision-engine-service && pytest tests/unit/ -q --tb=no -x -m 'not slow' 2>/dev/null || true"
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-push]

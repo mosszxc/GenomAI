@@ -30,9 +30,9 @@ def environment_weight(env_ctx: Optional[dict]) -> float:
 
     # Check for degraded environment markers
     is_degraded = (
-        env_ctx.get('degraded', False) or
-        env_ctx.get('market_stress', False) or
-        env_ctx.get('seasonality_impact', 'normal') == 'high'
+        env_ctx.get("degraded", False)
+        or env_ctx.get("market_stress", False)
+        or env_ctx.get("seasonality_impact", "normal") == "high"
     )
 
     if not is_degraded:
@@ -41,13 +41,12 @@ def environment_weight(env_ctx: Optional[dict]) -> float:
     # Degraded environment - weight depends on outcome direction
     # Note: actual direction is applied in learning_loop.py
     # Here we return a marker that degraded = True
-    return 0.3  # Will be adjusted based on outcome direction in apply_environment_weight
+    return (
+        0.3  # Will be adjusted based on outcome direction in apply_environment_weight
+    )
 
 
-def apply_environment_weight(
-    delta: float,
-    env_ctx: Optional[dict]
-) -> float:
+def apply_environment_weight(delta: float, env_ctx: Optional[dict]) -> float:
     """
     Apply environment weight to confidence/fatigue delta.
 
@@ -67,9 +66,9 @@ def apply_environment_weight(
         return delta
 
     is_degraded = (
-        env_ctx.get('degraded', False) or
-        env_ctx.get('market_stress', False) or
-        env_ctx.get('seasonality_impact', 'normal') == 'high'
+        env_ctx.get("degraded", False)
+        or env_ctx.get("market_stress", False)
+        or env_ctx.get("seasonality_impact", "normal") == "high"
     )
 
     if not is_degraded:
@@ -97,7 +96,7 @@ def is_environment_degraded(env_ctx: Optional[dict]) -> bool:
         return False
 
     return (
-        env_ctx.get('degraded', False) or
-        env_ctx.get('market_stress', False) or
-        env_ctx.get('seasonality_impact', 'normal') == 'high'
+        env_ctx.get("degraded", False)
+        or env_ctx.get("market_stress", False)
+        or env_ctx.get("seasonality_impact", "normal") == "high"
     )

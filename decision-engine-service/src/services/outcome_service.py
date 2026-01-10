@@ -3,6 +3,7 @@ Outcome Service — Aggregates outcomes from daily snapshots
 
 Replaces Outcome Aggregator n8n workflow with Python API.
 """
+
 import os
 from datetime import datetime, date
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ SCHEMA = "genomai"
 @dataclass
 class OutcomeAggregate:
     """Represents an aggregated outcome"""
+
     id: Optional[str] = None
     creative_id: str = ""
     decision_id: str = ""
@@ -47,13 +49,14 @@ class OutcomeAggregate:
             "cpa": float(self.cpa) if self.cpa else None,
             "trend": self.trend,
             "origin_type": self.origin_type,
-            "learning_applied": self.learning_applied
+            "learning_applied": self.learning_applied,
         }
 
 
 @dataclass
 class AggregateResult:
     """Result of outcome aggregation"""
+
     success: bool
     outcome: Optional[OutcomeAggregate] = None
     learning_triggered: bool = False
@@ -94,7 +97,7 @@ class OutcomeService:
             "apikey": self.supabase_key,
             "Authorization": f"Bearer {self.supabase_key}",
             "Accept-Profile": SCHEMA,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
         if for_write:
             headers["Content-Profile"] = SCHEMA
@@ -141,7 +144,9 @@ class OutcomeService:
         return spend / Decimal(conversions)
 
     @staticmethod
-    def calculate_trend(current_cpa: Optional[Decimal], previous_cpa: Optional[Decimal]) -> Optional[str]:
+    def calculate_trend(
+        current_cpa: Optional[Decimal], previous_cpa: Optional[Decimal]
+    ) -> Optional[str]:
         """
         Calculate trend based on CPA change.
 
@@ -175,7 +180,7 @@ class OutcomeService:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.rest_url}/daily_metrics_snapshot?id=eq.{snapshot_id}&select=*",
-                headers=self._get_headers()
+                headers=self._get_headers(),
             )
             response.raise_for_status()
             data = response.json()
@@ -186,7 +191,7 @@ class OutcomeService:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.rest_url}/creative_idea_lookup?tracker_id=eq.{tracker_id}&select=*",
-                headers=self._get_headers()
+                headers=self._get_headers(),
             )
             response.raise_for_status()
             data = response.json()
@@ -197,7 +202,7 @@ class OutcomeService:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.rest_url}/decisions?idea_id=eq.{idea_id}&decision=ilike.approve&select=*&order=created_at.desc&limit=1",
-                headers=self._get_headers()
+                headers=self._get_headers(),
             )
             response.raise_for_status()
             data = response.json()
@@ -216,7 +221,7 @@ class OutcomeService:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&select=cpa,created_at&order=created_at.desc&limit=1",
-                headers=self._get_headers()
+                headers=self._get_headers(),
             )
             response.raise_for_status()
             data = response.json()
@@ -235,21 +240,27 @@ class OutcomeService:
             "cpa": float(outcome.cpa) if outcome.cpa else None,
             "trend": outcome.trend,
             "origin_type": outcome.origin_type,
-            "learning_applied": outcome.learning_applied
+            "learning_applied": outcome.learning_applied,
         }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.rest_url}/outcome_aggregates",
                 headers=self._get_headers(for_write=True),
-                json=payload
+                json=payload,
             )
             response.raise_for_status()
             data = response.json()
             return data[0] if data else {}
 
-    async def emit_event(self, outcome_id: str, decision_id: str, idea_id: str,
-                         conversions: int, window_id: str) -> None:
+    async def emit_event(
+        self,
+        outcome_id: str,
+        decision_id: str,
+        idea_id: str,
+        conversions: int,
+        window_id: str,
+    ) -> None:
         """Emit OutcomeAggregated event to event_log"""
         import json
 
@@ -257,29 +268,35 @@ class OutcomeService:
             "event_type": "OutcomeAggregated",
             "entity_type": "outcome",
             "entity_id": outcome_id,
-            "payload": json.dumps({
-                "outcome_id": outcome_id,
-                "decision_id": decision_id,
-                "idea_id": idea_id,
-                "conversions": conversions,
-                "window_id": window_id
-            }),
-            "occurred_at": datetime.now().isoformat()
+            "payload": json.dumps(
+                {
+                    "outcome_id": outcome_id,
+                    "decision_id": decision_id,
+                    "idea_id": idea_id,
+                    "conversions": conversions,
+                    "window_id": window_id,
+                }
+            ),
+            "occurred_at": datetime.now().isoformat(),
         }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.rest_url}/event_log",
                 headers=self._get_headers(for_write=True),
-                json=payload
+                json=payload,
             )
             response.raise_for_status()
 
-    async def trigger_learning_loop(self, outcome_id: str, decision_id: str,
-                                     idea_id: str, conversions: int,
-                                     origin_type: str = "system") -> bool:
+    async def trigger_learning_loop(
+        self,
+        outcome_id: str,
+        decision_id: str,
+        idea_id: str,
+        conversions: int,
+        origin_type: str = "system",
+    ) -> bool:
         """Call Learning Loop v2 webhook"""
-        import json
 
         learning_loop_url = "https://kazamaqwe.app.n8n.cloud/webhook/learning-loop-v2"
 
@@ -288,15 +305,12 @@ class OutcomeService:
             "decision_id": decision_id,
             "idea_id": idea_id,
             "conversions": conversions,
-            "origin_type": origin_type
+            "origin_type": origin_type,
         }
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    learning_loop_url,
-                    json=payload
-                )
+                response = await client.post(learning_loop_url, json=payload)
                 return response.status_code == 200
         except Exception:
             # Don't fail if learning loop is unavailable
@@ -319,7 +333,7 @@ class OutcomeService:
                 return AggregateResult(
                     success=False,
                     error_code="SNAPSHOT_NOT_FOUND",
-                    error_message=f"Snapshot {snapshot_id} not found"
+                    error_message=f"Snapshot {snapshot_id} not found",
                 )
 
             tracker_id = snapshot.get("tracker_id")
@@ -338,7 +352,7 @@ class OutcomeService:
                 return AggregateResult(
                     success=False,
                     error_code="IDEA_NOT_FOUND",
-                    error_message=f"No idea found for tracker {tracker_id}"
+                    error_message=f"No idea found for tracker {tracker_id}",
                 )
 
             idea_id = idea_lookup["idea_id"]
@@ -350,7 +364,7 @@ class OutcomeService:
                 return AggregateResult(
                     success=False,
                     error_code="NO_APPROVED_DECISION",
-                    error_message=f"No APPROVE decision found for idea {idea_id}"
+                    error_message=f"No APPROVE decision found for idea {idea_id}",
                 )
 
             decision_id = decision["id"]
@@ -391,7 +405,7 @@ class OutcomeService:
                 cpa=cpa,
                 trend=trend,
                 origin_type="system",
-                learning_applied=False
+                learning_applied=False,
             )
 
             inserted = await self.insert_outcome(outcome)
@@ -403,7 +417,7 @@ class OutcomeService:
                 decision_id=decision_id,
                 idea_id=idea_id,
                 conversions=conversions,
-                window_id=window_id
+                window_id=window_id,
             )
 
             # 8. Trigger Learning Loop
@@ -412,26 +426,22 @@ class OutcomeService:
                 decision_id=decision_id,
                 idea_id=idea_id,
                 conversions=conversions,
-                origin_type="system"
+                origin_type="system",
             )
 
             return AggregateResult(
-                success=True,
-                outcome=outcome,
-                learning_triggered=learning_triggered
+                success=True, outcome=outcome, learning_triggered=learning_triggered
             )
 
         except httpx.HTTPStatusError as e:
             return AggregateResult(
                 success=False,
                 error_code="DATABASE_ERROR",
-                error_message=f"Database error: {e.response.text}"
+                error_message=f"Database error: {e.response.text}",
             )
         except Exception as e:
             return AggregateResult(
-                success=False,
-                error_code="INTERNAL_ERROR",
-                error_message=str(e)
+                success=False, error_code="INTERNAL_ERROR", error_message=str(e)
             )
 
 

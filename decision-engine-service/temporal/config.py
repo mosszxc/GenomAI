@@ -85,7 +85,8 @@ def load_settings() -> Settings:
             address=temporal_address,
             namespace=os.getenv("TEMPORAL_NAMESPACE", "default"),
             api_key=os.getenv("TEMPORAL_API_KEY"),
-            tls_enabled=os.getenv("TEMPORAL_TLS_ENABLED", str(is_cloud)).lower() == "true",
+            tls_enabled=os.getenv("TEMPORAL_TLS_ENABLED", str(is_cloud)).lower()
+            == "true",
         ),
         supabase=SupabaseSettings(
             url=os.getenv("SUPABASE_URL", ""),
@@ -100,9 +101,14 @@ def load_settings() -> Settings:
             keitaro_base_url=os.getenv("KEITARO_BASE_URL"),
         ),
         # Feature flags (default off during migration)
-        use_temporal_creative_pipeline=os.getenv("USE_TEMPORAL_CREATIVE_PIPELINE", "false").lower() == "true",
-        use_temporal_telegram=os.getenv("USE_TEMPORAL_TELEGRAM", "false").lower() == "true",
-        use_temporal_metrics=os.getenv("USE_TEMPORAL_METRICS", "false").lower() == "true",
+        use_temporal_creative_pipeline=os.getenv(
+            "USE_TEMPORAL_CREATIVE_PIPELINE", "false"
+        ).lower()
+        == "true",
+        use_temporal_telegram=os.getenv("USE_TEMPORAL_TELEGRAM", "false").lower()
+        == "true",
+        use_temporal_metrics=os.getenv("USE_TEMPORAL_METRICS", "false").lower()
+        == "true",
     )
 
 

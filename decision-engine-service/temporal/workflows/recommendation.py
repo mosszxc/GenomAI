@@ -30,6 +30,7 @@ with workflow.unsafe.imports_passed_through():
 @dataclass
 class DailyRecommendationInput:
     """Input for daily recommendation workflow"""
+
     # Optional: specific buyer_ids to process (empty = all active)
     buyer_ids: Optional[List[str]] = None
     # Skip buyers who already have today's recommendation
@@ -41,6 +42,7 @@ class DailyRecommendationInput:
 @dataclass
 class DailyRecommendationResult:
     """Result of daily recommendation workflow"""
+
     total_buyers: int
     generated: int
     delivered: int
@@ -52,6 +54,7 @@ class DailyRecommendationResult:
 @dataclass
 class SingleRecommendationInput:
     """Input for single recommendation delivery"""
+
     recommendation_id: str
     buyer_telegram_id: str
     buyer_name: str
@@ -136,9 +139,16 @@ class DailyRecommendationWorkflow:
                         continue
 
                 # Check limit
-                if input.max_recommendations > 0 and result.generated >= input.max_recommendations:
-                    workflow.logger.info(f"Reached max recommendations limit: {input.max_recommendations}")
-                    result.skipped += len(buyers) - (result.generated + result.failed + result.skipped)
+                if (
+                    input.max_recommendations > 0
+                    and result.generated >= input.max_recommendations
+                ):
+                    workflow.logger.info(
+                        f"Reached max recommendations limit: {input.max_recommendations}"
+                    )
+                    result.skipped += len(buyers) - (
+                        result.generated + result.failed + result.skipped
+                    )
                     break
 
                 # Generate recommendation

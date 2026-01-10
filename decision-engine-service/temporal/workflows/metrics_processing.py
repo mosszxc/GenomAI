@@ -14,7 +14,6 @@ Replaces n8n workflows:
 
 from datetime import timedelta
 from dataclasses import dataclass
-from typing import Optional
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -35,6 +34,7 @@ with workflow.unsafe.imports_passed_through():
 @dataclass
 class MetricsProcessingInput:
     """Input for MetricsProcessingWorkflow"""
+
     batch_limit: int = 50  # Number of snapshots to process per run
     trigger_learning: bool = True  # Whether to trigger learning loop
 
@@ -42,6 +42,7 @@ class MetricsProcessingInput:
 @dataclass
 class MetricsProcessingResult:
     """Result from MetricsProcessingWorkflow"""
+
     snapshots_processed: int
     outcomes_created: int
     outcomes_failed: int
@@ -54,7 +55,7 @@ SUPABASE_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
     backoff_coefficient=2.0,
     maximum_interval=timedelta(seconds=30),
-    maximum_attempts=5
+    maximum_attempts=5,
 )
 
 
@@ -77,7 +78,9 @@ class MetricsProcessingWorkflow:
         2. Process each snapshot into outcome
         3. Trigger learning loop if enabled
         """
-        workflow.logger.info(f"Starting Metrics Processing (limit: {input.batch_limit})")
+        workflow.logger.info(
+            f"Starting Metrics Processing (limit: {input.batch_limit})"
+        )
 
         errors = []
         outcomes_created = 0
@@ -85,11 +88,13 @@ class MetricsProcessingWorkflow:
 
         # Step 1: Get unprocessed snapshots
         try:
-            snapshots_result: GetUnprocessedSnapshotsOutput = await workflow.execute_activity(
-                get_unprocessed_snapshots,
-                GetUnprocessedSnapshotsInput(limit=input.batch_limit),
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=SUPABASE_RETRY_POLICY
+            snapshots_result: GetUnprocessedSnapshotsOutput = (
+                await workflow.execute_activity(
+                    get_unprocessed_snapshots,
+                    GetUnprocessedSnapshotsInput(limit=input.batch_limit),
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=SUPABASE_RETRY_POLICY,
+                )
             )
         except Exception as e:
             workflow.logger.error(f"Failed to get snapshots: {e}")
@@ -98,7 +103,7 @@ class MetricsProcessingWorkflow:
                 outcomes_created=0,
                 outcomes_failed=0,
                 learning_triggered=False,
-                errors=[f"Failed to get snapshots: {str(e)}"]
+                errors=[f"Failed to get snapshots: {str(e)}"],
             )
 
         snapshot_ids = snapshots_result.snapshot_ids
@@ -110,7 +115,7 @@ class MetricsProcessingWorkflow:
                 outcomes_created=0,
                 outcomes_failed=0,
                 learning_triggered=False,
-                errors=[]
+                errors=[],
             )
 
         # Step 2: Process each snapshot
@@ -120,7 +125,7 @@ class MetricsProcessingWorkflow:
                     process_outcome,
                     ProcessOutcomeInput(snapshot_id=snapshot_id),
                     start_to_close_timeout=timedelta(minutes=2),
-                    retry_policy=SUPABASE_RETRY_POLICY
+                    retry_policy=SUPABASE_RETRY_POLICY,
                 )
 
                 if outcome_result.success:
@@ -130,7 +135,10 @@ class MetricsProcessingWorkflow:
                     )
                 else:
                     # Some errors are expected (no idea found, no decision, etc.)
-                    if outcome_result.error_code not in ["IDEA_NOT_FOUND", "NO_APPROVED_DECISION"]:
+                    if outcome_result.error_code not in [
+                        "IDEA_NOT_FOUND",
+                        "NO_APPROVED_DECISION",
+                    ]:
                         outcomes_failed += 1
                         errors.append(
                             f"Snapshot {snapshot_id}: "
@@ -150,7 +158,7 @@ class MetricsProcessingWorkflow:
                     "LearningLoopWorkflow",
                     LearningLoopInput(batch_limit=100),
                     id=f"learning-{workflow.info().workflow_id}",
-                    task_queue="metrics"
+                    task_queue="metrics",
                 )
                 learning_triggered = True
                 workflow.logger.info("Learning loop triggered")
@@ -170,11 +178,11 @@ class MetricsProcessingWorkflow:
                         "snapshots_processed": len(snapshot_ids),
                         "outcomes_created": outcomes_created,
                         "outcomes_failed": outcomes_failed,
-                        "learning_triggered": learning_triggered
-                    }
+                        "learning_triggered": learning_triggered,
+                    },
                 ),
                 start_to_close_timeout=timedelta(seconds=15),
-                retry_policy=SUPABASE_RETRY_POLICY
+                retry_policy=SUPABASE_RETRY_POLICY,
             )
         except Exception:
             pass  # Event emission is best-effort
@@ -189,7 +197,7 @@ class MetricsProcessingWorkflow:
             outcomes_created=outcomes_created,
             outcomes_failed=outcomes_failed,
             learning_triggered=learning_triggered,
-            errors=errors
+            errors=errors,
         )
 
 
@@ -197,4 +205,5 @@ class MetricsProcessingWorkflow:
 @dataclass
 class LearningLoopInput:
     """Input for LearningLoopWorkflow"""
+
     batch_limit: int = 100

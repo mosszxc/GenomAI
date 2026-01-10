@@ -2,11 +2,11 @@
 Decision Engine Service - Python/FastAPI
 REST API service for deterministic decision making in GenomAI
 """
+
 import os
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
 import uvicorn
 
 from src.routes.decision import router as decision_router
@@ -25,7 +25,7 @@ PORT = int(os.getenv("PORT", "10000"))
 app = FastAPI(
     title="Decision Engine Service",
     description="Deterministic decision engine for GenomAI",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # CORS middleware
@@ -40,8 +40,12 @@ app.add_middleware(
 # Include routers
 app.include_router(decision_router, prefix="/api/decision", tags=["decision"])
 app.include_router(learning_router, prefix="/learning", tags=["learning"])
-app.include_router(idea_registry_router, prefix="/api/idea-registry", tags=["idea-registry"])
-app.include_router(recommendations_router, prefix="/recommendations", tags=["recommendations"])
+app.include_router(
+    idea_registry_router, prefix="/api/idea-registry", tags=["idea-registry"]
+)
+app.include_router(
+    recommendations_router, prefix="/recommendations", tags=["recommendations"]
+)
 app.include_router(schema_router, prefix="/api/schema", tags=["schema"])
 app.include_router(outcomes_router, prefix="/api/outcomes", tags=["outcomes"])
 app.include_router(premise_router, prefix="/premise", tags=["premise"])
@@ -52,10 +56,8 @@ app.include_router(telegram_router, tags=["telegram"])
 async def health_check():
     """Health check endpoint"""
     from datetime import datetime
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat()
-    }
+
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
 @app.exception_handler(DecisionEngineError)
@@ -65,12 +67,8 @@ async def decision_engine_error_handler(request, exc: DecisionEngineError):
         status_code=exc.status_code,
         content={
             "success": False,
-            "error": {
-                "code": exc.code,
-                "message": exc.message,
-                "details": exc.details
-            }
-        }
+            "error": {"code": exc.code, "message": exc.message, "details": exc.details},
+        },
     )
 
 
@@ -81,15 +79,10 @@ async def general_exception_handler(request, exc: Exception):
         status_code=500,
         content={
             "success": False,
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": str(exc),
-                "details": {}
-            }
-        }
+            "error": {"code": "INTERNAL_ERROR", "message": str(exc), "details": {}},
+        },
     )
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)
-

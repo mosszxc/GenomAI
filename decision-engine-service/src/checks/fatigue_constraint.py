@@ -11,11 +11,11 @@ MVP: Заглушка (always passes)
 def fatigue_constraint(idea, fatigue_state=None):
     """
     Check fatigue constraint
-    
+
     Args:
         idea: Idea object
         fatigue_state: Fatigue state (optional)
-        
+
     Returns:
         dict: Check result with 'name', 'result' ('PASSED' or 'FAILED'), and 'details'
     """
@@ -24,12 +24,9 @@ def fatigue_constraint(idea, fatigue_state=None):
     # - Check fatigue_level
     # - Check novelty_bucket
     # - Apply fatigue rules
-    
-    return {
-        'name': 'fatigue_constraint',
-        'result': 'PASSED',
-        'details': {
-            'note': 'MVP: fatigue check not implemented'
-        }
-    }
 
+    return {
+        "name": "fatigue_constraint",
+        "result": "PASSED",
+        "details": {"note": "MVP: fatigue check not implemented"},
+    }

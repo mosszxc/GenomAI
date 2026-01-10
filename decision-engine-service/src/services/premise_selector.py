@@ -12,7 +12,7 @@ import os
 import random
 import httpx
 from typing import Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from numpy.random import beta as beta_sample
 
 from src.utils.errors import SupabaseError
@@ -37,6 +37,7 @@ GENERATION_RATE = 0.3  # 30% of exploration = generate new premise
 @dataclass
 class PremiseSelection:
     """Result of premise selection"""
+
     premise_id: Optional[str]
     premise_type: str
     name: str
@@ -64,7 +65,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -94,9 +95,7 @@ def thompson_sample(win_count: int, loss_count: int) -> float:
 
 
 async def get_active_premises(
-    vertical: Optional[str] = None,
-    geo: Optional[str] = None,
-    limit: int = 50
+    vertical: Optional[str] = None, geo: Optional[str] = None, limit: int = 50
 ) -> list[dict]:
     """
     Get all active premises, optionally filtered by vertical/geo.
@@ -118,16 +117,14 @@ async def get_active_premises(
             f"{rest_url}/premises?{filter_str}"
             f"&select=id,premise_type,name,origin_story,mechanism_claim"
             f"&limit={limit}",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
 
 
 async def get_premise_learnings(
-    premise_id: str,
-    geo: Optional[str] = None,
-    avatar_id: Optional[str] = None
+    premise_id: str, geo: Optional[str] = None, avatar_id: Optional[str] = None
 ) -> Optional[dict]:
     """
     Get learning stats for a specific premise in context.
@@ -149,8 +146,7 @@ async def get_premise_learnings(
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{rest_url}/premise_learnings?{filter_str}",
-            headers=headers
+            f"{rest_url}/premise_learnings?{filter_str}", headers=headers
         )
         response.raise_for_status()
         data = response.json()
@@ -164,7 +160,7 @@ async def get_top_premises(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
     avatar_id: Optional[str] = None,
-    limit: int = 10
+    limit: int = 10,
 ) -> list[dict]:
     """
     Get top performing premises by win_rate from premise_learnings.
@@ -189,7 +185,7 @@ async def get_top_premises(
             f"&select=premise_id,premise_type,win_rate,sample_size,win_count,loss_count"
             f"&order=win_rate.desc"
             f"&limit={limit}",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         return response.json()
@@ -199,7 +195,7 @@ async def get_undersampled_premises(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
     min_sample_threshold: int = MIN_SAMPLES_FOR_CONFIDENCE,
-    limit: int = 10
+    limit: int = 10,
 ) -> list[dict]:
     """
     Get premises with low sample counts for exploration.
@@ -213,19 +209,21 @@ async def get_undersampled_premises(
     undersampled = []
 
     for premise in all_premises:
-        learning = await get_premise_learnings(premise['id'], geo=geo, avatar_id=None)
-        sample_size = learning.get('sample_size', 0) if learning else 0
+        learning = await get_premise_learnings(premise["id"], geo=geo, avatar_id=None)
+        sample_size = learning.get("sample_size", 0) if learning else 0
 
         if sample_size < min_sample_threshold:
-            undersampled.append({
-                **premise,
-                "sample_size": sample_size,
-                "win_count": learning.get('win_count', 0) if learning else 0,
-                "loss_count": learning.get('loss_count', 0) if learning else 0
-            })
+            undersampled.append(
+                {
+                    **premise,
+                    "sample_size": sample_size,
+                    "win_count": learning.get("win_count", 0) if learning else 0,
+                    "loss_count": learning.get("loss_count", 0) if learning else 0,
+                }
+            )
 
     # Sort by sample_size ascending (least sampled first)
-    undersampled.sort(key=lambda x: x['sample_size'])
+    undersampled.sort(key=lambda x: x["sample_size"])
 
     return undersampled[:limit]
 
@@ -233,16 +231,13 @@ async def get_undersampled_premises(
 async def select_best_premise(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
-    avatar_id: Optional[str] = None
+    avatar_id: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Select the best premise by win_rate (exploitation).
     """
     top_premises = await get_top_premises(
-        vertical=vertical,
-        geo=geo,
-        avatar_id=avatar_id,
-        limit=1
+        vertical=vertical, geo=geo, avatar_id=avatar_id, limit=1
     )
 
     if not top_premises:
@@ -253,7 +248,7 @@ async def select_best_premise(
         return None
 
     # Get full premise details
-    premise_id = top_premises[0]['premise_id']
+    premise_id = top_premises[0]["premise_id"]
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -261,7 +256,7 @@ async def select_best_premise(
         response = await client.get(
             f"{rest_url}/premises?id=eq.{premise_id}"
             f"&select=id,premise_type,name,origin_story,mechanism_claim",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
@@ -272,8 +267,7 @@ async def select_best_premise(
 
 
 async def select_exploration_premise(
-    vertical: Optional[str] = None,
-    geo: Optional[str] = None
+    vertical: Optional[str] = None, geo: Optional[str] = None
 ) -> Optional[dict]:
     """
     Select premise for exploration using Thompson Sampling.
@@ -289,8 +283,7 @@ async def select_exploration_premise(
     scored = []
     for premise in undersampled:
         score = thompson_sample(
-            premise.get('win_count', 0),
-            premise.get('loss_count', 0)
+            premise.get("win_count", 0), premise.get("loss_count", 0)
         )
         scored.append((score, premise))
 
@@ -304,7 +297,7 @@ async def select_premise_for_hypothesis(
     avatar_id: Optional[str] = None,
     geo: Optional[str] = None,
     vertical: Optional[str] = None,
-    force_exploration: bool = False
+    force_exploration: bool = False,
 ) -> PremiseSelection:
     """
     Main entry point: Select or generate premise for hypothesis.
@@ -338,7 +331,7 @@ async def select_premise_for_hypothesis(
                 origin_story=None,
                 mechanism_claim=None,
                 is_new=True,
-                selection_reason="generation"
+                selection_reason="generation",
             )
         else:
             # Thompson Sampling among undersampled
@@ -353,24 +346,22 @@ async def select_premise_for_hypothesis(
                     origin_story=None,
                     mechanism_claim=None,
                     is_new=True,
-                    selection_reason="generation"
+                    selection_reason="generation",
                 )
 
             return PremiseSelection(
-                premise_id=premise['id'],
-                premise_type=premise['premise_type'],
-                name=premise['name'],
-                origin_story=premise.get('origin_story'),
-                mechanism_claim=premise.get('mechanism_claim'),
+                premise_id=premise["id"],
+                premise_type=premise["premise_type"],
+                name=premise["name"],
+                origin_story=premise.get("origin_story"),
+                mechanism_claim=premise.get("mechanism_claim"),
                 is_new=False,
-                selection_reason="exploration"
+                selection_reason="exploration",
             )
     else:
         # Exploitation mode
         premise = await select_best_premise(
-            vertical=vertical,
-            geo=geo,
-            avatar_id=avatar_id
+            vertical=vertical, geo=geo, avatar_id=avatar_id
         )
 
         if premise is None:
@@ -382,15 +373,15 @@ async def select_premise_for_hypothesis(
                 origin_story=None,
                 mechanism_claim=None,
                 is_new=True,
-                selection_reason="generation"
+                selection_reason="generation",
             )
 
         return PremiseSelection(
-            premise_id=premise['id'],
-            premise_type=premise['premise_type'],
-            name=premise['name'],
-            origin_story=premise.get('origin_story'),
-            mechanism_claim=premise.get('mechanism_claim'),
+            premise_id=premise["id"],
+            premise_type=premise["premise_type"],
+            name=premise["name"],
+            origin_story=premise.get("origin_story"),
+            mechanism_claim=premise.get("mechanism_claim"),
             is_new=False,
-            selection_reason="exploitation"
+            selection_reason="exploitation",
         )

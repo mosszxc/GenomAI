@@ -1,6 +1,7 @@
 """
 Outcome Aggregation API routes
 """
+
 import os
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -15,11 +16,13 @@ router = APIRouter()
 # Request/Response models
 class AggregateRequest(BaseModel):
     """Request model for outcome aggregation"""
+
     snapshot_id: str = Field(..., description="UUID of the daily_metrics_snapshot")
 
 
 class OutcomeResponse(BaseModel):
     """Outcome aggregate details"""
+
     id: Optional[str] = None
     creative_id: str
     decision_id: str
@@ -35,12 +38,14 @@ class OutcomeResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Error details"""
+
     code: str
     message: str
 
 
 class AggregateResponse(BaseModel):
     """Response model for outcome aggregation"""
+
     success: bool
     outcome: Optional[OutcomeResponse] = None
     learning_triggered: bool = False
@@ -82,11 +87,10 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
     "/aggregate",
     response_model=AggregateResponse,
     summary="Aggregate outcome from snapshot",
-    description="Aggregates outcome metrics from a daily snapshot and triggers Learning Loop."
+    description="Aggregates outcome metrics from a daily snapshot and triggers Learning Loop.",
 )
 async def aggregate_outcome(
-    request: AggregateRequest,
-    _: bool = Depends(verify_api_key)
+    request: AggregateRequest, _: bool = Depends(verify_api_key)
 ) -> AggregateResponse:
     """
     POST /api/outcomes/aggregate
@@ -117,8 +121,8 @@ async def aggregate_outcome(
             success=False,
             error=ErrorResponse(
                 code=result.error_code or "UNKNOWN_ERROR",
-                message=result.error_message or "Unknown error occurred"
-            )
+                message=result.error_message or "Unknown error occurred",
+            ),
         )
 
     # Convert outcome to response
@@ -129,17 +133,19 @@ async def aggregate_outcome(
             creative_id=result.outcome.creative_id,
             decision_id=result.outcome.decision_id,
             window_id=result.outcome.window_id,
-            window_start=str(result.outcome.window_start) if result.outcome.window_start else None,
-            window_end=str(result.outcome.window_end) if result.outcome.window_end else None,
+            window_start=str(result.outcome.window_start)
+            if result.outcome.window_start
+            else None,
+            window_end=str(result.outcome.window_end)
+            if result.outcome.window_end
+            else None,
             conversions=result.outcome.conversions,
             spend=float(result.outcome.spend) if result.outcome.spend else 0,
             cpa=float(result.outcome.cpa) if result.outcome.cpa else None,
             origin_type=result.outcome.origin_type,
-            learning_applied=result.outcome.learning_applied
+            learning_applied=result.outcome.learning_applied,
         )
 
     return AggregateResponse(
-        success=True,
-        outcome=outcome_data,
-        learning_triggered=result.learning_triggered
+        success=True, outcome=outcome_data, learning_triggered=result.learning_triggered
     )

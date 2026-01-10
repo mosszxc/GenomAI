@@ -42,7 +42,7 @@
 2. Запусти bash скрипт:
 
 ```bash
-/Users/mosszxc/.claude/plugins/cache/claude-plugins-official/ralph-wiggum/6d3752c000e2/scripts/setup-ralph-loop.sh $ARGUMENTS
+/Users/mosszxc/.claude/plugins/cache/claude-plugins-official/ralph-loop/latest/scripts/setup-ralph-loop.sh $ARGUMENTS
 ```
 
 3. Работай **СТРОГО** в рамках указанного процесса и результата.

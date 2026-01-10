@@ -22,12 +22,14 @@ from temporal.config import settings
 @dataclass
 class ProcessLearningInput:
     """Input for process_learning activity"""
+
     batch_limit: int = 100
 
 
 @dataclass
 class ProcessLearningOutput:
     """Output from process_learning activity"""
+
     processed_count: int
     updated_ideas: list[str]
     new_deaths: list[dict]
@@ -73,7 +75,7 @@ async def process_learning_batch(input: ProcessLearningInput) -> ProcessLearning
             component_updates=result.component_updates,
             premise_updates=result.premise_updates,
             fatigue_updates=result.fatigue_updates,
-            errors=result.errors
+            errors=result.errors,
         )
 
     except Exception as e:
@@ -85,19 +87,21 @@ async def process_learning_batch(input: ProcessLearningInput) -> ProcessLearning
             component_updates=0,
             premise_updates=0,
             fatigue_updates=0,
-            errors=[str(e)]
+            errors=[str(e)],
         )
 
 
 @dataclass
 class GetUnprocessedOutcomesInput:
     """Input for get_unprocessed_outcomes activity"""
+
     limit: int = 100
 
 
 @dataclass
 class OutcomeInfo:
     """Info about an outcome to process"""
+
     id: str
     creative_id: str
     cpa: float
@@ -110,13 +114,14 @@ class OutcomeInfo:
 @dataclass
 class GetUnprocessedOutcomesOutput:
     """Output from get_unprocessed_outcomes activity"""
+
     outcomes: list[OutcomeInfo]
     total: int
 
 
 @activity.defn
 async def get_unprocessed_outcomes(
-    input: GetUnprocessedOutcomesInput
+    input: GetUnprocessedOutcomesInput,
 ) -> GetUnprocessedOutcomesOutput:
     """
     Get outcomes that haven't been processed by learning loop.
@@ -145,7 +150,7 @@ async def get_unprocessed_outcomes(
                 spend=float(o.get("spend", 0) or 0),
                 environment_ctx=o.get("environment_ctx"),
                 window_end=o.get("window_end", ""),
-                decision_id=o.get("decision_id")
+                decision_id=o.get("decision_id"),
             )
             for o in outcomes
         ]
@@ -162,6 +167,7 @@ async def get_unprocessed_outcomes(
 @dataclass
 class ProcessSingleOutcomeInput:
     """Input for process_single_outcome activity"""
+
     outcome_id: str
     creative_id: str
     cpa: float
@@ -173,6 +179,7 @@ class ProcessSingleOutcomeInput:
 @dataclass
 class ProcessSingleOutcomeOutput:
     """Output from process_single_outcome activity"""
+
     success: bool
     idea_id: Optional[str] = None
     old_confidence: Optional[float] = None
@@ -184,7 +191,7 @@ class ProcessSingleOutcomeOutput:
 
 @activity.defn
 async def process_single_outcome(
-    input: ProcessSingleOutcomeInput
+    input: ProcessSingleOutcomeInput,
 ) -> ProcessSingleOutcomeOutput:
     """
     Process a single outcome through the learning loop.
@@ -208,7 +215,7 @@ async def process_single_outcome(
         "cpa": input.cpa,
         "spend": input.spend,
         "environment_ctx": input.environment_ctx,
-        "window_end": input.window_end
+        "window_end": input.window_end,
     }
 
     try:
@@ -216,10 +223,7 @@ async def process_single_outcome(
 
         if "error" in result:
             activity.logger.warning(f"Outcome processing failed: {result['error']}")
-            return ProcessSingleOutcomeOutput(
-                success=False,
-                error=result["error"]
-            )
+            return ProcessSingleOutcomeOutput(success=False, error=result["error"])
 
         activity.logger.info(
             f"Outcome processed: idea={result.get('idea_id')}, "
@@ -232,26 +236,25 @@ async def process_single_outcome(
             old_confidence=result.get("old_confidence"),
             new_confidence=result.get("new_confidence"),
             delta=result.get("delta"),
-            death_state=result.get("death_state")
+            death_state=result.get("death_state"),
         )
 
     except Exception as e:
         activity.logger.error(f"Outcome processing error: {str(e)}")
-        return ProcessSingleOutcomeOutput(
-            success=False,
-            error=str(e)
-        )
+        return ProcessSingleOutcomeOutput(success=False, error=str(e))
 
 
 @dataclass
 class CheckDeathConditionsInput:
     """Input for check_death_conditions activity"""
+
     idea_id: str
 
 
 @dataclass
 class CheckDeathConditionsOutput:
     """Output from check_death_conditions activity"""
+
     should_die: bool
     death_state: Optional[str] = None  # soft_dead, hard_dead
     consecutive_failures: int = 0
@@ -259,7 +262,7 @@ class CheckDeathConditionsOutput:
 
 @activity.defn
 async def check_death_conditions(
-    input: CheckDeathConditionsInput
+    input: CheckDeathConditionsInput,
 ) -> CheckDeathConditionsOutput:
     """
     Check if an idea should be marked as dead.
@@ -277,7 +280,7 @@ async def check_death_conditions(
     # Import here to avoid circular imports
     from src.services.learning_loop import (
         get_recent_outcomes_for_idea,
-        check_death_condition
+        check_death_condition,
     )
 
     try:
@@ -302,27 +305,24 @@ async def check_death_conditions(
             )
         else:
             activity.logger.info(
-                f"Idea {input.idea_id} is healthy "
-                f"({consecutive} consecutive failures)"
+                f"Idea {input.idea_id} is healthy ({consecutive} consecutive failures)"
             )
 
         return CheckDeathConditionsOutput(
             should_die=death_state is not None,
             death_state=death_state,
-            consecutive_failures=consecutive
+            consecutive_failures=consecutive,
         )
 
     except Exception as e:
         activity.logger.error(f"Error checking death conditions: {str(e)}")
-        return CheckDeathConditionsOutput(
-            should_die=False,
-            consecutive_failures=0
-        )
+        return CheckDeathConditionsOutput(should_die=False, consecutive_failures=0)
 
 
 @dataclass
 class EmitLearningEventInput:
     """Input for emit_learning_event activity"""
+
     event_type: str  # learning.applied, learning.death, etc.
     idea_id: str
     payload: dict
@@ -353,7 +353,7 @@ async def emit_learning_event(input: EmitLearningEventInput) -> bool:
         "Accept-Profile": SCHEMA,
         "Content-Profile": SCHEMA,
         "Content-Type": "application/json",
-        "Prefer": "return=minimal"
+        "Prefer": "return=minimal",
     }
 
     url = f"{settings.supabase.url}/rest/v1/event_log"
@@ -363,7 +363,7 @@ async def emit_learning_event(input: EmitLearningEventInput) -> bool:
         "entity_type": "idea",
         "entity_id": input.idea_id,
         "payload": input.payload,
-        "occurred_at": datetime.now().isoformat()
+        "occurred_at": datetime.now().isoformat(),
     }
 
     try:

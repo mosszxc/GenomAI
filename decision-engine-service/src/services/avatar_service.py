@@ -34,7 +34,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     if for_write:
         headers["Content-Profile"] = SCHEMA
@@ -63,7 +63,7 @@ async def find_avatar_by_hash(canonical_hash: str) -> Optional[dict]:
             f"{rest_url}/avatars"
             f"?canonical_hash=eq.{canonical_hash}"
             f"&select=id,canonical_hash,vertical,geo,deep_desire_type,primary_trigger,awareness_level,status",
-            headers=headers
+            headers=headers,
         )
         response.raise_for_status()
         data = response.json()
@@ -81,7 +81,7 @@ async def create_avatar(
     deep_desire_type: str,
     primary_trigger: str,
     awareness_level: str,
-    status: str = "emerging"
+    status: str = "emerging",
 ) -> dict:
     """
     Create new avatar record.
@@ -119,8 +119,8 @@ async def create_avatar(
                 "deep_desire_type": deep_desire_type,
                 "primary_trigger": primary_trigger,
                 "awareness_level": awareness_level,
-                "status": status
-            }
+                "status": status,
+            },
         )
 
         if response.status_code == 409:
@@ -128,7 +128,9 @@ async def create_avatar(
             existing = await find_avatar_by_hash(canonical_hash)
             if existing:
                 return existing
-            raise SupabaseError(f"Avatar with hash {canonical_hash} already exists but not found")
+            raise SupabaseError(
+                f"Avatar with hash {canonical_hash} already exists but not found"
+            )
 
         response.raise_for_status()
         data = response.json()
@@ -144,7 +146,7 @@ async def find_or_create_avatar(
     geo: str,
     deep_desire_type: Optional[str],
     primary_trigger: Optional[str],
-    awareness_level: Optional[str]
+    awareness_level: Optional[str],
 ) -> Tuple[Optional[str], Optional[str]]:
     """
     Find existing avatar or create new one.
@@ -168,7 +170,7 @@ async def find_or_create_avatar(
         geo=geo,
         deep_desire_type=deep_desire_type,
         primary_trigger=primary_trigger,
-        awareness_level=awareness_level
+        awareness_level=awareness_level,
     )
 
     if not avatar_hash:
@@ -178,7 +180,7 @@ async def find_or_create_avatar(
     # Try to find existing
     existing = await find_avatar_by_hash(avatar_hash)
     if existing:
-        return existing['id'], 'existing'
+        return existing["id"], "existing"
 
     # Create new avatar
     new_avatar = await create_avatar(
@@ -187,7 +189,7 @@ async def find_or_create_avatar(
         geo=geo,
         deep_desire_type=deep_desire_type,
         primary_trigger=primary_trigger,
-        awareness_level=awareness_level
+        awareness_level=awareness_level,
     )
 
-    return new_avatar['id'], 'new'
+    return new_avatar["id"], "new"

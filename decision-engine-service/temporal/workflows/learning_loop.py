@@ -13,7 +13,6 @@ Replaces n8n Learning Loop v2 workflow (fzXkoG805jQZUR3S).
 
 from datetime import timedelta
 from dataclasses import dataclass
-from typing import Optional
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -26,13 +25,10 @@ with workflow.unsafe.imports_passed_through():
         GetUnprocessedOutcomesOutput,
         ProcessSingleOutcomeInput,
         ProcessSingleOutcomeOutput,
-        CheckDeathConditionsInput,
-        CheckDeathConditionsOutput,
         EmitLearningEventInput,
         process_learning_batch,
         get_unprocessed_outcomes,
         process_single_outcome,
-        check_death_conditions,
         emit_learning_event,
     )
 
@@ -40,6 +36,7 @@ with workflow.unsafe.imports_passed_through():
 @dataclass
 class LearningLoopInput:
     """Input for LearningLoopWorkflow"""
+
     batch_limit: int = 100
     process_individually: bool = False  # False = use batch, True = process one by one
 
@@ -47,6 +44,7 @@ class LearningLoopInput:
 @dataclass
 class LearningLoopResult:
     """Result from LearningLoopWorkflow"""
+
     processed_count: int
     updated_ideas: list[str]
     new_deaths: list[dict]
@@ -61,7 +59,7 @@ LEARNING_RETRY_POLICY = RetryPolicy(
     initial_interval=timedelta(seconds=2),
     backoff_coefficient=2.0,
     maximum_interval=timedelta(minutes=1),
-    maximum_attempts=3
+    maximum_attempts=3,
 )
 
 
@@ -104,7 +102,7 @@ class LearningLoopWorkflow:
                 process_learning_batch,
                 ProcessLearningInput(batch_limit=input.batch_limit),
                 start_to_close_timeout=timedelta(minutes=10),
-                retry_policy=LEARNING_RETRY_POLICY
+                retry_policy=LEARNING_RETRY_POLICY,
             )
 
             workflow.logger.info(
@@ -126,11 +124,11 @@ class LearningLoopWorkflow:
                             "component_updates": result.component_updates,
                             "premise_updates": result.premise_updates,
                             "fatigue_updates": result.fatigue_updates,
-                            "errors_count": len(result.errors)
-                        }
+                            "errors_count": len(result.errors),
+                        },
                     ),
                     start_to_close_timeout=timedelta(seconds=15),
-                    retry_policy=LEARNING_RETRY_POLICY
+                    retry_policy=LEARNING_RETRY_POLICY,
                 )
             except Exception:
                 pass  # Event emission is best-effort
@@ -142,7 +140,7 @@ class LearningLoopWorkflow:
                 component_updates=result.component_updates,
                 premise_updates=result.premise_updates,
                 fatigue_updates=result.fatigue_updates,
-                errors=result.errors
+                errors=result.errors,
             )
 
         except Exception as e:
@@ -154,7 +152,7 @@ class LearningLoopWorkflow:
                 component_updates=0,
                 premise_updates=0,
                 fatigue_updates=0,
-                errors=[str(e)]
+                errors=[str(e)],
             )
 
     async def _run_individual(self, input: LearningLoopInput) -> LearningLoopResult:
@@ -167,11 +165,13 @@ class LearningLoopWorkflow:
 
         # Step 1: Get unprocessed outcomes
         try:
-            outcomes_result: GetUnprocessedOutcomesOutput = await workflow.execute_activity(
-                get_unprocessed_outcomes,
-                GetUnprocessedOutcomesInput(limit=input.batch_limit),
-                start_to_close_timeout=timedelta(minutes=1),
-                retry_policy=LEARNING_RETRY_POLICY
+            outcomes_result: GetUnprocessedOutcomesOutput = (
+                await workflow.execute_activity(
+                    get_unprocessed_outcomes,
+                    GetUnprocessedOutcomesInput(limit=input.batch_limit),
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=LEARNING_RETRY_POLICY,
+                )
             )
         except Exception as e:
             return LearningLoopResult(
@@ -181,7 +181,7 @@ class LearningLoopWorkflow:
                 component_updates=0,
                 premise_updates=0,
                 fatigue_updates=0,
-                errors=[f"Failed to get outcomes: {str(e)}"]
+                errors=[f"Failed to get outcomes: {str(e)}"],
             )
 
         outcomes = outcomes_result.outcomes
@@ -195,7 +195,7 @@ class LearningLoopWorkflow:
                 component_updates=0,
                 premise_updates=0,
                 fatigue_updates=0,
-                errors=[]
+                errors=[],
             )
 
         # Step 2: Process each outcome
@@ -210,10 +210,10 @@ class LearningLoopWorkflow:
                         cpa=outcome.cpa,
                         spend=outcome.spend,
                         environment_ctx=outcome.environment_ctx,
-                        window_end=outcome.window_end
+                        window_end=outcome.window_end,
                     ),
                     start_to_close_timeout=timedelta(minutes=2),
-                    retry_policy=LEARNING_RETRY_POLICY
+                    retry_policy=LEARNING_RETRY_POLICY,
                 )
 
                 if result.success:
@@ -221,10 +221,12 @@ class LearningLoopWorkflow:
                     if result.idea_id:
                         updated_ideas.append(result.idea_id)
                     if result.death_state:
-                        new_deaths.append({
-                            "idea_id": result.idea_id,
-                            "death_state": result.death_state
-                        })
+                        new_deaths.append(
+                            {
+                                "idea_id": result.idea_id,
+                                "death_state": result.death_state,
+                            }
+                        )
                 else:
                     errors.append(f"Outcome {outcome.id}: {result.error}")
 
@@ -243,5 +245,5 @@ class LearningLoopWorkflow:
             component_updates=0,  # Not tracked in individual mode
             premise_updates=0,
             fatigue_updates=processed_count,  # Each outcome updates fatigue
-            errors=errors
+            errors=errors,
         )

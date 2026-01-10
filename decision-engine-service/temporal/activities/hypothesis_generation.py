@@ -98,7 +98,9 @@ async def generate_hypotheses(
             messages=[
                 {
                     "role": "system",
-                    "content": HYPOTHESIS_SYSTEM_PROMPT.format(num_hypotheses=num_hypotheses),
+                    "content": HYPOTHESIS_SYSTEM_PROMPT.format(
+                        num_hypotheses=num_hypotheses
+                    ),
                 },
                 {"role": "user", "content": user_prompt},
             ],
