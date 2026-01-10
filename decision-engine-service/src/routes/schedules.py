@@ -136,7 +136,7 @@ async def list_schedules() -> ScheduleListResponse:
         schedule_list = await client.list_schedules()
         async for schedule in schedule_list:
             # ScheduleListDescription has: id, info (ScheduleListInfo)
-            # ScheduleListInfo has: next_action_times, recent_actions, running_workflows
+            # ScheduleListInfo has: next_action_times, recent_actions
             schedule_id = schedule.id
             info = schedule.info
 
@@ -144,12 +144,6 @@ async def list_schedules() -> ScheduleListResponse:
             definition = SCHEDULE_DEFINITIONS.get(schedule_id, {})
             interval_str = definition.get("interval")
             cron_str = definition.get("cron")
-
-            # Determine status (paused not available in list, need describe for that)
-            if info.running_workflows:
-                status = "running"
-            else:
-                status = "idle"
 
             # Get timing info
             last_run = None
@@ -160,6 +154,9 @@ async def list_schedules() -> ScheduleListResponse:
             if info.next_action_times:
                 next_run = info.next_action_times[0].isoformat()
 
+            # Status: active if has next_run scheduled
+            status = "active" if next_run else "idle"
+
             schedules.append(
                 ScheduleInfo(
                     id=schedule_id,
@@ -168,7 +165,7 @@ async def list_schedules() -> ScheduleListResponse:
                     cron=cron_str,
                     last_run=last_run,
                     next_run=next_run,
-                    paused=False,  # Not available in list, use GET /{id} for this
+                    paused=False,  # Not available in list, use GET /{id} for details
                     description=definition.get("description"),
                 )
             )
