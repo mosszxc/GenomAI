@@ -461,6 +461,8 @@ async def process_single_outcome(outcome: dict) -> dict:
     # Calculate delta
     delta = calculate_confidence_delta(cpa, window_end, env_ctx)
     new_confidence = current_confidence + delta
+    # Clamp confidence to valid range [0.0, 1.0]
+    new_confidence = max(0.0, min(1.0, new_confidence))
     new_version = current_version + 1
 
     # Insert new confidence version
