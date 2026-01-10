@@ -113,9 +113,15 @@ async def _create_decision(idea: dict, decision_type: str, check_results: list, 
         'created_at': timestamp
     }
     
-    # Save to Supabase
-    await save_decision(decision)
-    await save_decision_trace(decision_trace)
+    # Save to Supabase (atomic: both or none)
+    saved_decision = await save_decision(decision)
+    try:
+        await save_decision_trace(decision_trace)
+    except Exception as e:
+        # Rollback decision if trace fails
+        from src.services.supabase import delete_decision
+        await delete_decision(decision_id)
+        raise e
     
     # Return response
     return {

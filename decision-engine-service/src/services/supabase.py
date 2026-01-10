@@ -183,6 +183,23 @@ async def save_decision(decision: dict) -> dict:
         raise SupabaseError(f"Failed to save decision: {str(e)}")
 
 
+async def delete_decision(decision_id: str) -> None:
+    """Delete Decision from Supabase (rollback helper)"""
+    try:
+        rest_url, supabase_key = _get_credentials()
+        headers = _get_headers(supabase_key, for_write=True)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{rest_url}/decisions?id=eq.{decision_id}",
+                headers=headers
+            )
+            response.raise_for_status()
+    except Exception as e:
+        # Log but don't raise - this is cleanup
+        pass
+
+
 async def save_decision_trace(trace: dict) -> dict:
     """Save Decision Trace to Supabase (schema: genomai)"""
     try:
