@@ -197,9 +197,58 @@ async def handle_start_command(message: TelegramMessage) -> None:
         )
 
 
+async def log_buyer_interaction(
+    telegram_id: str,
+    direction: str,
+    message_type: str,
+    content: str,
+    context: Optional[dict] = None,
+) -> None:
+    """Log interaction to buyer_interactions table."""
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Profile": "genomai",
+        "Prefer": "return=minimal",
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{supabase_url}/rest/v1/buyer_interactions",
+                headers=headers,
+                json={
+                    "telegram_id": telegram_id,
+                    "direction": direction,
+                    "message_type": message_type,
+                    "content": content,
+                    "context": context,
+                },
+                timeout=10.0,
+            )
+    except Exception as e:
+        logger.error(f"Failed to log buyer interaction: {e}")
+
+
 async def handle_stats_command(message: TelegramMessage) -> None:
     """Handle /stats command - show user stats."""
     import httpx
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="incoming",
+        message_type="command",
+        content="/stats",
+    )
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -235,43 +284,86 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             buyer = buyers[0]
             buyer_id = buyer["id"]
 
-            # Get creative counts
+            # Get creatives with test results and tracker_ids
             creatives_resp = await client.get(
                 f"{supabase_url}/rest/v1/creatives"
                 f"?buyer_id=eq.{buyer_id}"
-                f"&select=id,status",
+                f"&select=id,status,test_result,tracking_status,tracker_id",
                 headers=headers,
             )
             creatives = creatives_resp.json()
 
-            total_creatives = len(creatives)
-            processed = len([c for c in creatives if c.get("status") == "processed"])
-
-            # Get decision stats
-            decisions_resp = await client.get(
-                f"{supabase_url}/rest/v1/decisions"
-                f"?select=decision_type"
-                f"&order=created_at.desc"
-                f"&limit=100",
-                headers=headers,
+            total = len(creatives)
+            wins = len([c for c in creatives if c.get("test_result") == "win"])
+            losses = len([c for c in creatives if c.get("test_result") == "loss"])
+            testing = len(
+                [c for c in creatives if c.get("tracking_status") == "tracking"]
             )
-            decisions = decisions_resp.json()
 
-            approved = len(
-                [d for d in decisions if d.get("decision_type") == "APPROVE"]
+            # Calculate win rate
+            concluded = wins + losses
+            win_rate = (wins / concluded * 100) if concluded > 0 else 0
+
+            # Get spend/revenue from metrics
+            tracker_ids = [
+                c.get("tracker_id") for c in creatives if c.get("tracker_id")
+            ]
+            total_spend = 0.0
+            total_revenue = 0.0
+
+            if tracker_ids:
+                # Fetch metrics for all tracker_ids
+                tracker_list = ",".join(f'"{tid}"' for tid in tracker_ids)
+                metrics_resp = await client.get(
+                    f"{supabase_url}/rest/v1/raw_metrics_current"
+                    f"?tracker_id=in.({tracker_list})"
+                    f"&select=metrics",
+                    headers=headers,
+                )
+                metrics_rows = metrics_resp.json()
+
+                for row in metrics_rows:
+                    metrics = row.get("metrics") or {}
+                    total_spend += float(metrics.get("spend", 0) or 0)
+                    total_revenue += float(metrics.get("revenue", 0) or 0)
+
+            # Calculate ROI
+            roi = (
+                ((total_revenue - total_spend) / total_spend * 100)
+                if total_spend > 0
+                else 0
             )
-            rejected = len([d for d in decisions if d.get("decision_type") == "REJECT"])
+            roi_sign = "+" if roi >= 0 else ""
 
             stats_message = (
-                f"<b>Your Stats</b>\n\n"
-                f"<b>Name:</b> {buyer.get('name', 'N/A')}\n"
-                f"<b>GEOs:</b> {', '.join(buyer.get('geos') or ['N/A'])}\n"
-                f"<b>Verticals:</b> {', '.join(buyer.get('verticals') or ['N/A'])}\n\n"
-                f"<b>Creatives:</b> {total_creatives} total, {processed} processed\n"
-                f"<b>Decisions:</b> {approved} approved, {rejected} rejected\n"
+                f"📊 <b>Твоя статистика:</b>\n\n"
+                f"Креативов: {total}\n"
+                f"✅ Wins: {wins} ({win_rate:.0f}%)\n"
+                f"❌ Losses: {losses}\n"
+                f"⏳ Testing: {testing}\n\n"
+                f"ROI: {roi_sign}{roi:.1f}%\n"
+                f"Spend: ${total_spend:.0f}\n"
+                f"Revenue: ${total_revenue:.0f}"
             )
 
             await send_telegram_message(message.chat_id, stats_message)
+
+            # Log outgoing response
+            await log_buyer_interaction(
+                telegram_id=message.user_id,
+                direction="outgoing",
+                message_type="stats_response",
+                content=stats_message,
+                context={
+                    "total": total,
+                    "wins": wins,
+                    "losses": losses,
+                    "testing": testing,
+                    "spend": total_spend,
+                    "revenue": total_revenue,
+                    "roi": roi,
+                },
+            )
 
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
