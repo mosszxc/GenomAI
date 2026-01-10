@@ -94,6 +94,23 @@ gh issue create -t "title" -l enhancement
 ## Git
 Always push after commit. No exceptions.
 
+## TodoWrite Rules
+При создании todo списка **ВСЕГДА** добавлять последним пунктом:
+```
+- "Post-Task Loop (qa-notes, docs, summary)"
+```
+Этот пункт блокирует закрытие задачи до выполнения Post-Task Loop.
+
+## STOP-GATE: Before Saying "Done"
+**НИКОГДА** не говорить "готово/done/завершено" без прохождения:
+```
+- [ ] TEST выполнен и прошёл
+- [ ] qa-notes/issue-{N}-*.md создан
+- [ ] docs/* обновлён (если schema/API/workflow изменились)
+- [ ] Summary в последнем сообщении
+```
+⛔ Нарушение = A006 антипаттерн (см. LESSONS.md)
+
 ## Testing (BLOCKING)
 **Детали:** `.claude/docs/testing-rules.md`
 
