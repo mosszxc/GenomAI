@@ -39,6 +39,7 @@
 | A006 | Say "done" + PR link without Post-Task Loop | qa-notes → knowledge → summary → THEN "done" | context loss |
 | A007 | Work directly in main without worktree | `./scripts/task-start.sh {N}` → worktree → `task-done.sh` | PR review skip, risky deploys |
 | A008 | Mark Post-Task Loop completed before checking all 4 items | TEST → qa-notes → docs check → summary → THEN completed | missed docs updates |
+| A009 | Do Post-Task Loop silently, say "done" without showing checklist | Explicitly show checklist BEFORE "готово/done" | user confusion, re-verification |
 
 ## Quick Lookup
 
