@@ -193,21 +193,15 @@ class BuyerOnboardingWorkflow:
             )
 
             # Wait for name
-            workflow.logger.info(
-                f"Waiting for user input with timeout: {step_timeout.total_seconds()} seconds"
-            )
-            workflow.logger.info(f"_pending_message before wait: {self._pending_message}")
-
-            condition_result = await workflow.wait_condition(
+            # Note: wait_condition may return None when signal arrives during wait,
+            # so we check the actual _pending_message state instead of the return value
+            await workflow.wait_condition(
                 lambda: self._pending_message is not None,
                 timeout=step_timeout,
             )
 
-            workflow.logger.info(f"wait_condition returned: {condition_result}")
-            workflow.logger.info(f"_pending_message after wait: {self._pending_message}")
-
-            if not condition_result:
-                workflow.logger.warning("wait_condition timed out unexpectedly!")
+            if self._pending_message is None:
+                # Genuine timeout - no message received
                 return await self._handle_timeout()
 
             self._name = self._pending_message.text.strip()
@@ -224,10 +218,11 @@ class BuyerOnboardingWorkflow:
 
             # Wait for valid GEOs
             while True:
-                if not await workflow.wait_condition(
+                await workflow.wait_condition(
                     lambda: self._pending_message is not None,
                     timeout=step_timeout,
-                ):
+                )
+                if self._pending_message is None:
                     return await self._handle_timeout()
 
                 geos_input = (
@@ -263,10 +258,11 @@ class BuyerOnboardingWorkflow:
 
             # Wait for valid verticals
             while True:
-                if not await workflow.wait_condition(
+                await workflow.wait_condition(
                     lambda: self._pending_message is not None,
                     timeout=step_timeout,
-                ):
+                )
+                if self._pending_message is None:
                     return await self._handle_timeout()
 
                 verticals_input = (
@@ -303,10 +299,11 @@ class BuyerOnboardingWorkflow:
             )
 
             # Wait for Keitaro source
-            if not await workflow.wait_condition(
+            await workflow.wait_condition(
                 lambda: self._pending_message is not None,
                 timeout=step_timeout,
-            ):
+            )
+            if self._pending_message is None:
                 return await self._handle_timeout()
 
             self._keitaro_source = self._pending_message.text.strip()
