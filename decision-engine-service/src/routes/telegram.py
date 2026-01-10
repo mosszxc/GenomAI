@@ -154,21 +154,15 @@ async def handle_start_command(message: TelegramMessage) -> None:
     """Handle /start command - start onboarding workflow."""
     from temporal.workflows.buyer_onboarding import BuyerOnboardingWorkflow
     from temporal.models.buyer import BuyerOnboardingInput
+    from temporalio.common import WorkflowIDReusePolicy, WorkflowIDConflictPolicy
+    from temporalio.exceptions import WorkflowAlreadyStartedError
 
     try:
         client = await get_temporal_client()
 
-        # Check for existing workflow
-        existing_workflow = await check_active_onboarding(message.user_id)
-        if existing_workflow:
-            await send_telegram_message(
-                message.chat_id,
-                "You already have an active registration in progress.\n"
-                "Please complete it or wait for timeout.",
-            )
-            return
-
         # Start new onboarding workflow
+        # Uses ALLOW_DUPLICATE to restart after timeout/completion
+        # Uses FAIL conflict policy to detect if workflow is already running
         workflow_id = f"onboarding-{message.user_id}"
 
         await client.start_workflow(
@@ -180,9 +174,20 @@ async def handle_start_command(message: TelegramMessage) -> None:
             ),
             id=workflow_id,
             task_queue="telegram",
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            id_conflict_policy=WorkflowIDConflictPolicy.FAIL,
         )
 
         logger.info(f"Started onboarding workflow: {workflow_id}")
+
+    except WorkflowAlreadyStartedError:
+        # Workflow is already running (not completed/cancelled/timed_out)
+        logger.info(f"Workflow already running for user: {message.user_id}")
+        await send_telegram_message(
+            message.chat_id,
+            "You already have an active registration in progress.\n"
+            "Please complete it or wait for timeout.",
+        )
 
     except Exception as e:
         logger.error(f"Failed to start onboarding: {e}")
