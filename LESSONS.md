@@ -37,6 +37,7 @@
 | A004 | Close issue without fresh test | Post-Task Loop checklist first | 20k→0 waste |
 | A005 | Edit qa-notes/KNOWN_ISSUES 5+ times | One update per issue | 500k→20k |
 | A006 | Say "done" + PR link without Post-Task Loop | qa-notes → knowledge → summary → THEN "done" | context loss |
+| A007 | Work directly in main without worktree | `./scripts/task-start.sh {N}` → worktree → `task-done.sh` | PR review skip, risky deploys |
 
 ## Quick Lookup
 
