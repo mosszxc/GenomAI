@@ -21,7 +21,18 @@ External APIs:
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+
+# Load .env from decision-engine-service directory (optional, for local development)
+try:
+    from dotenv import load_dotenv
+
+    _env_path = Path(__file__).parent.parent / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    pass  # python-dotenv not installed, env vars must be set externally
 
 
 @dataclass

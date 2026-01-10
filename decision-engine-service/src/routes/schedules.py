@@ -133,7 +133,8 @@ async def list_schedules() -> ScheduleListResponse:
         client = await get_temporal_client()
 
         schedules = []
-        async for schedule in client.list_schedules():
+        schedule_list = await client.list_schedules()
+        async for schedule in schedule_list:
             schedule_id = schedule.id
 
             # Get definition info
@@ -268,7 +269,9 @@ async def get_schedule(schedule_id: str) -> ScheduleDetailResponse:
     except Exception as e:
         error_str = str(e).lower()
         if "not found" in error_str or "does not exist" in error_str:
-            raise HTTPException(status_code=404, detail=f"Schedule '{schedule_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Schedule '{schedule_id}' not found"
+            )
         raise HTTPException(status_code=500, detail=f"Failed to get schedule: {e}")
 
 
@@ -303,5 +306,7 @@ async def trigger_schedule(
     except Exception as e:
         error_str = str(e).lower()
         if "not found" in error_str or "does not exist" in error_str:
-            raise HTTPException(status_code=404, detail=f"Schedule '{schedule_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Schedule '{schedule_id}' not found"
+            )
         raise HTTPException(status_code=500, detail=f"Failed to trigger schedule: {e}")

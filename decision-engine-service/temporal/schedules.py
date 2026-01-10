@@ -151,16 +151,20 @@ async def delete_schedule(client: Client, schedule_id: str) -> bool:
 async def list_schedules(client: Client) -> list:
     """List all schedules"""
     schedules = []
-    async for schedule in client.list_schedules():
+    schedule_list = await client.list_schedules()
+    async for schedule in schedule_list:
+        # ScheduleListDescription has: id, info (ScheduleListInfo)
+        # ScheduleListInfo has: next_action_times, recent_actions
+        # ScheduleActionResult has: action, scheduled_at, started_at
+        info = schedule.info
         schedules.append(
             {
                 "id": schedule.id,
-                "state": schedule.info.schedule.state.note
-                if schedule.info.schedule.state
-                else "",
-                "running": len(schedule.info.running_workflows) > 0,
-                "recent": schedule.info.recent_actions[0].start_time.isoformat()
-                if schedule.info.recent_actions
+                "recent": info.recent_actions[0].started_at.isoformat()
+                if info and info.recent_actions
+                else None,
+                "next": info.next_action_times[0].isoformat()
+                if info and info.next_action_times
                 else None,
             }
         )
@@ -209,8 +213,9 @@ async def show_schedules():
 
     logger.info(f"Found {len(schedules)} schedules:")
     for s in schedules:
-        status = "RUNNING" if s["running"] else "IDLE"
-        logger.info(f"  - {s['id']}: {status} (last: {s['recent'] or 'never'})")
+        logger.info(
+            f"  - {s['id']}: last={s['recent'] or 'never'}, next={s['next'] or 'unknown'}"
+        )
 
 
 async def pause_schedule(schedule_id: str):
