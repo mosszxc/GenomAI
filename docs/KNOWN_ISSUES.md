@@ -743,6 +743,40 @@ UPDATE genomai.keitaro_config SET domain = 'https://new-domain.com' WHERE is_act
 
 ---
 
+### Clamp Bounded Values + Atomic Related Records
+
+**Context:** Issue #276 - Integration tests found decisions without traces and confidence > 1.
+
+**Mistake:**
+1. Confidence calculated as `current + delta` without bounds check
+2. Decision and trace saved separately without atomicity
+
+**Reality:**
+1. Over multiple learning iterations, confidence accumulated to 1.58
+2. If trace save failed after decision save, orphan decision created
+
+**Correct Approach:**
+```python
+# 1. Always clamp bounded values
+new_confidence = current_confidence + delta
+new_confidence = max(0.0, min(1.0, new_confidence))  # Clamp!
+
+# 2. Atomic saves for related records
+saved_decision = await save_decision(decision)
+try:
+    await save_decision_trace(trace)
+except Exception as e:
+    await delete_decision(decision_id)  # Rollback
+    raise e
+```
+
+**Rule:**
+1. Для значений с диапазоном (0-1, 0-100) — всегда clamp после арифметики
+2. Для связанных записей — atomic save с rollback или DB transaction
+3. Добавлять CHECK constraints в БД как последний рубеж защиты
+
+---
+
 ## Adding New Issues
 
 При закрытии issue, обновите этот файл:
