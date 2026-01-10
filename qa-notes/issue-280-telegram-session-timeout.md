@@ -1,32 +1,54 @@
 # Issue #280: Telegram bot returns "Session timed out" on /start command
 
 ## Problem
-При отправке `/start` в Telegram бот возвращал "Session timed out due to inactivity" вместо регистрации нового buyer.
+При отправке `/start` в Telegram бот возвращал "Session timed out due to inactivity" через 2-3 секунды вместо ожидания 60 минут на ввод пользователя.
 
-## Root Cause
-Race condition в `handle_start_command`:
-1. `check_active_onboarding` делал query на workflow и получал состояние AWAITING_NAME
-2. Workflow ID возвращался как "активный"
-3. В промежутке между query и ответом "already have active registration", workflow мог таймаутиться
-4. Workflow отправлял "Session timed out"
-5. Пользователь получал это сообщение вместо ожидаемого ответа
+## Root Cause (ACTUAL)
+`workflow.wait_condition()` возвращает `None` когда signal приходит во время ожидания:
+
+```
+11:29:55 - Waiting for user input with timeout: 3600.0 seconds
+11:29:55 - _pending_message before wait: None
+11:29:57 - wait_condition returned: None  <-- НЕ True!
+11:29:57 - _pending_message after wait: BuyerMessage(text='moss', ...)
+11:29:57 - wait_condition timed out unexpectedly!
+```
+
+Проблема в коде:
+```python
+if not await workflow.wait_condition(...):  # None is falsy!
+    return await self._handle_timeout()
+```
+
+`None` — falsy value в Python, поэтому `if not None` = `True` → срабатывал timeout хотя сообщение УЖЕ ПОЛУЧЕНО!
 
 ## Fix
-Заменили логику с query-based проверки на Temporal-native подход:
-- Используем `id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE` — позволяет перезапустить workflow после timeout/completion
-- Используем `id_conflict_policy=WorkflowIDConflictPolicy.FAIL` — бросает `WorkflowAlreadyStartedError` если workflow ещё running
-- Ловим `WorkflowAlreadyStartedError` и отправляем "already have active registration"
+Проверяем фактическое состояние `_pending_message` вместо return value:
 
-Это устраняет race condition потому что Temporal гарантирует atomicity при start_workflow.
+```python
+await workflow.wait_condition(
+    lambda: self._pending_message is not None,
+    timeout=step_timeout,
+)
+if self._pending_message is None:  # Check actual state
+    return await self._handle_timeout()
+```
 
 ## Files Changed
-- `decision-engine-service/src/routes/telegram.py` — переписан `handle_start_command`
+- `decision-engine-service/temporal/workflows/buyer_onboarding.py` — исправлены все 4 места с wait_condition
+- `decision-engine-service/src/routes/telegram.py` — переписан `handle_start_command` (дополнительное улучшение)
 
 ## Testing
-После deploy нужно:
-1. Отправить `/start` новому пользователю → должен получить welcome message
-2. Отправить `/start` повторно пока onboarding активен → должен получить "already have active registration"
-3. Подождать timeout и отправить `/start` снова → должен получить новый welcome message
+1. `/start` → welcome message ✓
+2. Ввод имени "moss" → ask for GEOs ✓
+3. Полный onboarding flow работает ✓
+
+## Lesson Learned
+**Temporal SDK Python: wait_condition может вернуть None**
+
+При использовании `wait_condition` с signals:
+- НЕ полагаться на return value (`if not result:`)
+- ВСЕГДА проверять фактическое состояние переменной (`if var is None:`)
 
 ## Related
 - Issue #260: Buyer Stats Command (обнаружено при тестировании)

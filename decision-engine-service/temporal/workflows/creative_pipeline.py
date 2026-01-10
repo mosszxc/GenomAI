@@ -13,6 +13,7 @@ Replaces 6 n8n workflows with single durable workflow.
 """
 
 from datetime import timedelta
+from typing import Optional
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -41,11 +42,11 @@ class CreativePipelineWorkflow:
 
     def __init__(self):
         self._status = "initialized"
-        self._creative_id: str | None = None
-        self._idea_id: str | None = None
-        self._decision: str | None = None
+        self._creative_id: Optional[str] = None
+        self._idea_id: Optional[str] = None
+        self._decision: Optional[str] = None
         self._hypothesis_count: int = 0
-        self._error: str | None = None
+        self._error: Optional[str] = None
 
     @workflow.run
     async def run(self, input: CreativeInput) -> PipelineResult:
@@ -345,8 +346,8 @@ class CreativePipelineWorkflow:
     def _build_result(
         self,
         idea_status: str = "unknown",
-        decision_id: str | None = None,
-        hypothesis_id: str | None = None,
+        decision_id: Optional[str] = None,
+        hypothesis_id: Optional[str] = None,
     ) -> PipelineResult:
         """Build pipeline result."""
         from datetime import datetime

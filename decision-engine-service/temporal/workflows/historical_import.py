@@ -11,6 +11,7 @@ Replaces n8n workflows:
 """
 
 from datetime import timedelta
+from typing import Optional
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -55,7 +56,7 @@ class HistoricalImportWorkflow:
         self._processed_campaigns: int = 0
         self._queued_creatives: int = 0
         self._failed_imports: int = 0
-        self._error: str | None = None
+        self._error: Optional[str] = None
 
     @workflow.run
     async def run(self, input: HistoricalImportInput) -> HistoricalImportResult:
@@ -207,17 +208,17 @@ class CreativeRegistrationWorkflow:
     """
 
     def __init__(self):
-        self._creative_id: str | None = None
+        self._creative_id: Optional[str] = None
         self._status: str = "pending"
-        self._error: str | None = None
+        self._error: Optional[str] = None
 
     @workflow.run
     async def run(
         self,
         buyer_id: str,
         video_url: str,
-        target_geo: str | None = None,
-        target_vertical: str | None = None,
+        target_geo: Optional[str] = None,
+        target_vertical: Optional[str] = None,
     ) -> dict:
         """
         Register a creative and start processing.
