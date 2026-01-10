@@ -266,7 +266,9 @@ class OutcomeService:
             data = response.json()
             return data[0] if data else None
 
-    async def get_historical_cpa(self, creative_id: str, lookback_days: int = 7) -> List[Decimal]:
+    async def get_historical_cpa(
+        self, creative_id: str, lookback_days: int = 7
+    ) -> List[Decimal]:
         """
         Get historical CPA values for volatility calculation.
 
@@ -284,7 +286,7 @@ class OutcomeService:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&created_at=gte.{cutoff_date}&select=cpa&order=created_at.desc",
-                headers=self._get_headers()
+                headers=self._get_headers(),
             )
             response.raise_for_status()
             data = response.json()

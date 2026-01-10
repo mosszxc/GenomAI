@@ -12,7 +12,7 @@ Tasks:
 Schedule: Every 6 hours
 """
 
-from datetime import timedelta, datetime
+from datetime import timedelta
 from dataclasses import dataclass
 from typing import List
 
@@ -125,7 +125,7 @@ class MaintenanceWorkflow:
                 result.integrity_issues.append(f"Integrity check error: {e}")
 
         # Step 4: Emit maintenance event
-        result.completed_at = datetime.utcnow().isoformat()
+        result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
             emit_maintenance_event,
