@@ -221,8 +221,9 @@ async def log_buyer_interaction(
     }
 
     try:
+        logger.info(f"Logging buyer interaction: {direction} {message_type}")
         async with httpx.AsyncClient() as client:
-            await client.post(
+            response = await client.post(
                 f"{supabase_url}/rest/v1/buyer_interactions",
                 headers=headers,
                 json={
@@ -234,6 +235,10 @@ async def log_buyer_interaction(
                 },
                 timeout=10.0,
             )
+            if response.status_code >= 400:
+                logger.error(f"Supabase error {response.status_code}: {response.text}")
+            else:
+                logger.info(f"Logged interaction: {direction} {message_type}")
     except Exception as e:
         logger.error(f"Failed to log buyer interaction: {e}")
 
@@ -350,6 +355,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             await send_telegram_message(message.chat_id, stats_message)
 
             # Log outgoing response
+            logger.info(f"Stats calculated for {message.user_id}: {total} creatives")
             await log_buyer_interaction(
                 telegram_id=message.user_id,
                 direction="out",
