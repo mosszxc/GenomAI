@@ -86,6 +86,97 @@ class TestWindowIdCalculation:
         assert result == "D7+"
 
 
+class TestTrendCalculation:
+    """Tests for trend calculation logic"""
+
+    def test_trend_improving(self):
+        """Trend should be 'improving' when CPA decreases by >10%"""
+        current_cpa = Decimal("8.00")
+        previous_cpa = Decimal("10.00")  # -20% change
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result == "improving"
+
+    def test_trend_declining(self):
+        """Trend should be 'declining' when CPA increases by >10%"""
+        current_cpa = Decimal("12.00")
+        previous_cpa = Decimal("10.00")  # +20% change
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result == "declining"
+
+    def test_trend_stable(self):
+        """Trend should be 'stable' when CPA change is within 10%"""
+        current_cpa = Decimal("10.50")
+        previous_cpa = Decimal("10.00")  # +5% change
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result == "stable"
+
+    def test_trend_stable_slight_decrease(self):
+        """Trend should be 'stable' for slight decrease within 10%"""
+        current_cpa = Decimal("9.50")
+        previous_cpa = Decimal("10.00")  # -5% change
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result == "stable"
+
+    def test_trend_none_when_current_cpa_none(self):
+        """Trend should be None when current CPA is None"""
+        current_cpa = None
+        previous_cpa = Decimal("10.00")
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result is None
+
+    def test_trend_none_when_previous_cpa_none(self):
+        """Trend should be None when previous CPA is None"""
+        current_cpa = Decimal("10.00")
+        previous_cpa = None
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result is None
+
+    def test_trend_none_when_both_cpa_none(self):
+        """Trend should be None when both CPAs are None"""
+        result = OutcomeService.calculate_trend(None, None)
+
+        assert result is None
+
+    def test_trend_none_when_previous_cpa_zero(self):
+        """Trend should be None when previous CPA is zero (avoid division)"""
+        current_cpa = Decimal("10.00")
+        previous_cpa = Decimal("0")
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result is None
+
+    def test_trend_boundary_improving(self):
+        """Test exact -10% boundary for improving"""
+        previous_cpa = Decimal("100.00")
+        current_cpa = Decimal("89.00")  # -11% = improving
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result == "improving"
+
+    def test_trend_boundary_declining(self):
+        """Test exact +10% boundary for declining"""
+        previous_cpa = Decimal("100.00")
+        current_cpa = Decimal("111.00")  # +11% = declining
+
+        result = OutcomeService.calculate_trend(current_cpa, previous_cpa)
+
+        assert result == "declining"
+
+
 class TestCpaCalculation:
     """Tests for CPA calculation logic"""
 
@@ -150,6 +241,7 @@ class TestOutcomeAggregate:
             conversions=10,
             spend=Decimal("50.00"),
             cpa=Decimal("5.00"),
+            trend="improving",
             origin_type="system",
             learning_applied=False
         )
@@ -165,6 +257,7 @@ class TestOutcomeAggregate:
         assert result["conversions"] == 10
         assert result["spend"] == 50.0
         assert result["cpa"] == 5.0
+        assert result["trend"] == "improving"
         assert result["origin_type"] == "system"
         assert result["learning_applied"] is False
 
