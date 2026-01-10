@@ -5,7 +5,7 @@
 ## Аргументы
 
 ```
-$ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations] [--regression]
+$ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations] [--temporal] [--regression]
 ```
 
 ## Execution Instructions
@@ -21,6 +21,7 @@ $ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations]
 - `--quality` → Phase 1 + Phase 2 + Phase 2A + Phase 2B
 - `--learning` → Phase 1 + Phase 2A
 - `--integrations` → Phase 1 + Phase 2C
+- `--temporal` → Phase 1 + Phase 5 (live schedule tests)
 - `--regression` → Phase 1 + Phase 6
 
 ### Порядок выполнения
@@ -34,10 +35,7 @@ $ARGUMENTS = [--health] [--tracker=ID] [--quality] [--learning] [--integrations]
 ### Инструменты
 
 - `mcp__supabase__execute_sql` - для SQL запросов (project_id: `ftrerelppsnbdcmtcwya`)
-- `mcp__n8n-mcp__n8n_health_check` - для n8n health
-- `mcp__n8n-mcp__n8n_list_workflows` - для проверки workflows
-- `mcp__n8n-mcp__n8n_test_workflow` - для live тестирования workflows
-- `mcp__n8n-mcp__n8n_executions` - для статистики executions
+- `Bash` - для Temporal команд (`python -m temporal.schedules list/trigger`)
 - `WebFetch` - для Decision Engine health check
 
 ### Test Data Loading (Phase 5)
@@ -61,8 +59,9 @@ SELECT
 
 **Group 1 (Health):**
 - Decision Engine health (WebFetch)
-- n8n health check
+- Temporal schedules status (Bash)
 - Supabase connectivity
+- Telegram Bot health (WebFetch or SQL fallback)
 
 **Group 2 (Data Quality):**
 - Все SQL запросы Phase 2 (2.1-2.8)
@@ -72,9 +71,6 @@ SELECT
 
 **Group 4 (Relationships + SLA):**
 - Все SQL запросы Phase 3 + Phase 4
-
-**Group 5 (Workflows):**
-- n8n executions для каждого critical workflow
 
 ### Формат вывода
 
@@ -155,35 +151,71 @@ SELECT
 - Query executes < 1s
 - config_count > 0
 
-### 1.3 n8n Health
+### 1.3 Temporal Schedules
 
-```
-mcp__n8n-mcp__n8n_health_check(mode: "diagnostic")
+```bash
+cd decision-engine-service && python -m temporal.schedules list
 ```
 
 **Критерии:**
-- `connected: true`
-- `managementTools.enabled: true`
+- All 5 schedules exist and not paused
+- Recent actions within expected intervals
 
-### 1.4 Critical Workflows Status
+**Expected Schedules:**
 
-| ID | Name | Required |
-|----|------|----------|
-| `YT2d7z5h9bPy1R4v` | decision_engine_mvp | YES |
-| `cGSyJPROrkqLVHZP` | idea_registry_create | YES |
-| `mv6diVtqnuwr7qev` | creative_decomposition_llm | YES |
-| `oxG1DqxtkTGCqLZi` | hypothesis_factory_generate | YES |
-| `5q3mshC9HRPpL6C0` | Telegram Hypothesis Delivery | YES |
-| `ClXUPP2IvWRgu99y` | keep_alive_decision_engine | YES |
-| `0TrVJOtHiNEEAsTN` | Keitaro Poller | YES |
-| `fzXkoG805jQZUR3S` | Learning Loop v2 | YES |
-| `BuyQncnHNb7ulL6z` | Telegram Router | YES |
+| Schedule ID | Interval | Max Staleness |
+|-------------|----------|---------------|
+| `keitaro-poller` | 10 min | 15 min |
+| `metrics-processor` | 30 min | 45 min |
+| `learning-loop` | 1 hour | 2 hours |
+| `daily-recommendations` | Daily 09:00 UTC | 25 hours |
+| `maintenance` | 6 hours | 8 hours |
+
+### 1.4 Temporal Worker Health
+
+Check via Decision Engine health endpoint (workers run in same process):
 
 ```
-mcp__n8n-mcp__n8n_list_workflows(active: true)
+WebFetch: GET https://genomai.onrender.com/health
 ```
 
-**Критерии:** Все 9 workflows active
+**Критерии:** `temporal_connected: true` (if exposed in health response)
+
+### 1.5 Telegram Bot Health
+
+```sql
+SELECT value FROM genomai.config WHERE key = 'telegram_bot_token';
+```
+
+Используя полученный токен:
+
+```
+WebFetch: GET https://api.telegram.org/bot{TOKEN}/getMe
+```
+
+**Критерии:**
+- Response status 200
+- `ok: true`
+- `result.username` exists
+
+**Note:** Если токен не найден в config → проверить env var `TELEGRAM_BOT_TOKEN`
+
+**Альтернативная проверка (если нет доступа к токену):**
+
+```sql
+-- Проверить что deliveries отправляются
+SELECT
+  COUNT(*) as total_24h,
+  COUNT(*) FILTER (WHERE status = 'sent') as sent,
+  COUNT(*) FILTER (WHERE status = 'failed') as failed,
+  MAX(sent_at) as last_delivery
+FROM genomai.deliveries
+WHERE sent_at > now() - interval '24 hours';
+```
+
+**Критерии:**
+- `failed / total_24h < 0.1` (< 10% failures)
+- `last_delivery` within expected timeframe (if there was activity)
 
 ---
 
@@ -587,7 +619,7 @@ FROM genomai.raw_metrics_current;
 ```
 
 **Критерии:**
-- `staleness < interval '25 hours'` (Keitaro Poller runs daily at midnight)
+- `staleness < interval '25 hours'` (Keitaro Poller runs every 10 min)
 - `stale_count / total_trackers < 0.5` (< 50% stale = OK)
 
 **Severity:** staleness > 25h = WARNING, > 48h = ERROR
@@ -859,166 +891,291 @@ SELECT
 
 ---
 
-## Phase 5: MANDATORY Live Workflow Tests ⚡
+## Phase 5: Temporal Schedule Tests (LIVE)
 
-### ⛔ CRITICAL EXECUTION RULES
+### Без локального Temporal
 
-**ЭТО ОБЯЗАТЕЛЬНАЯ ФАЗА. НЕ ПРОПУСКАТЬ!**
+Workers запущены на Render, не локально. Тестирование работает через **Temporal Cloud**:
 
-1. **MUST** вызывать `mcp__n8n-mcp__n8n_test_workflow` для каждого workflow
-2. **MUST** записывать `executionId` в отчёт как доказательство
-3. **MUST** после каждого теста делать DB verification
-4. **SKIP** только если workflow inactive или нет webhook trigger
+```bash
+cd decision-engine-service
 
-**Без executionId в отчёте — Phase 5 НЕ ВЫПОЛНЕН!**
+# 1. schedules module подключается к удалённому Temporal Cloud
+python -m temporal.schedules list
 
----
+# 2. Trigger отправляет задачу в Cloud
+python -m temporal.schedules trigger keitaro-poller
 
-### 5.0 Load Test Data
+# 3. Workers на Render подхватывают и выполняют
+# 4. Результат проверяем в БД
+```
 
-**ПЕРВЫМ** — загрузить тестовые ID:
+**Почему это работает:**
+- `temporal.schedules` использует те же credentials что и workers
+- Подключение к Temporal Cloud (не localhost)
+- Workers на Render polling тот же task queue
+- Результат = данные в Supabase
+
+**Если нет доступа к schedules CLI:**
+
+```bash
+# Через API endpoint (если есть)
+curl -X POST https://genomai.onrender.com/api/trigger-workflow \
+  -H "Authorization: Bearer $API_KEY" \
+  -d '{"workflow": "learning-loop"}'
+
+# Через Temporal CLI к Cloud
+temporal workflow start \
+  --address <temporal-cloud-address> \
+  --namespace <namespace> \
+  --task-queue metrics \
+  --type LearningLoopWorkflow
+```
+
+### Execution Rules
+
+1. **Триггерить все safe schedules** — реальные тесты, не просто история
+2. **Verify DB changes** after each trigger
+3. **SKIP только** `daily-recommendations` (отправляет в Telegram)
+
+### Schedule Safety Matrix
+
+| Schedule | Action | Reason |
+|----------|--------|--------|
+| `keitaro-poller` | ✅ TRIGGER | Только читает из Keitaro API |
+| `metrics-processor` | ✅ TRIGGER | Обрабатывает существующие snapshots |
+| `learning-loop` | ✅ TRIGGER | Обновляет scores (нормальная работа) |
+| `maintenance` | ✅ TRIGGER | Cleanup операции |
+| `daily-recommendations` | ⏭️ SKIP | Отправляет сообщения в Telegram |
+
+### 5.0 Schedule Status via Event Log (Recommended)
+
+**Если Temporal CLI недоступен локально**, используй event_log для проверки:
+
+```sql
+-- Проверка всех schedules через события завершения
+-- Event types: RawMetricsObserved, OutcomeAggregated, learning.applied, MaintenanceCompleted, RecommendationGenerated
+SELECT
+  'keitaro-poller' as schedule, '10 min' as interval,
+  (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RawMetricsObserved') as last_run,
+  now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RawMetricsObserved') as staleness,
+  CASE WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RawMetricsObserved') < interval '15 min' THEN 'OK'
+       WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RawMetricsObserved') < interval '30 min' THEN 'WARN' ELSE 'ERROR' END as status
+UNION ALL SELECT 'metrics-processor', '30 min',
+  (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'OutcomeAggregated'),
+  now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'OutcomeAggregated'),
+  CASE WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'OutcomeAggregated') < interval '45 min' THEN 'OK'
+       WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'OutcomeAggregated') < interval '90 min' THEN 'WARN' ELSE 'ERROR' END
+UNION ALL SELECT 'learning-loop', '1 hour',
+  (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'learning.applied'),
+  now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'learning.applied'),
+  CASE WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'learning.applied') < interval '2 hours' THEN 'OK'
+       WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'learning.applied') < interval '4 hours' THEN 'WARN' ELSE 'ERROR' END
+UNION ALL SELECT 'maintenance', '6 hours',
+  (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'MaintenanceCompleted'),
+  now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'MaintenanceCompleted'),
+  CASE WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'MaintenanceCompleted') < interval '8 hours' THEN 'OK'
+       WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'MaintenanceCompleted') < interval '12 hours' THEN 'WARN' ELSE 'ERROR' END
+UNION ALL SELECT 'daily-recommendations', 'Daily 09:00',
+  (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RecommendationGenerated'),
+  now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RecommendationGenerated'),
+  CASE WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RecommendationGenerated') < interval '25 hours' THEN 'OK'
+       WHEN now() - (SELECT MAX(occurred_at) FROM genomai.event_log WHERE event_type = 'RecommendationGenerated') < interval '48 hours' THEN 'WARN' ELSE 'ERROR' END;
+```
+
+**Критерии:** Все schedules имеют события в пределах интервалов.
+
+### 5.0.1 Idle Schedule Detection (#287)
+
+**Если schedule показывает WARN/ERROR**, проверь есть ли данные для обработки:
 
 ```sql
 SELECT
-  (SELECT id FROM genomai.creatives ORDER BY created_at DESC LIMIT 1) as test_creative_id,
-  (SELECT id FROM genomai.ideas ORDER BY created_at DESC LIMIT 1) as test_idea_id,
-  (SELECT id FROM genomai.decisions WHERE decision = 'approve' ORDER BY created_at DESC LIMIT 1) as test_decision_id,
-  (SELECT tracker_id FROM genomai.raw_metrics_current LIMIT 1) as test_tracker_id,
-  (SELECT id FROM genomai.decomposed_creatives ORDER BY created_at DESC LIMIT 1) as test_decomposed_id;
+  (SELECT COUNT(*) FROM genomai.outcome_aggregates WHERE learning_applied = false) as pending_outcomes,
+  (SELECT COUNT(*) FROM genomai.daily_metrics_snapshot WHERE date = current_date) as today_snapshots;
 ```
 
-Сохрани как `TEST_IDS`. Если ID = NULL → SKIP соответствующий тест.
+**Интерпретация:**
+| Schedule | pending = 0 | Event Stale | Verdict |
+|----------|-------------|-------------|---------|
+| metrics-processor | ✅ | Yes | OK (idle) — нет данных |
+| metrics-processor | ❌ | Yes | ERROR — сломан |
+| learning-loop | ✅ | Yes | OK (idle) — всё обработано |
+| learning-loop | ❌ | Yes | ERROR — сломан |
 
----
+### 5.1 Check Schedules Status
 
-### 5.1 Decision Engine Wake-up
-
-```
-WebFetch: GET https://genomai.onrender.com/health
-```
-
-Если 503 — подождать 30 секунд и повторить.
-
-**Критерии:** `status = "ok"`, response time < 30s
-
----
-
-### MANDATORY TEST MATRIX
-
-**Тестируем 11 workflows обязательно + 3 опционально. Записать executionId для каждого!**
-
-Из 31 активного workflow: ✅ 11 mandatory, ⚠️ 3 optional, ⏭️ 19 skip (LLM/TG/Historical)
-
-#### Category 1: Safe Tests (ОБЯЗАТЕЛЬНО)
-
-| # | Workflow | ID | MCP Call | DB Check |
-|---|----------|-----|----------|----------|
-| 5.2 | keep_alive | `ClXUPP2IvWRgu99y` | `n8n_test_workflow({workflowId: "ClXUPP2IvWRgu99y"})` | DE /health returns ok |
-| 5.3 | learning_loop | `fzXkoG805jQZUR3S` | `n8n_test_workflow({workflowId: "fzXkoG805jQZUR3S", data: {test: true}})` | 400 = expected |
-| 5.4 | pipeline_health | `H1uuOanSy627H4kg` | `n8n_test_workflow({workflowId: "H1uuOanSy627H4kg"})` | execution success |
-| 5.5 | data_integrity | `IEu0VguJiGwZsr92` | `n8n_test_workflow({workflowId: "IEu0VguJiGwZsr92"})` | execution success |
-| 5.6 | orphan_monitor | `lHow2zq2OOw7J0K7` | `n8n_test_workflow({workflowId: "lHow2zq2OOw7J0K7"})` | execution success |
-
-#### Category 2: Metrics & Outcomes (ОБЯЗАТЕЛЬНО)
-
-| # | Workflow | ID | MCP Call | DB Check |
-|---|----------|-----|----------|----------|
-| 5.7 | keitaro_poller | `0TrVJOtHiNEEAsTN` | `n8n_test_workflow({workflowId: "0TrVJOtHiNEEAsTN"})` | `MAX(updated_at) FROM raw_metrics_current` |
-| 5.8 | snapshot_creator | `Gii8l2XwnX43Wqr4` | `n8n_test_workflow({workflowId: "Gii8l2XwnX43Wqr4", data: {tracker_id: TEST_IDS.test_tracker_id, date: "YYYY-MM-DD", metrics: {clicks:0}}})` | `MAX(date) FROM daily_metrics_snapshot` |
-| 5.9 | outcome_processor | `bbbQC4Aua5E3SYSK` | `n8n_test_workflow({workflowId: "bbbQC4Aua5E3SYSK", data: {tracker_id: TEST_IDS.test_tracker_id}})` | execution success |
-| 5.10 | outcome_aggregator | `243QnGrUSDtXLjqU` | `n8n_test_workflow({workflowId: "243QnGrUSDtXLjqU", data: {tracker_id: TEST_IDS.test_tracker_id}})` | execution success |
-
-#### Category 3: Recommendations & Ingestion (ОБЯЗАТЕЛЬНО)
-
-| # | Workflow | ID | MCP Call | DB Check |
-|---|----------|-----|----------|----------|
-| 5.11 | recommendation_generator | `wgEdEqt2BA3P9JlA` | `n8n_test_workflow({workflowId: "wgEdEqt2BA3P9JlA"})` | execution success |
-| 5.12 | creative_ingestion | `dvZvUUmhtPzYOK7X` | `n8n_test_workflow({workflowId: "dvZvUUmhtPzYOK7X", data: {video_url: "test", tracker_id: "e2e"}})` | validation error OK |
-
-#### Category 4: Core Pipeline — Creates Data (ОПЦИОНАЛЬНО)
-
-| # | Workflow | ID | MCP Call | DB Check |
-|---|----------|-----|----------|----------|
-| 5.13 | decision_engine_mvp | `YT2d7z5h9bPy1R4v` | `n8n_test_workflow({workflowId: "YT2d7z5h9bPy1R4v", data: {idea_id: TEST_IDS.test_idea_id, payload: {hook:"test"}, source:"e2e"}})` | decision returned |
-| 5.14 | idea_registry | `cGSyJPROrkqLVHZP` | `n8n_test_workflow({workflowId: "cGSyJPROrkqLVHZP", data: {creative_id: TEST_IDS.test_creative_id}})` | execution success |
-| 5.15 | hypothesis_factory | `oxG1DqxtkTGCqLZi` | `n8n_test_workflow({workflowId: "oxG1DqxtkTGCqLZi", data: {idea_id: TEST_IDS.test_idea_id, decision_id: TEST_IDS.test_decision_id}})` | creates hypothesis |
-
-#### SKIP: LLM Workflows (4) — OpenAI cost
-`WMnFHqsFh8i7ddjV` `mv6diVtqnuwr7qev` `fcnpPrj9sCFUqoWF` `zwtqav0d2R35zQot`
-
-#### SKIP: Telegram Workflows (11) — Sends messages
-`BuyQncnHNb7ulL6z` `5q3mshC9HRPpL6C0` `hgTozRQFwh4GLM0z` `d5i9dB2GNqsbfmSD` `pL6C4j1uiJLfVRIi` `rHuT8dYyIXoiHMAV` `WkS1fPSxZaLmWcYy` `QC8bmnAYdH5mkntG` `4uluD04qYHhsetBy` `9nCezru94d0ABHh4` `97cj3kRY6zzlAy0M`
-
-#### SKIP: Historical (4) — Batch operations
-`1FC7amTd3dCRZPEa` `lmiWkYTRZPSpydJH` `6tu8j4M4wvwi0pyB` `UYgvqpsU3TMzb2Qd`
-
----
-
-### Execution Checklist
-
-**После КАЖДОГО теста записать:**
-
-```
-✅ Workflow: {name}
-   ExecutionID: {id from response}
-   Status: success/error
-   DB Check: {result}
+```bash
+cd decision-engine-service && python -m temporal.schedules list
 ```
 
-**Пример:**
-```
-✅ keep_alive (5.2)
-   ExecutionID: 12345
-   Status: success
-   DB Check: DE /health → ok
+**Критерии:**
+- All 5 schedules exist
+- None paused
 
-✅ keitaro_poller (5.7)
-   ExecutionID: 12346
-   Status: success
-   DB Check: metrics updated 2 min ago
+**Fallback:** Если CLI недоступен (Connection refused), используй 5.0 + 5.0.1
+
+### 5.2 Trigger Keitaro Poller
+
+```bash
+cd decision-engine-service && python -m temporal.schedules trigger keitaro-poller
 ```
 
----
+**DB Verification (wait 30s):**
+```sql
+SELECT
+  event_type,
+  occurred_at,
+  payload->>'metrics_collected' as metrics_collected,
+  payload->>'snapshots_created' as snapshots_created
+FROM genomai.event_log
+WHERE event_type = 'keitaro.polling.completed'
+ORDER BY occurred_at DESC
+LIMIT 1;
+```
+
+**Критерии:**
+- Event emitted within last 2 minutes
+- `metrics_collected >= 0`
+
+**Alternative verification:**
+```sql
+SELECT MAX(updated_at) as last_update
+FROM genomai.raw_metrics_current;
+```
+- `last_update` within last 2 minutes
+
+### 5.3 Trigger Metrics Processor
+
+```bash
+cd decision-engine-service && python -m temporal.schedules trigger metrics-processor
+```
+
+**DB Verification (wait 30s):**
+```sql
+SELECT
+  event_type,
+  occurred_at,
+  payload->>'outcomes_created' as outcomes_created,
+  payload->>'snapshots_processed' as snapshots_processed
+FROM genomai.event_log
+WHERE event_type = 'metrics.processing.completed'
+ORDER BY occurred_at DESC
+LIMIT 1;
+```
+
+**Критерии:**
+- Event emitted within last 2 minutes
+- Execution completed (even if 0 outcomes created — OK if no data to process)
+
+### 5.4 Trigger Learning Loop
+
+```bash
+cd decision-engine-service && python -m temporal.schedules trigger learning-loop
+```
+
+**DB Verification (wait 30s):**
+```sql
+SELECT
+  event_type,
+  occurred_at,
+  payload->>'processed_count' as processed_count,
+  payload->>'component_updates' as component_updates
+FROM genomai.event_log
+WHERE event_type = 'learning.batch.completed'
+ORDER BY occurred_at DESC
+LIMIT 1;
+```
+
+**Критерии:**
+- Event emitted within last 2 minutes
+- Execution completed (0 processed is OK if no pending outcomes)
+
+**Alternative verification:**
+```sql
+SELECT MAX(updated_at) as last_learning_update
+FROM genomai.component_learnings;
+```
+
+### 5.5 Trigger Maintenance
+
+```bash
+cd decision-engine-service && python -m temporal.schedules trigger maintenance
+```
+
+**DB Verification (wait 15s):**
+```sql
+SELECT
+  event_type,
+  occurred_at,
+  payload->>'buyers_reset' as buyers_reset,
+  payload->>'recommendations_expired' as recommendations_expired
+FROM genomai.event_log
+WHERE event_type = 'MaintenanceCompleted'
+ORDER BY occurred_at DESC
+LIMIT 1;
+```
+
+**Критерии:**
+- Event emitted within last 2 minutes
+- `buyers_reset` and `recommendations_expired` fields exist
+
+### 5.6 Daily Recommendations (SKIP)
+
+**НЕ ТРИГГЕРИТЬ** — отправляет реальные сообщения в Telegram.
+
+Проверка только по истории:
+```sql
+SELECT
+  occurred_at as last_recommendation,
+  now() - occurred_at as staleness
+FROM genomai.event_log
+WHERE event_type = 'RecommendationGenerated'
+ORDER BY occurred_at DESC
+LIMIT 1;
+```
+
+**Критерии:**
+- `staleness < 25 hours` (runs daily at 09:00 UTC)
+
+### Execution Order
+
+**ВАЖНО:** Триггерить последовательно с паузами:
+
+```
+1. keitaro-poller  → wait 30s → verify
+2. metrics-processor → wait 30s → verify
+3. learning-loop → wait 30s → verify
+4. maintenance → wait 15s → verify
+5. daily-recommendations → SKIP (verify history only)
+```
+
+**Причина:** Каждый schedule зависит от предыдущего:
+- metrics-processor использует snapshots от keitaro-poller
+- learning-loop использует outcomes от metrics-processor
 
 ### Phase 5 Report Format
 
-**В финальном отчёте Phase 8 добавить эту секцию:**
-
 ```markdown
-### 5. Live Workflow Tests (MANDATORY)
+### 5. Temporal Live Tests
 
-| # | Workflow | ExecutionID | Triggered | DB Verified | Status |
-|---|----------|-------------|-----------|-------------|--------|
-| 5.2 | keep_alive | 12345 | ✅ | ✅ DE ok | PASS |
-| 5.3 | learning_loop | 12346 | ✅ | ✅ 400 expected | PASS |
-| 5.4 | pipeline_health | 12347 | ✅ | ✅ | PASS |
-| 5.5 | data_integrity | 12348 | ✅ | ✅ | PASS |
-| 5.6 | orphan_monitor | 12349 | ✅ | ✅ | PASS |
-| 5.7 | keitaro_poller | 12350 | ✅ | ✅ metrics fresh | PASS |
-| 5.8 | snapshot_creator | 12351 | ✅ | ✅ snapshot today | PASS |
-| 5.9 | outcome_processor | 12352 | ✅ | ✅ | PASS |
-| 5.10 | outcome_aggregator | 12353 | ✅ | ✅ | PASS |
-| 5.11 | recommendation_gen | 12354 | ✅ | ✅ | PASS |
-| 5.12 | creative_ingestion | 12355 | ✅ | ✅ validation err | PASS |
-| 5.13-15 | Core Pipeline | SKIP | - | - | SKIP (optional) |
+| # | Schedule | Triggered | Wait | Event Verified | Result |
+|---|----------|-----------|------|----------------|--------|
+| 5.2 | keitaro-poller | ✅ | 30s | ✅ keitaro.polling.completed | PASS |
+| 5.3 | metrics-processor | ✅ | 30s | ✅ metrics.processing.completed | PASS |
+| 5.4 | learning-loop | ✅ | 30s | ✅ learning.batch.completed | PASS |
+| 5.5 | maintenance | ✅ | 15s | ✅ MaintenanceCompleted | PASS |
+| 5.6 | daily-recommendations | ⏭️ SKIP | - | ✅ history < 25h | PASS |
 
-**Live Tests: 11/11 mandatory executed, 11/11 passed**
-**Skipped: 3 optional (creates data), 19 (LLM/TG/Historical)**
+**Live Tests: 4/4 triggered, 4/4 passed**
+**Skipped: daily-recommendations (Telegram side effects)**
+
+**Execution Details:**
+- keitaro-poller: 15 metrics collected, 3 snapshots created
+- metrics-processor: 2 outcomes created
+- learning-loop: 2 outcomes processed, 5 component updates
+- maintenance: 0 buyers reset, 1 recommendation expired
 ```
-
-**Без этой секции отчёт НЕПОЛНЫЙ!**
-
----
-
-### Error Handling
-
-| Ситуация | Действие |
-|----------|----------|
-| Workflow inactive | Отметить ⏭️ SKIP (inactive) |
-| No webhook trigger | Отметить ⏭️ SKIP (no trigger) |
-| Timeout (>120s) | Отметить ❌ TIMEOUT, retry 1x |
-| n8n API error | Отметить ❌ ERROR, записать message |
-| DB check failed | Отметить ⚠️ WARNING, продолжить |
 
 ---
 
@@ -1243,12 +1400,11 @@ ORDER BY timestamp;
 | Integrations | OK/WARN/FAIL | {count} | {skip_count} |
 | Relationships | OK/WARN/FAIL | {count} | {skip_count} |
 | SLA | OK/WARN/FAIL | {count} | {skip_count} |
-| **Live Tests ⚡** | OK/WARN/FAIL | {executed}/{total} | {skip_count} |
-| Workflow History | OK/WARN/FAIL | {count} | {skip_count} |
+| **Temporal Live Tests** | OK/WARN/FAIL | {triggered}/{passed} | {skipped} |
 | Regression | OK/WARN/FAIL | {count} | {skip_count} |
 
 **Overall: PASS / WARNING / FAIL**
-**Live Tests: {X}/{Y} executed** ← MANDATORY
+**Temporal Live Tests: 4/4 triggered, 1 skipped (daily-recommendations)**
 **Schema Drift:** {count} missing columns detected
 
 ---
@@ -1259,7 +1415,8 @@ ORDER BY timestamp;
 |---------|--------|---------------|---------|
 | Decision Engine | OK | 245ms | status=ok |
 | Supabase | OK | 89ms | 2 config rows |
-| n8n | OK | 2.2s | v2.31.3, 30 workflows |
+| Temporal | OK | - | 5/5 schedules active |
+| Telegram Bot | OK | 120ms | @genomai_bot |
 
 ### 2. Data Quality
 
@@ -1341,42 +1498,19 @@ ORDER BY timestamp;
 | Hypothesis | 1 | WARN |
 | Delivery | 0 | OK |
 
-### 5. Live Workflow Tests (MANDATORY) ⚡
+### 5. Temporal Live Tests
 
-**Эта секция ОБЯЗАТЕЛЬНА — без неё отчёт неполный!**
+| # | Schedule | Triggered | Wait | Event Verified | Result |
+|---|----------|-----------|------|----------------|--------|
+| 5.2 | keitaro-poller | ✅ | 30s | ✅ 15 metrics, 3 snapshots | PASS |
+| 5.3 | metrics-processor | ✅ | 30s | ✅ 2 outcomes created | PASS |
+| 5.4 | learning-loop | ✅ | 30s | ✅ 2 processed, 5 updates | PASS |
+| 5.5 | maintenance | ✅ | 15s | ✅ 0 reset, 1 expired | PASS |
+| 5.6 | daily-recommendations | ⏭️ SKIP | - | ✅ history < 25h | PASS |
 
-| # | Workflow | ExecutionID | Triggered | DB Verified | Status |
-|---|----------|-------------|-----------|-------------|--------|
-| 5.2 | keep_alive | 12345 | ✅ | ✅ DE ok | PASS |
-| 5.3 | learning_loop | 12346 | ✅ | ✅ 400 expected | PASS |
-| 5.4 | pipeline_health | 12347 | ✅ | ✅ | PASS |
-| 5.5 | data_integrity | 12348 | ✅ | ✅ | PASS |
-| 5.6 | orphan_monitor | 12349 | ✅ | ✅ | PASS |
-| 5.7 | keitaro_poller | 12350 | ✅ | ✅ metrics fresh | PASS |
-| 5.8 | snapshot_creator | 12351 | ✅ | ✅ snapshot today | PASS |
-| 5.9 | decision_engine | SKIP | - | - | SKIP (optional) |
-| 5.10 | idea_registry | SKIP | - | - | SKIP (optional) |
-| 5.11 | hypothesis_factory | SKIP | - | - | SKIP (optional) |
-
-**Live Tests Summary: 7/7 executed, 7/7 passed**
-
-### 5A. Workflow Historical Stats
-
-| Workflow | Success Rate | Errors (24h) | Last Success | Status |
-|----------|--------------|--------------|--------------|--------|
-| decision_engine_mvp | 98% | 2 | 15m ago | OK |
-| idea_registry_create | 100% | 0 | 20m ago | OK |
-| creative_decomposition | 95% | 3 | 25m ago | OK |
-| hypothesis_factory | 97% | 1 | 30m ago | OK |
-| telegram_delivery | 100% | 0 | 30m ago | OK |
-| keitaro_poller | 100% | 0 | 10m ago | OK |
-| learning_loop | 100% | 0 | 1h ago | OK |
-
-**Recent Errors:**
-| Workflow | Node | Error | Count |
-|----------|------|-------|-------|
-| decomposition | OpenAI | rate_limit | 2 |
-| decision_engine | HTTP Request | timeout | 1 |
+**Live Tests: 4/4 triggered, 4/4 passed**
+**Skipped: daily-recommendations (Telegram side effects)**
+**Schedules: 5/5 active, 0 paused**
 
 ### 6. Regression Suite
 
@@ -1476,6 +1610,9 @@ All critical checks passed. 2 warnings require attention.
 # Integration checks (Keitaro, DE API, configs)
 /e2e --integrations
 
+# Temporal live schedule tests
+/e2e --temporal
+
 # Run regression suite only
 /e2e --regression
 
@@ -1499,7 +1636,7 @@ All critical checks passed. 2 warnings require attention.
 |--------|-----|---------|-------|
 | Data quality rate | < 1% issues | 1-5% | > 5% |
 | SLA breach rate | < 10% | 10-20% | > 20% |
-| Workflow error rate | < 5% | 5-15% | > 15% |
+| Schedule staleness | within interval | 2x interval | > 3x interval |
 | Stuck items | 0 | 1-5 | > 5 |
 | Orphaned records | < 5 | 5-20 | > 20 |
 | Learning applied rate | > 90% | 70-90% | < 70% |
@@ -1515,5 +1652,5 @@ All critical checks passed. 2 warnings require attention.
 ## Связанные команды
 
 - `/valid {process}` — валидация конкретного процесса
-- `/n8n-test {workflow}` — тест одного workflow
-- `/n8n-review {workflow}` — review workflow конфигурации
+- `python -m temporal.schedules list` — список schedules
+- `python -m temporal.schedules trigger <id>` — ручной триггер
