@@ -99,6 +99,80 @@ async def submit_video(request: SubmitVideoRequest) -> SubmitVideoResponse:
         )
 
 
+class StartImportRequest(BaseModel):
+    """Request model for start-import endpoint."""
+
+    buyer_id: str = Field(..., description="Buyer UUID")
+    keitaro_source: str = Field(..., description="Keitaro source/affiliate parameter")
+    date_from: Optional[str] = Field(None, description="Start date (ISO format)")
+    date_to: Optional[str] = Field(None, description="End date (ISO format)")
+
+
+class StartImportResponse(BaseModel):
+    """Response model for start-import endpoint."""
+
+    success: bool
+    workflow_id: Optional[str] = None
+    message: str
+    error: Optional[str] = None
+
+
+@router.post("/start-import", response_model=StartImportResponse)
+async def start_import(request: StartImportRequest) -> StartImportResponse:
+    """
+    Start historical import workflow for a buyer.
+
+    This endpoint triggers the HistoricalImportWorkflow which:
+    1. Fetches campaigns from Keitaro by source
+    2. Queues them in historical_import_queue
+    3. Waits for video URLs to be submitted
+
+    Args:
+        request: StartImportRequest with buyer_id and keitaro_source
+
+    Returns:
+        StartImportResponse with workflow_id and status
+    """
+    from temporal.workflows.historical_import import HistoricalImportWorkflow
+    from temporal.models.buyer import HistoricalImportInput
+
+    try:
+        client = await get_temporal_client()
+
+        workflow_id = f"historical-import-{request.buyer_id}"
+
+        await client.start_workflow(
+            HistoricalImportWorkflow.run,
+            HistoricalImportInput(
+                buyer_id=request.buyer_id,
+                keitaro_source=request.keitaro_source,
+                date_from=request.date_from,
+                date_to=request.date_to,
+            ),
+            id=workflow_id,
+            task_queue="telegram",
+        )
+
+        logger.info(
+            f"Started historical import: {workflow_id} "
+            f"for buyer {request.buyer_id}, source {request.keitaro_source}"
+        )
+
+        return StartImportResponse(
+            success=True,
+            workflow_id=workflow_id,
+            message=f"Historical import started for source '{request.keitaro_source}'",
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to start historical import: {e}")
+        return StartImportResponse(
+            success=False,
+            message="Failed to start historical import",
+            error=str(e),
+        )
+
+
 @router.get("/queue/{buyer_id}")
 async def get_pending_imports(buyer_id: str):
     """
