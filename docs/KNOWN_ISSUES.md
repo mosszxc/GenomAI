@@ -2,7 +2,7 @@
 
 Документация известных проблем и их решений для предотвращения регрессий.
 
-**Последнее обновление:** 2026-01-04
+**Последнее обновление:** 2026-01-10
 
 ---
 
@@ -102,10 +102,36 @@ This occurs when Google Drive share links return error pages (permissions, delet
 
 | Issue | Title | Component | Status |
 |-------|-------|-----------|--------|
+| #282 | Implement HistoricalVideoHandlerWorkflow in Temporal | Temporal | OPEN (from #258) |
+| #261 | Telegram Router - /zaliv command not implemented | FastAPI | DOCUMENTED |
+| #261 | Telegram Router - callback_query handler missing | FastAPI | DOCUMENTED |
+| #261 | Telegram Router - incomplete interaction logging | FastAPI | DOCUMENTED |
 | #192 | Use verticals[]/geos[] arrays instead of single values | API | OPEN |
 | #174 | Create n8n Premise Generator workflow | n8n | OPEN |
 | #172 | End-to-end Premise Layer validation | Test | OPEN |
 | #166 | Create migration 021_premise_registry.sql | DB | OPEN |
+
+#### #282 GAP: Historical Import Video URL Handler (from #258)
+
+**Component:** Temporal workflows
+**Status:** GAP - No workflow exists for video_url handling in historical import
+
+**Current State:**
+- `HistoricalImportWorkflow` creates queue entries with `pending_video` status
+- `CreativeRegistrationWorkflow` uses hardcoded `source_type = 'telegram'`
+- No workflow/API to receive video_url and create creative with `source_type = 'historical'`
+
+**Missing:**
+1. API endpoint or signal to submit video_url for pending_video campaigns
+2. Workflow to update queue status: pending_video → ready → processing → completed
+3. Creative creation with `source_type = 'historical'`
+4. Link creative to historical metrics from queue
+
+**n8n Equivalent:** `UYgvqpsU3TMzb2Qd` (Historical Import Video Handler) - still in n8n
+
+**Workaround:** Direct database updates or n8n workflow
+
+**Recommendation:** Create `HistoricalVideoHandlerWorkflow` in Temporal to complete migration
 
 ---
 
