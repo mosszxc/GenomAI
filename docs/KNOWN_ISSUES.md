@@ -777,6 +777,40 @@ except Exception as e:
 
 ---
 
+### Temporal Workflow Check = Race Condition
+
+**Context:** Issue #280 - Telegram /start возвращал "Session timed out" вместо welcome message.
+
+**Mistake:** Использовали query-based проверку активного workflow перед запуском нового:
+```python
+existing = await check_active_onboarding(user_id)  # Query workflow state
+if existing:
+    return "already active"
+await client.start_workflow(...)  # Start new
+```
+
+**Reality:** Между query и start_workflow workflow мог таймаутиться. Пользователь получал "Session timed out" от завершающегося workflow вместо ожидаемого ответа.
+
+**Correct Approach:**
+```python
+from temporalio.common import WorkflowIDReusePolicy, WorkflowIDConflictPolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
+
+try:
+    await client.start_workflow(
+        ...,
+        id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        id_conflict_policy=WorkflowIDConflictPolicy.FAIL,
+    )
+except WorkflowAlreadyStartedError:
+    # Workflow already running
+    await send_message("already active")
+```
+
+**Rule:** Для Temporal workflows используй `id_reuse_policy` + `id_conflict_policy` вместо query-before-start. Temporal гарантирует atomicity при start_workflow.
+
+---
+
 ## Adding New Issues
 
 При закрытии issue, обновите этот файл:
