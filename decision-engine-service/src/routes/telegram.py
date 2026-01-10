@@ -245,7 +245,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
     # Log incoming command
     await log_buyer_interaction(
         telegram_id=message.user_id,
-        direction="incoming",
+        direction="in",
         message_type="command",
         content="/stats",
     )
@@ -351,7 +351,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             # Log outgoing response
             await log_buyer_interaction(
                 telegram_id=message.user_id,
-                direction="outgoing",
+                direction="out",
                 message_type="stats_response",
                 content=stats_message,
                 context={
