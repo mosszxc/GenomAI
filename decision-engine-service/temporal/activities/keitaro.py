@@ -273,12 +273,14 @@ async def get_campaigns_by_source(
     else:
         range_config = {"interval": "last_30_days"}
 
+    # NOTE: Buyers are identified by sub_id_10, NOT by source
+    # See docs/KEITARO_BUYER_METRICS.md
     payload = {
         "range": range_config,
         "metrics": ["clicks", "conversions", "revenue", "cost"],
         "dimensions": ["campaign_id", "campaign"],
         "filters": [
-            {"name": "source", "operator": "EQUALS", "expression": input.source}
+            {"name": "sub_id_10", "operator": "EQUALS", "expression": input.source}
         ],
     }
 
