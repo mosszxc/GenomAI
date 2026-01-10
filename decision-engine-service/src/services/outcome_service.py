@@ -5,9 +5,10 @@ Replaces Outcome Aggregator n8n workflow with Python API.
 """
 
 import os
+import statistics
 from datetime import datetime, date
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 import httpx
 
@@ -32,6 +33,7 @@ class OutcomeAggregate:
     spend: Decimal = Decimal("0")
     cpa: Optional[Decimal] = None
     trend: Optional[str] = None
+    volatility: Optional[Decimal] = None
     origin_type: str = "system"
     learning_applied: bool = False
 
@@ -48,6 +50,7 @@ class OutcomeAggregate:
             "spend": float(self.spend) if self.spend else 0,
             "cpa": float(self.cpa) if self.cpa else None,
             "trend": self.trend,
+            "volatility": float(self.volatility) if self.volatility else None,
             "origin_type": self.origin_type,
             "learning_applied": self.learning_applied,
         }
@@ -175,6 +178,42 @@ class OutcomeService:
         else:
             return "stable"
 
+    @staticmethod
+    def calculate_volatility(cpa_values: List[Decimal]) -> Optional[Decimal]:
+        """
+        Calculate volatility as coefficient of variation (CV).
+
+        CV = std_dev / mean
+
+        Args:
+            cpa_values: List of CPA values (at least 2 required)
+
+        Returns:
+            Decimal: Volatility coefficient (0.0 - 1.0+) or None if insufficient data
+
+        Interpretation:
+            < 0.1: low volatility (stable)
+            0.1-0.3: medium volatility
+            > 0.3: high volatility (unstable)
+        """
+        if len(cpa_values) < 2:
+            return None
+
+        # Filter out None values and convert to float for statistics
+        float_values = [float(v) for v in cpa_values if v is not None]
+
+        if len(float_values) < 2:
+            return None
+
+        mean = statistics.mean(float_values)
+        if mean == 0:
+            return None
+
+        std_dev = statistics.stdev(float_values)
+        cv = std_dev / mean
+
+        return Decimal(str(round(cv, 4)))
+
     async def get_snapshot(self, snapshot_id: str) -> Optional[dict]:
         """Load snapshot from daily_metrics_snapshot"""
         async with httpx.AsyncClient() as client:
@@ -227,6 +266,36 @@ class OutcomeService:
             data = response.json()
             return data[0] if data else None
 
+    async def get_historical_cpa(self, creative_id: str, lookback_days: int = 7) -> List[Decimal]:
+        """
+        Get historical CPA values for volatility calculation.
+
+        Args:
+            creative_id: UUID of the creative
+            lookback_days: Number of days to look back (default 7)
+
+        Returns:
+            List of CPA values (may be empty)
+        """
+        from datetime import timedelta
+
+        cutoff_date = (datetime.now() - timedelta(days=lookback_days)).isoformat()
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&created_at=gte.{cutoff_date}&select=cpa&order=created_at.desc",
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            cpa_values = []
+            for record in data:
+                if record.get("cpa") is not None:
+                    cpa_values.append(Decimal(str(record["cpa"])))
+
+            return cpa_values
+
     async def insert_outcome(self, outcome: OutcomeAggregate) -> dict:
         """Insert outcome aggregate into database"""
         payload = {
@@ -239,6 +308,7 @@ class OutcomeService:
             "spend": float(outcome.spend),
             "cpa": float(outcome.cpa) if outcome.cpa else None,
             "trend": outcome.trend,
+            "volatility": float(outcome.volatility) if outcome.volatility else None,
             "origin_type": outcome.origin_type,
             "learning_applied": outcome.learning_applied,
         }
@@ -393,6 +463,13 @@ class OutcomeService:
                 previous_cpa = Decimal(str(previous_outcome["cpa"]))
             trend = self.calculate_trend(cpa, previous_cpa)
 
+            # Calculate volatility from historical CPA values
+            historical_cpa = await self.get_historical_cpa(creative_id)
+            # Include current CPA in volatility calculation
+            if cpa is not None:
+                historical_cpa.insert(0, cpa)
+            volatility = self.calculate_volatility(historical_cpa)
+
             # 6. Create and insert outcome
             outcome = OutcomeAggregate(
                 creative_id=creative_id,
@@ -404,6 +481,7 @@ class OutcomeService:
                 spend=spend,
                 cpa=cpa,
                 trend=trend,
+                volatility=volatility,
                 origin_type="system",
                 learning_applied=False,
             )
