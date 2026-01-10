@@ -25,6 +25,7 @@
 | L020 | #268-270 | Temporal | Sandbox restrictions — use string activity names, not function refs |
 | L021 | #210 | Render | Cold start = 50-90 sec, use keep_alive |
 | L022 | — | Temporal | Activities must be in separate file from workflow |
+| L023 | #256 | Temporal | No `datetime.utcnow()` in workflows — use `workflow.now()` |
 
 ## Anti-Patterns
 
@@ -47,6 +48,7 @@
 | "buyer_id is null" downstream | L010 |
 | "activity not registered" / sandbox error | L020, L022 |
 | Service unavailable after deploy | L021 |
+| "RestrictedWorkflowAccessError" / "cannot access datetime" | L023 |
 
 ---
 
