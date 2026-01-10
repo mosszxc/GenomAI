@@ -135,34 +135,18 @@ async def list_schedules() -> ScheduleListResponse:
         schedules = []
         schedule_list = await client.list_schedules()
         async for schedule in schedule_list:
+            # ScheduleListDescription has: id, info (ScheduleListInfo)
+            # ScheduleListInfo has: next_action_times, recent_actions, running_workflows
             schedule_id = schedule.id
-
-            # Get definition info
-            definition = SCHEDULE_DEFINITIONS.get(schedule_id, {})
-
-            # Get schedule description (spec info)
             info = schedule.info
-            spec = info.schedule.spec if info.schedule else None
 
-            # Determine interval or cron
+            # Get definition info (interval/cron/description from our definitions)
+            definition = SCHEDULE_DEFINITIONS.get(schedule_id, {})
             interval_str = definition.get("interval")
             cron_str = definition.get("cron")
 
-            if spec:
-                if spec.intervals:
-                    interval_str = format_interval(spec.intervals[0].every)
-                if spec.cron_expressions:
-                    cron_str = spec.cron_expressions[0]
-
-            # Check if paused
-            paused = False
-            if info.schedule and info.schedule.state:
-                paused = info.schedule.state.paused
-
-            # Determine status
-            if paused:
-                status = "paused"
-            elif info.running_workflows:
+            # Determine status (paused not available in list, need describe for that)
+            if info.running_workflows:
                 status = "running"
             else:
                 status = "idle"
@@ -170,7 +154,7 @@ async def list_schedules() -> ScheduleListResponse:
             # Get timing info
             last_run = None
             if info.recent_actions:
-                last_run = info.recent_actions[0].start_time.isoformat()
+                last_run = info.recent_actions[0].started_at.isoformat()
 
             next_run = None
             if info.next_action_times:
@@ -184,7 +168,7 @@ async def list_schedules() -> ScheduleListResponse:
                     cron=cron_str,
                     last_run=last_run,
                     next_run=next_run,
-                    paused=paused,
+                    paused=False,  # Not available in list, use GET /{id} for this
                     description=definition.get("description"),
                 )
             )
