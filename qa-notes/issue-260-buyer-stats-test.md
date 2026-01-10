@@ -94,10 +94,24 @@ SELECT * FROM genomai.buyer_interactions WHERE created_at > '2026-01-10';
 **Issue:** metrics_resp.json() could return error object
 **Fix:** Added `if isinstance(metrics_rows, list)` guard
 
+### 4. Invalid message_type for outgoing log
+**Issue:** `message_type="stats_response"` violates CHECK constraint
+**Allowed values:** text, video, photo, document, command, callback, system
+**Fix:** Changed to `message_type="system"`
+
+## Final Test Results
+```sql
+SELECT direction, message_type, LEFT(content, 50), context->>'total'
+FROM genomai.buyer_interactions WHERE created_at > '2026-01-10 15:46:00';
+
+-- in  | command | /stats                              | null
+-- out | system  | 📊 Твоя статистика:...              | 9
+```
+
 ## Checklist
 - [x] Code compiles (py_compile passed)
 - [x] Pre-commit hooks pass (ruff lint/format)
 - [x] Database query logic verified
 - [x] Webhook test (returns ok)
 - [x] Incoming command logged in buyer_interactions
-- [ ] Outgoing response log (needs debug - may require TELEGRAM_BOT_TOKEN)
+- [x] Outgoing response logged in buyer_interactions
