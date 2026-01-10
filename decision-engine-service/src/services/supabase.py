@@ -179,6 +179,68 @@ async def load_system_state() -> dict:
         raise SupabaseError(f"Failed to load system state: {str(e)}")
 
 
+async def get_existing_decision(idea_id: str, decision_epoch: int) -> dict | None:
+    """
+    Check if a decision already exists for this idea and epoch.
+
+    Used for idempotency - prevents duplicate decisions from being created.
+
+    Args:
+        idea_id: The idea UUID
+        decision_epoch: The decision epoch number
+
+    Returns:
+        Existing decision dict if found, None otherwise
+    """
+    try:
+        rest_url, supabase_key = _get_credentials()
+        headers = _get_headers(supabase_key)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{rest_url}/decisions?idea_id=eq.{idea_id}&decision_epoch=eq.{decision_epoch}&select=*&limit=1",
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data and len(data) > 0:
+                return data[0]
+            return None
+    except Exception:
+        # On error, return None to allow new decision creation
+        return None
+
+
+async def get_decision_trace(decision_id: str) -> dict | None:
+    """
+    Load Decision Trace by decision_id.
+
+    Args:
+        decision_id: The decision UUID
+
+    Returns:
+        Decision trace dict if found, None otherwise
+    """
+    try:
+        rest_url, supabase_key = _get_credentials()
+        headers = _get_headers(supabase_key)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{rest_url}/decision_traces?decision_id=eq.{decision_id}&select=*&limit=1",
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data and len(data) > 0:
+                return data[0]
+            return None
+    except Exception:
+        return None
+
+
 async def save_decision(decision: dict) -> dict:
     """Save Decision to Supabase (schema: genomai)"""
     try:
