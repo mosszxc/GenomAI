@@ -363,6 +363,13 @@ async def generate_recommendation(
         components = await generate_exploitation_recommendation(avatar_id, geo)
         exploration_type = None
 
+        # Fallback to exploration if exploitation has no data
+        # This happens when all components have win_rate=0 or insufficient samples
+        if not components:
+            mode = "exploration"
+            exploration_type = "no_exploitation_data"
+            components, _ = await generate_exploration_recommendation(avatar_id, geo)
+
     # Calculate average confidence
     if components:
         avg_confidence = sum(c.confidence for c in components) / len(components)
