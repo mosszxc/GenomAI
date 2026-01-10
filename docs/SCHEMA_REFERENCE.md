@@ -46,6 +46,13 @@
 | `decomposed_creatives` | LLM-разбор | No (append-only) | decomposition |
 | `ideas` | Канонические идеи | Yes (death_state) | idea_registry, learning |
 | `decisions` | Решения DE | No (append-only) | Decision Engine API |
+
+#### decisions (constraints)
+```
+PK: id
+UNIQUE: (idea_id, decision_epoch)  -- Idempotency guard (#284)
+CHECK: decision IN ('approve', 'reject', 'defer')
+```
 | `decision_traces` | Trace решений | No (append-only) | Decision Engine API |
 | `hypotheses` | Генерированные гипотезы | Yes (status) | hypothesis_factory |
 | `deliveries` | Лог доставок | No (append-only) | telegram_delivery |
