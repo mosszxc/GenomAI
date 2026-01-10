@@ -313,7 +313,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
 
             if tracker_ids:
                 # Fetch metrics for all tracker_ids
-                tracker_list = ",".join(f'"{tid}"' for tid in tracker_ids)
+                tracker_list = ",".join(tracker_ids)
                 metrics_resp = await client.get(
                     f"{supabase_url}/rest/v1/raw_metrics_current"
                     f"?tracker_id=in.({tracker_list})"
@@ -322,10 +322,11 @@ async def handle_stats_command(message: TelegramMessage) -> None:
                 )
                 metrics_rows = metrics_resp.json()
 
-                for row in metrics_rows:
-                    metrics = row.get("metrics") or {}
-                    total_spend += float(metrics.get("spend", 0) or 0)
-                    total_revenue += float(metrics.get("revenue", 0) or 0)
+                if isinstance(metrics_rows, list):
+                    for row in metrics_rows:
+                        metrics = row.get("metrics") or {}
+                        total_spend += float(metrics.get("spend", 0) or 0)
+                        total_revenue += float(metrics.get("revenue", 0) or 0)
 
             # Calculate ROI
             roi = (
