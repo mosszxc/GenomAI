@@ -216,6 +216,7 @@ class MaintenanceWorkflow:
                 result.stale_buyers_reset,
                 result.recommendations_expired,
                 len(result.integrity_issues),
+                result.integrity_issues,  # Pass details for debugging
             ],
             start_to_close_timeout=timedelta(seconds=10),
             retry_policy=retry_policy,
