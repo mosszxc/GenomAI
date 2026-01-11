@@ -86,6 +86,29 @@ if [ -n "$(git status --porcelain)" ]; then
     fi
 fi
 
+# === PRE-MERGE CHECKS ===
+if [ "$SKIP_VERIFY" != "true" ]; then
+    echo ""
+    echo "Running pre-merge checks (make ci)..."
+    cd "$PROJECT_ROOT"
+    if make ci; then
+        echo "✓ Pre-merge checks passed"
+    else
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║  ⛔ PRE-MERGE CHECKS FAILED                                  ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "Fix the issues above, then re-run:"
+        echo "  ./scripts/task-done.sh $ISSUE_NUM"
+        echo ""
+        echo "Or skip checks (not recommended):"
+        echo "  ./scripts/task-done.sh $ISSUE_NUM --skip-verify"
+        exit 1
+    fi
+    cd "$WORKTREE_PATH"
+fi
+
 # Push branch
 echo ""
 echo "Pushing branch..."

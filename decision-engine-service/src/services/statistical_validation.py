@@ -15,14 +15,13 @@ Issue: #306
 import math
 from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import numpy as np
 
 from src.services.feature_registry import (
     list_features,
     get_feature,
-    FEATURE_RULES,
 )
 
 
@@ -40,6 +39,7 @@ STATISTICAL_RULES = {
 @dataclass
 class ValidationResult:
     """Result of statistical validation"""
+
     valid: bool
     check_name: str
     message: str
@@ -57,6 +57,7 @@ class ValidationResult:
 # =============================================================================
 # 1. Multiple Hypothesis Testing - Bonferroni Correction
 # =============================================================================
+
 
 def adjusted_significance_threshold(n_features: int, alpha: float = 0.05) -> float:
     """
@@ -102,8 +103,7 @@ async def validate_feature_significance(
         n_features = 1  # At minimum, we're testing this feature
 
     threshold = adjusted_significance_threshold(
-        n_features,
-        STATISTICAL_RULES["base_alpha"]
+        n_features, STATISTICAL_RULES["base_alpha"]
     )
 
     if p_value > threshold:
@@ -116,7 +116,7 @@ async def validate_feature_significance(
                 "threshold": threshold,
                 "n_features": n_features,
                 "base_alpha": STATISTICAL_RULES["base_alpha"],
-            }
+            },
         )
 
     return ValidationResult(
@@ -127,7 +127,7 @@ async def validate_feature_significance(
             "p_value": p_value,
             "threshold": threshold,
             "n_features": n_features,
-        }
+        },
     )
 
 
@@ -135,10 +135,9 @@ async def validate_feature_significance(
 # 2. Small Sample Sizes - Wilson Confidence Intervals
 # =============================================================================
 
+
 def wilson_confidence_interval(
-    wins: int,
-    total: int,
-    confidence: float = 0.95
+    wins: int, total: int, confidence: float = 0.95
 ) -> tuple[float, float]:
     """
     Calculate Wilson score confidence interval for proportion.
@@ -168,10 +167,10 @@ def wilson_confidence_interval(
     p = wins / total
     n = total
 
-    denominator = 1 + (z ** 2) / n
-    center = (p + (z ** 2) / (2 * n)) / denominator
+    denominator = 1 + (z**2) / n
+    center = (p + (z**2) / (2 * n)) / denominator
 
-    spread_term = (p * (1 - p) + (z ** 2) / (4 * n)) / n
+    spread_term = (p * (1 - p) + (z**2) / (4 * n)) / n
     if spread_term < 0:
         spread_term = 0
     spread = z * math.sqrt(spread_term) / denominator
@@ -183,8 +182,7 @@ def wilson_confidence_interval(
 
 
 def validate_sample_size(
-    sample_size: int,
-    for_promotion: bool = False
+    sample_size: int, for_promotion: bool = False
 ) -> ValidationResult:
     """
     Validate that sample size is sufficient for conclusions.
@@ -211,7 +209,7 @@ def validate_sample_size(
                 "sample_size": sample_size,
                 "min_required": min_required,
                 "for_promotion": for_promotion,
-            }
+            },
         )
 
     return ValidationResult(
@@ -221,14 +219,12 @@ def validate_sample_size(
         details={
             "sample_size": sample_size,
             "min_required": min_required,
-        }
+        },
     )
 
 
 def validate_confidence_interval_width(
-    wins: int,
-    total: int,
-    max_width: float = 0.3
+    wins: int, total: int, max_width: float = 0.3
 ) -> ValidationResult:
     """
     Validate that confidence interval is narrow enough to be useful.
@@ -258,7 +254,7 @@ def validate_confidence_interval_width(
                 "max_width": max_width,
                 "wins": wins,
                 "total": total,
-            }
+            },
         )
 
     return ValidationResult(
@@ -269,7 +265,7 @@ def validate_confidence_interval_width(
             "lower": lower,
             "upper": upper,
             "width": width,
-        }
+        },
     )
 
 
@@ -277,9 +273,9 @@ def validate_confidence_interval_width(
 # 3. Simpson's Paradox Detection
 # =============================================================================
 
+
 def detect_simpsons_paradox(
-    aggregate_correlation: float,
-    segment_correlations: dict[str, Optional[float]]
+    aggregate_correlation: float, segment_correlations: dict[str, Optional[float]]
 ) -> ValidationResult:
     """
     Detect Simpson's paradox where aggregate differs from segments.
@@ -297,8 +293,7 @@ def detect_simpsons_paradox(
     """
     # Filter out None values
     valid_correlations = {
-        k: v for k, v in segment_correlations.items()
-        if v is not None
+        k: v for k, v in segment_correlations.items() if v is not None
     }
 
     if len(valid_correlations) < 2:
@@ -306,7 +301,7 @@ def detect_simpsons_paradox(
             valid=True,
             check_name="simpsons_paradox",
             message="Insufficient segments for paradox detection",
-            details={"n_segments": len(valid_correlations)}
+            details={"n_segments": len(valid_correlations)},
         )
 
     # Check if all segments agree on direction
@@ -341,7 +336,7 @@ def detect_simpsons_paradox(
                 "aggregate": aggregate_correlation,
                 "segments": valid_correlations,
                 "warning": warning_message,
-            }
+            },
         )
 
     return ValidationResult(
@@ -351,7 +346,7 @@ def detect_simpsons_paradox(
         details={
             "aggregate": aggregate_correlation,
             "segments": valid_correlations,
-        }
+        },
     )
 
 
@@ -359,10 +354,9 @@ def detect_simpsons_paradox(
 # 4. Correlation Stability Check
 # =============================================================================
 
+
 def check_correlation_stability(
-    correlation_history: list[float],
-    std_threshold: float = 0.15,
-    min_windows: int = 3
+    correlation_history: list[float], std_threshold: float = 0.15, min_windows: int = 3
 ) -> ValidationResult:
     """
     Check if correlation is stable over time.
@@ -389,7 +383,7 @@ def check_correlation_stability(
                 "n_windows": len(valid_correlations),
                 "min_required": min_windows,
                 "status": "insufficient_data",
-            }
+            },
         )
 
     correlations_array = np.array(valid_correlations)
@@ -406,7 +400,7 @@ def check_correlation_stability(
                 "threshold": std_threshold,
                 "mean_correlation": mean_corr,
                 "history": valid_correlations,
-            }
+            },
         )
 
     return ValidationResult(
@@ -417,7 +411,7 @@ def check_correlation_stability(
             "std_dev": std_dev,
             "mean_correlation": mean_corr,
             "n_windows": len(valid_correlations),
-        }
+        },
     )
 
 
@@ -425,9 +419,11 @@ def check_correlation_stability(
 # 5. Full Validation for Promotion
 # =============================================================================
 
+
 @dataclass
 class FullValidationResult:
     """Complete validation result for feature promotion"""
+
     can_promote: bool
     feature_name: str
     checks: list[ValidationResult]
@@ -509,8 +505,7 @@ async def full_validation_for_promotion(
         aggregate = feature.get("correlation_cpa")
         if aggregate is not None:
             paradox_check = detect_simpsons_paradox(
-                float(aggregate),
-                segment_correlations
+                float(aggregate), segment_correlations
             )
             checks.append(paradox_check)
             if not paradox_check.valid:
@@ -527,6 +522,7 @@ async def full_validation_for_promotion(
 # =============================================================================
 # 6. Helper: Point-in-Time Validation
 # =============================================================================
+
 
 def validate_point_in_time(
     feature_created_at: datetime,
@@ -552,7 +548,7 @@ def validate_point_in_time(
             details={
                 "feature_created_at": feature_created_at.isoformat(),
                 "data_timestamp": data_timestamp.isoformat(),
-            }
+            },
         )
 
     return ValidationResult(
@@ -562,5 +558,5 @@ def validate_point_in_time(
         details={
             "feature_created_at": feature_created_at.isoformat(),
             "data_timestamp": data_timestamp.isoformat(),
-        }
+        },
     )

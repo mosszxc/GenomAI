@@ -92,16 +92,18 @@ async def save_pending_extractions(
 
     records = []
     for ext in extractions:
-        records.append({
-            "source_id": source_id,
-            "knowledge_type": ext.get("knowledge_type"),
-            "name": ext.get("name"),
-            "description": ext.get("description"),
-            "payload": ext.get("payload", {}),
-            "confidence_score": ext.get("confidence_score"),
-            "supporting_quotes": ext.get("supporting_quotes", []),
-            "status": "pending",
-        })
+        records.append(
+            {
+                "source_id": source_id,
+                "knowledge_type": ext.get("knowledge_type"),
+                "name": ext.get("name"),
+                "description": ext.get("description"),
+                "payload": ext.get("payload", {}),
+                "confidence_score": ext.get("confidence_score"),
+                "supporting_quotes": ext.get("supporting_quotes", []),
+                "status": "pending",
+            }
+        )
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -174,8 +176,7 @@ async def get_extraction(extraction_id: str) -> dict:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
-            f"?id=eq.{extraction_id}",
+            f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
             headers=get_headers(),
         )
 
@@ -218,8 +219,7 @@ async def update_extraction_status(
 
     async with httpx.AsyncClient() as client:
         response = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
-            f"?id=eq.{extraction_id}",
+            f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
             headers=get_headers(),
             json=update_data,
         )
@@ -291,13 +291,15 @@ async def apply_process_rule(extraction: dict) -> dict:
 
     config_data = {
         "key": f"rule_{payload.get('rule_name', 'unknown')}",
-        "value": json.dumps({
-            "condition": payload.get("condition"),
-            "recommendation": payload.get("recommendation"),
-            "priority": payload.get("priority", "medium"),
-            "applies_to": payload.get("applies_to", []),
-            "source_extraction_id": extraction.get("id"),
-        }),
+        "value": json.dumps(
+            {
+                "condition": payload.get("condition"),
+                "recommendation": payload.get("recommendation"),
+                "priority": payload.get("priority", "medium"),
+                "applies_to": payload.get("applies_to", []),
+                "source_extraction_id": extraction.get("id"),
+            }
+        ),
         "description": extraction.get("description"),
         "is_secret": False,
     }

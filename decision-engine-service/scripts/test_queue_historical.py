@@ -10,10 +10,10 @@ import asyncio
 import os
 import httpx
 from datetime import datetime
-import uuid
 
 # Load env
 from dotenv import load_dotenv
+
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")

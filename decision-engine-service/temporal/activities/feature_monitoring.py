@@ -18,12 +18,14 @@ from temporalio import activity
 @dataclass
 class UpdateCorrelationsInput:
     """Input for update_feature_correlations activity"""
+
     pass  # No input parameters needed
 
 
 @dataclass
 class CorrelationUpdate:
     """Single feature correlation update result"""
+
     feature_name: str
     correlation: Optional[float]
     sample_size: int
@@ -33,6 +35,7 @@ class CorrelationUpdate:
 @dataclass
 class UpdateCorrelationsOutput:
     """Output from update_feature_correlations activity"""
+
     updated_count: int
     results: list[CorrelationUpdate]
     deprecated_features: list[str]
@@ -41,7 +44,7 @@ class UpdateCorrelationsOutput:
 
 @activity.defn
 async def update_feature_correlations(
-    input: UpdateCorrelationsInput
+    input: UpdateCorrelationsInput,
 ) -> UpdateCorrelationsOutput:
     """
     Update correlation metrics for all shadow and active features.
@@ -60,15 +63,19 @@ async def update_feature_correlations(
 
     try:
         # Update all correlations
-        correlation_results = await feature_correlation.update_all_feature_correlations()
+        correlation_results = (
+            await feature_correlation.update_all_feature_correlations()
+        )
 
         for r in correlation_results:
-            results.append(CorrelationUpdate(
-                feature_name=r.feature_name,
-                correlation=r.correlation,
-                sample_size=r.sample_size,
-                message=r.message,
-            ))
+            results.append(
+                CorrelationUpdate(
+                    feature_name=r.feature_name,
+                    correlation=r.correlation,
+                    sample_size=r.sample_size,
+                    message=r.message,
+                )
+            )
 
         activity.logger.info(f"Updated correlations for {len(results)} features")
 
@@ -81,7 +88,9 @@ async def update_feature_correlations(
     try:
         deprecated = await feature_correlation.auto_deprecate_low_correlation_features()
         if deprecated:
-            activity.logger.info(f"Auto-deprecated {len(deprecated)} features: {deprecated}")
+            activity.logger.info(
+                f"Auto-deprecated {len(deprecated)} features: {deprecated}"
+            )
 
     except Exception as e:
         activity.logger.error(f"Error in auto-deprecation: {e}")
@@ -100,12 +109,14 @@ async def update_feature_correlations(
 @dataclass
 class DetectDriftInput:
     """Input for detect_feature_drift activity"""
+
     pass  # No input parameters needed
 
 
 @dataclass
 class DriftDetection:
     """Single feature drift detection result"""
+
     feature_name: str
     historical_correlation: float
     recent_correlation: float
@@ -116,6 +127,7 @@ class DriftDetection:
 @dataclass
 class DetectDriftOutput:
     """Output from detect_feature_drift activity"""
+
     checked_count: int
     drift_detected: list[DriftDetection]
     errors: list[str]
@@ -149,13 +161,15 @@ async def detect_feature_drift(input: DetectDriftInput) -> DetectDriftOutput:
         drift_list = await feature_correlation.detect_all_feature_drift()
 
         for d in drift_list:
-            drift_results.append(DriftDetection(
-                feature_name=d.feature_name,
-                historical_correlation=d.historical_correlation,
-                recent_correlation=d.recent_correlation,
-                drift=d.drift,
-                is_significant=d.is_significant,
-            ))
+            drift_results.append(
+                DriftDetection(
+                    feature_name=d.feature_name,
+                    historical_correlation=d.historical_correlation,
+                    recent_correlation=d.recent_correlation,
+                    drift=d.drift,
+                    is_significant=d.is_significant,
+                )
+            )
 
         if drift_results:
             activity.logger.warning(
@@ -181,6 +195,7 @@ async def detect_feature_drift(input: DetectDriftInput) -> DetectDriftOutput:
 @dataclass
 class EmitFeatureEventInput:
     """Input for emit_feature_event activity"""
+
     event_type: str
     payload: dict
 
@@ -188,6 +203,7 @@ class EmitFeatureEventInput:
 @dataclass
 class EmitFeatureEventOutput:
     """Output from emit_feature_event activity"""
+
     success: bool
     event_id: Optional[str]
 

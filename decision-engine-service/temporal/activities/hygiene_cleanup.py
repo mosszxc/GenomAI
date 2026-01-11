@@ -155,7 +155,9 @@ async def cleanup_orphan_raw_metrics() -> int:
             activity.logger.warning("Could not fetch valid tracker_ids")
             return 0
 
-        valid_trackers = {r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")}
+        valid_trackers = {
+            r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")
+        }
 
         # Get all metrics tracker_ids
         metrics_response = await client.get(
@@ -167,7 +169,9 @@ async def cleanup_orphan_raw_metrics() -> int:
             activity.logger.warning("Could not fetch metrics tracker_ids")
             return 0
 
-        metrics_trackers = {r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")}
+        metrics_trackers = {
+            r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")
+        }
 
         # Find orphans
         orphan_trackers = metrics_trackers - valid_trackers
@@ -211,9 +215,7 @@ async def cleanup_idle_buyer_states(retention_days: int = 30) -> int:
 
     async with httpx.AsyncClient() as client:
         response = await client.delete(
-            f"{rest_url}/buyer_states"
-            f"?state=eq.idle"
-            f"&updated_at=lt.{cutoff_iso}",
+            f"{rest_url}/buyer_states?state=eq.idle&updated_at=lt.{cutoff_iso}",
             headers=headers,
         )
 
@@ -251,8 +253,7 @@ async def archive_staleness_snapshots(retention_days: int = 90) -> int:
 
     async with httpx.AsyncClient() as client:
         response = await client.delete(
-            f"{rest_url}/staleness_snapshots"
-            f"?created_at=lt.{cutoff_iso}",
+            f"{rest_url}/staleness_snapshots?created_at=lt.{cutoff_iso}",
             headers=headers,
         )
 
@@ -351,7 +352,9 @@ RETRY_COOLDOWN_HOURS = 1
 
 
 @activity.defn
-async def retry_failed_hypotheses(max_retries: int = MAX_HYPOTHESIS_RETRIES) -> Dict[str, int]:
+async def retry_failed_hypotheses(
+    max_retries: int = MAX_HYPOTHESIS_RETRIES,
+) -> Dict[str, int]:
     """
     Retry delivery of failed hypotheses.
 
@@ -376,7 +379,9 @@ async def retry_failed_hypotheses(max_retries: int = MAX_HYPOTHESIS_RETRIES) -> 
     cooldown = datetime.utcnow() - timedelta(hours=RETRY_COOLDOWN_HOURS)
     cooldown_iso = cooldown.isoformat()
 
-    activity.logger.info(f"Looking for failed hypotheses to retry (max_retries={max_retries})")
+    activity.logger.info(
+        f"Looking for failed hypotheses to retry (max_retries={max_retries})"
+    )
 
     async with httpx.AsyncClient() as client:
         # Find failed hypotheses that haven't exceeded retry limit
@@ -392,7 +397,9 @@ async def retry_failed_hypotheses(max_retries: int = MAX_HYPOTHESIS_RETRIES) -> 
         )
 
         if response.status_code != 200:
-            activity.logger.warning(f"Error fetching failed hypotheses: {response.text}")
+            activity.logger.warning(
+                f"Error fetching failed hypotheses: {response.text}"
+            )
             return stats
 
         failed_hypotheses = response.json()
@@ -416,7 +423,9 @@ async def retry_failed_hypotheses(max_retries: int = MAX_HYPOTHESIS_RETRIES) -> 
             content = hypothesis.get("content", "")
 
             if not buyer_id or not content:
-                activity.logger.warning(f"Hypothesis {hypothesis_id} missing buyer_id or content")
+                activity.logger.warning(
+                    f"Hypothesis {hypothesis_id} missing buyer_id or content"
+                )
                 stats["skipped"] += 1
                 continue
 
@@ -467,7 +476,9 @@ async def retry_failed_hypotheses(max_retries: int = MAX_HYPOTHESIS_RETRIES) -> 
                         },
                     )
                     stats["succeeded"] += 1
-                    activity.logger.info(f"Retry succeeded for hypothesis {hypothesis_id}")
+                    activity.logger.info(
+                        f"Retry succeeded for hypothesis {hypothesis_id}"
+                    )
                 else:
                     # Telegram error
                     error_msg = tg_data.get("description", "Unknown Telegram error")
@@ -481,7 +492,9 @@ async def retry_failed_hypotheses(max_retries: int = MAX_HYPOTHESIS_RETRIES) -> 
                         },
                     )
                     stats["failed"] += 1
-                    activity.logger.warning(f"Retry failed for {hypothesis_id}: {error_msg}")
+                    activity.logger.warning(
+                        f"Retry failed for {hypothesis_id}: {error_msg}"
+                    )
 
             except Exception as e:
                 # Network error
@@ -525,7 +538,9 @@ async def cleanup_exhausted_hypotheses(retention_days: int = 7) -> int:
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     cutoff_iso = cutoff.isoformat()
 
-    activity.logger.info(f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned")
+    activity.logger.info(
+        f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned"
+    )
 
     async with httpx.AsyncClient() as client:
         response = await client.patch(
@@ -538,7 +553,9 @@ async def cleanup_exhausted_hypotheses(retention_days: int = 7) -> int:
         )
 
         if response.status_code not in (200, 204):
-            activity.logger.warning(f"Error marking hypotheses abandoned: {response.text}")
+            activity.logger.warning(
+                f"Error marking hypotheses abandoned: {response.text}"
+            )
             return 0
 
         count = _extract_delete_count(response)

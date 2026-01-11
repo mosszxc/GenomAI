@@ -11,7 +11,7 @@ Issue: #305
 import os
 from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import httpx
 from scipy.stats import pearsonr
 import numpy as np
@@ -32,6 +32,7 @@ LOW_CORRELATION_THRESHOLD = 0.05
 @dataclass
 class FeatureCpaPair:
     """A pair of feature value and corresponding CPA"""
+
     feature_value: float
     cpa: float
 
@@ -39,6 +40,7 @@ class FeatureCpaPair:
 @dataclass
 class CorrelationResult:
     """Result of correlation computation"""
+
     feature_name: str
     correlation: Optional[float]
     p_value: Optional[float]
@@ -49,6 +51,7 @@ class CorrelationResult:
 @dataclass
 class DriftResult:
     """Result of drift detection"""
+
     feature_name: str
     historical_correlation: float
     recent_correlation: float
@@ -79,8 +82,7 @@ def _get_headers(supabase_key: str) -> dict:
 
 
 async def get_feature_cpa_pairs(
-    feature_name: str,
-    limit: int = 1000
+    feature_name: str, limit: int = 1000
 ) -> list[FeatureCpaPair]:
     """
     Get pairs of (feature_value, cpa) for correlation calculation.
@@ -128,14 +130,12 @@ async def get_feature_cpa_pairs(
     # Batch in groups of 50 to avoid URL length limits
     all_decisions = []
     for i in range(0, len(idea_ids), 50):
-        batch_ids = idea_ids[i:i + 50]
+        batch_ids = idea_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{rest_url}/decisions"
-                f"?idea_id=in.({ids_param})"
-                f"&select=id,idea_id",
+                f"{rest_url}/decisions?idea_id=in.({ids_param})&select=id,idea_id",
                 headers=headers,
             )
             response.raise_for_status()
@@ -151,7 +151,7 @@ async def get_feature_cpa_pairs(
     # Step 4: Get outcome_aggregates with CPA for these decisions
     all_outcomes = []
     for i in range(0, len(decision_ids), 50):
-        batch_ids = decision_ids[i:i + 50]
+        batch_ids = decision_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
         async with httpx.AsyncClient() as client:
@@ -179,8 +179,7 @@ async def get_feature_cpa_pairs(
 
     # Average CPA per decision
     decision_to_avg_cpa = {
-        dec_id: sum(cpas) / len(cpas)
-        for dec_id, cpas in decision_to_cpa.items()
+        dec_id: sum(cpas) / len(cpas) for dec_id, cpas in decision_to_cpa.items()
     }
 
     # Step 5: Join feature values with CPA
@@ -193,10 +192,12 @@ async def get_feature_cpa_pairs(
         if decision_id not in decision_to_avg_cpa:
             continue
 
-        pairs.append(FeatureCpaPair(
-            feature_value=float(fv["value"]),
-            cpa=decision_to_avg_cpa[decision_id],
-        ))
+        pairs.append(
+            FeatureCpaPair(
+                feature_value=float(fv["value"]),
+                cpa=decision_to_avg_cpa[decision_id],
+            )
+        )
 
         if len(pairs) >= limit:
             break
@@ -205,7 +206,7 @@ async def get_feature_cpa_pairs(
 
 
 def compute_pearson_correlation(
-    pairs: list[FeatureCpaPair]
+    pairs: list[FeatureCpaPair],
 ) -> tuple[Optional[float], Optional[float]]:
     """
     Compute Pearson correlation between feature values and CPA.
@@ -346,8 +347,7 @@ async def auto_deprecate_low_correlation_features() -> list[str]:
 
 
 async def detect_feature_drift(
-    feature_name: str,
-    recent_days: int = 30
+    feature_name: str, recent_days: int = 30
 ) -> Optional[DriftResult]:
     """
     Detect if an active feature's correlation has drifted.

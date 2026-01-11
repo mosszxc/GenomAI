@@ -14,7 +14,6 @@ Metrics:
 """
 
 import os
-import math
 from typing import Optional
 from dataclasses import dataclass
 import httpx
@@ -27,14 +26,15 @@ MIN_SINGLE_SAMPLES = 10
 
 # Lift thresholds for categorization
 STRONG_POSITIVE_LIFT = 1.15  # +15% lift = strong synergy
-WEAK_POSITIVE_LIFT = 1.05    # +5% lift = weak synergy
-WEAK_NEGATIVE_LIFT = 0.95    # -5% lift = weak conflict
+WEAK_POSITIVE_LIFT = 1.05  # +5% lift = weak synergy
+WEAK_NEGATIVE_LIFT = 0.95  # -5% lift = weak conflict
 STRONG_NEGATIVE_LIFT = 0.85  # -15% lift = strong conflict
 
 
 @dataclass
 class Correlation:
     """Represents a discovered correlation between two components."""
+
     component_a_type: str
     component_a_value: str
     component_b_type: str
@@ -154,9 +154,7 @@ async def discover_correlations(
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Step 1: Get all creatives with test results and their components
         creatives_resp = await client.get(
-            f"{rest_url}/creatives"
-            f"?test_result=not.is.null"
-            f"&select=id,test_result",
+            f"{rest_url}/creatives?test_result=not.is.null&select=id,test_result",
             headers=headers,
         )
         creatives_resp.raise_for_status()
@@ -173,7 +171,7 @@ async def discover_correlations(
         # Batch in groups of 50 to avoid URL length limits
         all_decomposed = []
         for i in range(0, len(creative_ids), 50):
-            batch_ids = creative_ids[i:i+50]
+            batch_ids = creative_ids[i : i + 50]
             ids_param = ",".join(f'"{cid}"' for cid in batch_ids)
 
             decomposed_resp = await client.get(
@@ -214,7 +212,8 @@ async def discover_correlations(
 
     # Filter components with enough samples
     valid_components = {
-        key: ids for key, ids in component_creatives.items()
+        key: ids
+        for key, ids in component_creatives.items()
         if len(ids) >= MIN_SINGLE_SAMPLES
     }
 
@@ -223,7 +222,7 @@ async def discover_correlations(
     component_keys = list(valid_components.keys())
 
     for i, key_a in enumerate(component_keys):
-        for key_b in component_keys[i+1:]:
+        for key_b in component_keys[i + 1 :]:
             # Skip same component type (e.g., emotion_primary + emotion_primary)
             if key_a[0] == key_b[0]:
                 continue
@@ -251,21 +250,23 @@ async def discover_correlations(
                 if corr_type == "neutral":
                     continue
 
-                correlations.append(Correlation(
-                    component_a_type=key_a[0],
-                    component_a_value=key_a[1],
-                    component_b_type=key_b[0],
-                    component_b_value=key_b[1],
-                    lift=lift,
-                    pair_win_rate=pair_win_rate,
-                    pair_sample_size=pair_total,
-                    a_win_rate=a_win_rate,
-                    a_sample_size=a_total,
-                    b_win_rate=b_win_rate,
-                    b_sample_size=b_total,
-                    correlation_type=corr_type,
-                    strength=strength,
-                ))
+                correlations.append(
+                    Correlation(
+                        component_a_type=key_a[0],
+                        component_a_value=key_a[1],
+                        component_b_type=key_b[0],
+                        component_b_value=key_b[1],
+                        lift=lift,
+                        pair_win_rate=pair_win_rate,
+                        pair_sample_size=pair_total,
+                        a_win_rate=a_win_rate,
+                        a_sample_size=a_total,
+                        b_win_rate=b_win_rate,
+                        b_sample_size=b_total,
+                        correlation_type=corr_type,
+                        strength=strength,
+                    )
+                )
 
     # Sort by absolute distance from 1.0 (most significant first)
     correlations.sort(key=lambda c: abs(c.lift - 1.0), reverse=True)
@@ -317,10 +318,26 @@ def format_correlations_telegram(
         )
 
     # Separate positive and negative
-    strong_positive = [c for c in correlations if c.correlation_type == "positive" and c.strength == "strong"]
-    weak_positive = [c for c in correlations if c.correlation_type == "positive" and c.strength == "weak"]
-    strong_negative = [c for c in correlations if c.correlation_type == "negative" and c.strength == "strong"]
-    weak_negative = [c for c in correlations if c.correlation_type == "negative" and c.strength == "weak"]
+    strong_positive = [
+        c
+        for c in correlations
+        if c.correlation_type == "positive" and c.strength == "strong"
+    ]
+    weak_positive = [
+        c
+        for c in correlations
+        if c.correlation_type == "positive" and c.strength == "weak"
+    ]
+    strong_negative = [
+        c
+        for c in correlations
+        if c.correlation_type == "negative" and c.strength == "strong"
+    ]
+    weak_negative = [
+        c
+        for c in correlations
+        if c.correlation_type == "negative" and c.strength == "weak"
+    ]
 
     lines = ["🔗 <b>Discovered Correlations</b>", ""]
 
@@ -345,7 +362,7 @@ def format_correlations_telegram(
     if strong_positive:
         lines.append("<b>Strong positive:</b>")
         for i, c in enumerate(strong_positive[:4]):
-            is_last = (i == len(strong_positive[:4]) - 1)
+            is_last = i == len(strong_positive[:4]) - 1
             lines.append(format_correlation(c, is_last))
         lines.append("")
 
@@ -353,7 +370,7 @@ def format_correlations_telegram(
     if strong_negative:
         lines.append("<b>Strong negative:</b>")
         for i, c in enumerate(strong_negative[:4]):
-            is_last = (i == len(strong_negative[:4]) - 1)
+            is_last = i == len(strong_negative[:4]) - 1
             lines.append(format_correlation(c, is_last))
         lines.append("")
 
@@ -362,30 +379,36 @@ def format_correlations_telegram(
         if weak_positive:
             lines.append("<b>Weak positive:</b>")
             for i, c in enumerate(weak_positive[:3]):
-                is_last = (i == len(weak_positive[:3]) - 1)
+                is_last = i == len(weak_positive[:3]) - 1
                 lines.append(format_correlation(c, is_last))
             lines.append("")
 
         if weak_negative:
             lines.append("<b>Weak negative:</b>")
             for i, c in enumerate(weak_negative[:3]):
-                is_last = (i == len(weak_negative[:3]) - 1)
+                is_last = i == len(weak_negative[:3]) - 1
                 lines.append(format_correlation(c, is_last))
             lines.append("")
 
     # Recommendation
     if show_recommendation and strong_positive:
         best = strong_positive[0]
-        lines.append(f"💡 <b>Recommendation:</b> Test {best.component_a_value} + {best.component_b_value} combo")
-        lines.append(f"   (n={best.pair_sample_size}, win rate {best.pair_win_rate:.0%})")
+        lines.append(
+            f"💡 <b>Recommendation:</b> Test {best.component_a_value} + {best.component_b_value} combo"
+        )
+        lines.append(
+            f"   (n={best.pair_sample_size}, win rate {best.pair_win_rate:.0%})"
+        )
 
     # Stats footer
     total_corr = len(correlations)
     pos_count = len(strong_positive) + len(weak_positive)
     neg_count = len(strong_negative) + len(weak_negative)
-    lines.extend([
-        "",
-        f"<i>Found {total_corr} correlations: {pos_count} synergies, {neg_count} conflicts</i>",
-    ])
+    lines.extend(
+        [
+            "",
+            f"<i>Found {total_corr} correlations: {pos_count} synergies, {neg_count} conflicts</i>",
+        ]
+    )
 
     return "\n".join(lines)

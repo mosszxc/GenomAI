@@ -49,15 +49,17 @@ def build_win_rate_trend_chart(
 
     for i, ds in enumerate(datasets):
         color = ds.get("color", colors[i % len(colors)])
-        chart_datasets.append({
-            "label": ds["name"],
-            "data": ds["data"],
-            "fill": False,
-            "borderColor": color,
-            "backgroundColor": color,
-            "tension": 0.3,
-            "pointRadius": 3,
-        })
+        chart_datasets.append(
+            {
+                "label": ds["name"],
+                "data": ds["data"],
+                "fill": False,
+                "borderColor": color,
+                "backgroundColor": color,
+                "tension": 0.3,
+                "pointRadius": 3,
+            }
+        )
 
     return {
         "type": "line",
@@ -72,16 +74,18 @@ def build_win_rate_trend_chart(
                 "fontSize": 16,
             },
             "scales": {
-                "yAxes": [{
-                    "ticks": {
-                        "min": 0,
-                        "max": 100,
-                    },
-                    "scaleLabel": {
-                        "display": True,
-                        "labelString": "Win Rate %",
-                    },
-                }],
+                "yAxes": [
+                    {
+                        "ticks": {
+                            "min": 0,
+                            "max": 100,
+                        },
+                        "scaleLabel": {
+                            "display": True,
+                            "labelString": "Win Rate %",
+                        },
+                    }
+                ],
             },
             "legend": {
                 "position": "bottom",
@@ -143,10 +147,12 @@ async def get_component_win_rate_trends(
         # Later: query daily snapshots for actual trends
         data = [win_rate] * days
 
-        datasets.append({
-            "name": name,
-            "data": data,
-        })
+        datasets.append(
+            {
+                "name": name,
+                "data": data,
+            }
+        )
 
     return labels, datasets
 
@@ -212,11 +218,13 @@ async def get_emotion_win_rate_trends(
         # Static win_rate for now
         data = [win_rate] * days
 
-        datasets.append({
-            "name": emotion.capitalize(),
-            "data": data,
-            "color": emotion_colors.get(emotion.lower(), "#607D8B"),
-        })
+        datasets.append(
+            {
+                "name": emotion.capitalize(),
+                "data": data,
+                "color": emotion_colors.get(emotion.lower(), "#607D8B"),
+            }
+        )
 
     return labels, datasets
 

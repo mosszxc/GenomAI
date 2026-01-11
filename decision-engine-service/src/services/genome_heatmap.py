@@ -254,7 +254,9 @@ async def get_available_component_types() -> list[str]:
         data = response.json()
 
     # Get unique component types
-    types = list(set(row.get("component_type") for row in data if row.get("component_type")))
+    types = list(
+        set(row.get("component_type") for row in data if row.get("component_type"))
+    )
     return sorted(types)
 
 
@@ -342,11 +344,13 @@ async def _get_segments_by_geo(
             except (TypeError, ValueError):
                 win_rate = None
 
-        segments.append({
-            "segment": geo,
-            "win_rate": win_rate,
-            "sample_size": sample_size,
-        })
+        segments.append(
+            {
+                "segment": geo,
+                "win_rate": win_rate,
+                "sample_size": sample_size,
+            }
+        )
 
     return segments
 
@@ -371,15 +375,15 @@ async def _get_segments_by_avatar(
         data = response.json()
 
         # Get avatar names
-        avatar_ids = list(set(row.get("avatar_id") for row in data if row.get("avatar_id")))
+        avatar_ids = list(
+            set(row.get("avatar_id") for row in data if row.get("avatar_id"))
+        )
         avatar_names = {}
 
         if avatar_ids:
             avatar_list = ",".join(f'"{aid}"' for aid in avatar_ids)
             avatars_resp = await client.get(
-                f"{rest_url}/avatars"
-                f"?id=in.({avatar_list})"
-                f"&select=id,name",
+                f"{rest_url}/avatars?id=in.({avatar_list})&select=id,name",
                 headers=headers,
             )
             if avatars_resp.status_code == 200:
@@ -389,7 +393,9 @@ async def _get_segments_by_avatar(
     segments = []
     for row in data:
         avatar_id = row.get("avatar_id")
-        avatar_name = avatar_names.get(avatar_id, avatar_id[:8] if avatar_id else "Unknown")
+        avatar_name = avatar_names.get(
+            avatar_id, avatar_id[:8] if avatar_id else "Unknown"
+        )
         win_rate = row.get("win_rate")
         sample_size = row.get("sample_size") or 0
 
@@ -399,11 +405,13 @@ async def _get_segments_by_avatar(
             except (TypeError, ValueError):
                 win_rate = None
 
-        segments.append({
-            "segment": avatar_name,
-            "win_rate": win_rate,
-            "sample_size": sample_size,
-        })
+        segments.append(
+            {
+                "segment": avatar_name,
+                "win_rate": win_rate,
+                "sample_size": sample_size,
+            }
+        )
 
     return segments
 
@@ -513,11 +521,13 @@ async def _get_segments_by_week(
     for week in sorted(week_stats.keys(), reverse=True):
         stats = week_stats[week]
         win_rate = stats["wins"] / stats["total"] if stats["total"] > 0 else None
-        segments.append({
-            "segment": week,
-            "win_rate": win_rate,
-            "sample_size": stats["total"],
-        })
+        segments.append(
+            {
+                "segment": week,
+                "win_rate": win_rate,
+                "sample_size": stats["total"],
+            }
+        )
 
     return segments[:4]  # Last 4 weeks
 
@@ -544,12 +554,15 @@ def _generate_insight(
 
     # Filter segments with valid data
     valid_segments = [
-        s for s in segments
+        s
+        for s in segments
         if s.get("win_rate") is not None and s.get("sample_size", 0) >= MIN_SAMPLE_SIZE
     ]
 
     if not valid_segments:
-        return f"Insufficient data for {component_value} (need ≥{MIN_SAMPLE_SIZE} samples)"
+        return (
+            f"Insufficient data for {component_value} (need ≥{MIN_SAMPLE_SIZE} samples)"
+        )
 
     # Find best performing segment
     best = max(valid_segments, key=lambda s: s["win_rate"])

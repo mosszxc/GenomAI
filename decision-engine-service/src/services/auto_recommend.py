@@ -15,14 +15,11 @@ Different from DailyRecommendationWorkflow:
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 import httpx
 
 from src.services.correlation_discovery import (
     discover_correlations,
     Correlation,
-    WEAK_POSITIVE_LIFT,
-    WEAK_NEGATIVE_LIFT,
 )
 
 SCHEMA = "genomai"
@@ -49,6 +46,7 @@ MAX_USAGE_BEFORE_FATIGUE = 3  # More than 3 uses in 7 days = fatigued
 @dataclass
 class ComponentScore:
     """Score for a single component."""
+
     component_type: str
     component_value: str
     base_win_rate: float
@@ -89,6 +87,7 @@ class ComponentScore:
 @dataclass
 class BestBetRecommendation:
     """Complete best bet recommendation."""
+
     components: list[ComponentScore]
     expected_win_rate: float
     overall_confidence: str
@@ -269,7 +268,10 @@ async def generate_best_bet() -> BestBetRecommendation:
 
             for corr in related_corrs:
                 # Find the "other" component in correlation
-                if corr.component_a_type == comp_type and corr.component_a_value == comp_value:
+                if (
+                    corr.component_a_type == comp_type
+                    and corr.component_a_value == comp_value
+                ):
                     other_type = corr.component_b_type
                     other_value = corr.component_b_value
                 else:
@@ -304,7 +306,9 @@ async def generate_best_bet() -> BestBetRecommendation:
 
             if score.freshness_score < 1.0:
                 if score.freshness_score <= 0.5:
-                    score.reasoning.append(f"Fatigued ({usage} uses in {FRESHNESS_WINDOW_DAYS}d)")
+                    score.reasoning.append(
+                        f"Fatigued ({usage} uses in {FRESHNESS_WINDOW_DAYS}d)"
+                    )
                 else:
                     score.reasoning.append(f"Recently used ({usage}x)")
 
@@ -320,7 +324,10 @@ async def generate_best_bet() -> BestBetRecommendation:
 
             # Track fatigued components that were skipped
             for cand in scored_candidates[1:]:
-                if cand.freshness_score <= 0.5 and cand.base_win_rate > best.base_win_rate:
+                if (
+                    cand.freshness_score <= 0.5
+                    and cand.base_win_rate > best.base_win_rate
+                ):
                     fatigued_components.append(
                         f"{cand.component_value} ({cand.component_type})"
                     )
@@ -339,11 +346,14 @@ async def generate_best_bet() -> BestBetRecommendation:
         # Expected win rate: weighted average of component scores
         total_samples = sum(c.sample_size for c in selected_components)
         if total_samples > 0:
-            expected_win_rate = sum(
-                c.final_score * c.sample_size for c in selected_components
-            ) / total_samples
+            expected_win_rate = (
+                sum(c.final_score * c.sample_size for c in selected_components)
+                / total_samples
+            )
         else:
-            expected_win_rate = sum(c.final_score for c in selected_components) / len(selected_components)
+            expected_win_rate = sum(c.final_score for c in selected_components) / len(
+                selected_components
+            )
 
         # Overall confidence based on lowest confidence component
         confidence_order = {"high": 3, "medium": 2, "low": 1}

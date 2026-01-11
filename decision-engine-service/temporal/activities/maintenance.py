@@ -237,7 +237,9 @@ async def mark_stuck_transcriptions_failed(timeout_minutes: int = 10) -> int:
                 },
             )
 
-        activity.logger.info(f"Marked {len(stuck_ids)} creatives as transcription_failed")
+        activity.logger.info(
+            f"Marked {len(stuck_ids)} creatives as transcription_failed"
+        )
         return len(stuck_ids)
 
 

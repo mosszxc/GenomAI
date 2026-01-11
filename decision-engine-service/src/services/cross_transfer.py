@@ -11,7 +11,6 @@ Issue: Inspiration System
 """
 
 import os
-import json
 import httpx
 from typing import Optional, List
 from dataclasses import dataclass
@@ -106,7 +105,9 @@ async def find_transfer_candidates(
     if target_avatar_id:
         exclude_filters.append(f"avatar_id=neq.{target_avatar_id}")
     else:
-        exclude_filters.append("avatar_id=not.is.null")  # Exclude global if target is global
+        exclude_filters.append(
+            "avatar_id=not.is.null"
+        )  # Exclude global if target is global
 
     if target_geo:
         exclude_filters.append(f"geo=neq.{target_geo}")
@@ -163,7 +164,10 @@ async def find_transfer_candidates(
             target_data = response.json()
 
             # Skip if target already has sufficient data
-            if target_data and target_data[0].get("sample_size", 0) >= MAX_TARGET_SAMPLE_SIZE:
+            if (
+                target_data
+                and target_data[0].get("sample_size", 0) >= MAX_TARGET_SAMPLE_SIZE
+            ):
                 continue
 
             # This is a candidate!

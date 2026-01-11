@@ -85,10 +85,7 @@ MESSAGES = {
         "• /stats — твоя статистика\n"
         "• /help — список команд"
     ),
-    "timeout": (
-        "⏰ Сессия истекла.\n\n"
-        "Отправь /start чтобы начать заново."
-    ),
+    "timeout": ("⏰ Сессия истекла.\n\nОтправь /start чтобы начать заново."),
     "invalid_geo": (
         "❌ Неверные коды стран.\n"
         "Примеры: US, UK, DE, FR, IT, ES\n\n"
@@ -109,16 +106,13 @@ MESSAGES = {
         "📊 Клики: {clicks} | Конверсии: {conversions}\n\n"
         "<i>Скинь URL видео:</i>"
     ),
-    "video_received": (
-        "✅ Видео получено, запускаю анализ..."
-    ),
+    "video_received": ("✅ Видео получено, запускаю анализ..."),
     "no_campaigns": (
         "📭 Кампаний для привязки видео не найдено.\n"
         "Можешь скидывать видео позже через обычные сообщения."
     ),
     "invalid_video_url": (
-        "❌ Не распознал ссылку на видео.\n"
-        "Отправь URL (YouTube, .mp4 и т.д.)"
+        "❌ Не распознал ссылку на видео.\nОтправь URL (YouTube, .mp4 и т.д.)"
     ),
 }
 
@@ -448,7 +442,9 @@ class BuyerOnboardingWorkflow:
                 # Iterate through each campaign
                 for i, campaign in enumerate(pending_campaigns, 1):
                     metrics = campaign.get("metrics", {})
-                    campaign_name = metrics.get("name", f"Campaign {campaign['campaign_id']}")
+                    campaign_name = metrics.get(
+                        "name", f"Campaign {campaign['campaign_id']}"
+                    )
                     clicks = metrics.get("clicks", 0)
                     conversions = metrics.get("conversions", 0)
 
@@ -497,7 +493,12 @@ class BuyerOnboardingWorkflow:
                             # Start creative processing workflow
                             await workflow.start_child_workflow(
                                 CreativeRegistrationWorkflow.run,
-                                args=[self._buyer_id, text, campaign["campaign_id"], None],
+                                args=[
+                                    self._buyer_id,
+                                    text,
+                                    campaign["campaign_id"],
+                                    None,
+                                ],
                                 id=f"onboarding-video-{self._buyer_id}-{campaign['campaign_id']}",
                                 task_queue="telegram",
                             )

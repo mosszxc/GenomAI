@@ -885,8 +885,12 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
             content=result_text,
             context={
                 "correlation_count": len(correlations),
-                "positive": len([c for c in correlations if c.correlation_type == "positive"]),
-                "negative": len([c for c in correlations if c.correlation_type == "negative"]),
+                "positive": len(
+                    [c for c in correlations if c.correlation_type == "positive"]
+                ),
+                "negative": len(
+                    [c for c in correlations if c.correlation_type == "negative"]
+                ),
             },
         )
 
@@ -1169,6 +1173,7 @@ async def handle_document_upload(message: TelegramMessage) -> None:
         )
 
         import uuid
+
         workflow_id = f"knowledge-ingest-{uuid.uuid4().hex[:8]}"
 
         await temporal_client.start_workflow(
@@ -1303,8 +1308,7 @@ async def handle_extraction_reject(
 
         async with httpx.AsyncClient() as client:
             await client.patch(
-                f"{supabase_url}/rest/v1/knowledge_extractions"
-                f"?id=eq.{extraction_id}",
+                f"{supabase_url}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
                 headers=headers,
                 json={
                     "status": "rejected",

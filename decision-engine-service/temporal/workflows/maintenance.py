@@ -15,7 +15,7 @@ Schedule: Every 6 hours
 """
 
 from datetime import timedelta
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional, Dict
 
 from temporalio import workflow
@@ -36,7 +36,6 @@ with workflow.unsafe.imports_passed_through():
         retry_failed_hypotheses,
         cleanup_exhausted_hypotheses,
     )
-    from temporal.activities.hygiene_health import save_hygiene_report
 
 
 @dataclass
@@ -163,7 +162,9 @@ class MaintenanceWorkflow:
             )
             result.stuck_transcriptions_failed = stuck_count
             if stuck_count > 0:
-                workflow.logger.warning(f"Marked {stuck_count} stuck transcriptions as failed")
+                workflow.logger.warning(
+                    f"Marked {stuck_count} stuck transcriptions as failed"
+                )
             else:
                 workflow.logger.info("No stuck transcriptions found")
         except Exception as e:
@@ -249,7 +250,9 @@ class MaintenanceWorkflow:
                 result.cleanup_stats = cleanup_stats
                 total_cleaned = sum(cleanup_stats.values())
                 if total_cleaned > 0:
-                    workflow.logger.info(f"Cleaned {total_cleaned} records: {cleanup_stats}")
+                    workflow.logger.info(
+                        f"Cleaned {total_cleaned} records: {cleanup_stats}"
+                    )
                 else:
                     workflow.logger.info("No records to clean")
             except Exception as e:
@@ -286,7 +289,9 @@ class MaintenanceWorkflow:
                 )
                 result.hypotheses_abandoned = abandoned_count
                 if abandoned_count > 0:
-                    workflow.logger.info(f"Marked {abandoned_count} exhausted hypotheses as abandoned")
+                    workflow.logger.info(
+                        f"Marked {abandoned_count} exhausted hypotheses as abandoned"
+                    )
             except Exception as e:
                 workflow.logger.error(f"Hypothesis cleanup failed: {e}")
                 result.integrity_issues.append(f"Hypothesis cleanup error: {e}")
