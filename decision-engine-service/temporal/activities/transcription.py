@@ -20,10 +20,10 @@ from temporalio.exceptions import ApplicationError
 # Polling interval for transcription status (seconds)
 POLL_INTERVAL = 30
 
-# n8n webhook for Google Drive transcription
+# n8n webhook for video transcription (MP4→MP3 conversion + AssemblyAI)
 N8N_WEBHOOK_URL = os.getenv(
     "N8N_TRANSCRIBE_WEBHOOK",
-    "https://kazamaqwe.app.n8n.cloud/webhook/7c271222-3707-4797-aaf1-6d39b8155e9a",
+    "https://aideportment.nl.tuna.am/webhook/MP3MP4",
 )
 
 # Maximum wait time before timeout (seconds) - 15 minutes
@@ -94,21 +94,21 @@ def convert_to_direct_url(url: str) -> str:
 
 
 async def transcribe_via_n8n(
-    file_id: str,
+    video_url: str,
     creative_id: str,
 ) -> dict:
     """
-    Transcribe Google Drive file via n8n webhook.
+    Transcribe video via n8n webhook (MP4→MP3 conversion + AssemblyAI).
 
     n8n workflow handles:
-    1. Download file from Google Drive (with OAuth)
+    1. Convert MP4 to MP3
     2. Upload to AssemblyAI
     3. Start transcription
     4. Poll for result
     5. Update genomai.transcripts table
 
     Args:
-        file_id: Google Drive file ID
+        video_url: Full video URL (Google Drive or other)
         creative_id: Creative UUID for transcript linking
 
     Returns:
@@ -176,13 +176,13 @@ async def transcribe_via_n8n(
         activity.logger.info(f"Created transcript record id={transcript_db_id}")
 
     # Step 2: Call n8n webhook
-    activity.logger.info(f"Calling n8n webhook for file_id={file_id}")
+    activity.logger.info(f"Calling n8n webhook for video_url={video_url}")
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         n8n_resp = await client.post(
             N8N_WEBHOOK_URL,
             json={
-                "AudioID": file_id,
+                "url": video_url,
                 "id": str(transcript_db_id),
             },
         )
@@ -282,23 +282,16 @@ async def transcribe_audio(
     Raises:
         ApplicationError: If transcription fails or is cancelled
     """
-    # Check if Google Drive URL - use n8n path
+    # Check if Google Drive URL - use n8n path (MP4→MP3 conversion)
     if is_google_drive_url(audio_url):
-        file_id = extract_gdrive_file_id(audio_url)
-        if not file_id:
-            raise ApplicationError(
-                f"Could not extract file ID from Google Drive URL: {audio_url}",
-                type="INVALID_URL",
-            )
-
         if not creative_id:
             raise ApplicationError(
                 "creative_id is required for Google Drive transcription",
                 type="MISSING_PARAM",
             )
 
-        activity.logger.info(f"Using n8n path for Google Drive file: {file_id}")
-        return await transcribe_via_n8n(file_id, creative_id)
+        activity.logger.info(f"Using n8n path for video URL: {audio_url}")
+        return await transcribe_via_n8n(audio_url, creative_id)
 
     # Direct AssemblyAI path for non-Google Drive URLs
     import assemblyai as aai
