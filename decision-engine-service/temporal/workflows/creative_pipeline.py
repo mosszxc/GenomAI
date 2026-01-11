@@ -82,6 +82,9 @@ class CreativePipelineWorkflow:
                     generate_hypotheses,
                     save_hypotheses,
                 )
+                from temporal.activities.premise_selection import (
+                    select_premise,
+                )
                 from temporal.activities.telegram import (
                     send_hypothesis_to_telegram,
                     get_buyer_chat_id,
@@ -322,7 +325,28 @@ class CreativePipelineWorkflow:
             if decision_result.is_approved:
                 self._status = "generating_hypothesis"
 
-                # Generate hypotheses
+                # Step 6a: Select premise for hypothesis generation
+                # Uses Thompson Sampling: 75% exploit best, 25% explore
+                premise_result = await workflow.execute_activity(
+                    select_premise,
+                    args=[
+                        self._idea_id,
+                        None,  # avatar_id
+                        creative.get("geo"),  # geo from creative
+                        creative.get("vertical"),  # vertical from creative
+                    ],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+
+                selected_premise_id = premise_result.get("premise_id")
+
+                workflow.logger.info(
+                    f"Selected premise: id={selected_premise_id}, "
+                    f"reason={premise_result.get('selection_reason')}"
+                )
+
+                # Step 6b: Generate hypotheses
                 hypothesis_result = await workflow.execute_activity(
                     generate_hypotheses,
                     args=[
@@ -334,7 +358,7 @@ class CreativePipelineWorkflow:
                     retry_policy=default_retry,
                 )
 
-                # Save hypotheses with variables from decomposition
+                # Step 6c: Save hypotheses with variables and premise_id
                 saved_hypotheses = await workflow.execute_activity(
                     save_hypotheses,
                     args=[
@@ -344,6 +368,7 @@ class CreativePipelineWorkflow:
                         hypothesis_result["prompt_version"],
                         decomposition_payload,  # Pass variables for denormalization
                         input.buyer_id,  # Propagate buyer_id for delivery routing
+                        selected_premise_id,  # Link hypothesis to premise
                     ],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
