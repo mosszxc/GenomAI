@@ -9,13 +9,14 @@ Tasks:
 - Clean up expired recommendations
 - Verify data integrity
 - Staleness detection (Inspiration System)
+- Data cleanup (Hygiene Agent)
 
 Schedule: Every 6 hours
 """
 
 from datetime import timedelta
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -30,6 +31,8 @@ with workflow.unsafe.imports_passed_through():
         emit_maintenance_event,
         check_staleness,
     )
+    from temporal.activities.hygiene_cleanup import run_all_cleanup
+    from temporal.activities.hygiene_health import save_hygiene_report
 
 
 @dataclass
@@ -48,6 +51,13 @@ class MaintenanceInput:
     run_integrity_checks: bool = True
     # Run staleness detection (Inspiration System)
     run_staleness_check: bool = True
+    # Run data cleanup (Hygiene Agent)
+    run_cleanup: bool = True
+    # Cleanup retention periods
+    import_queue_retention_days: int = 7
+    knowledge_retention_days: int = 30
+    buyer_states_retention_days: int = 30
+    staleness_archive_days: int = 90
 
 
 @dataclass
@@ -64,6 +74,8 @@ class MaintenanceResult:
     staleness_score: Optional[float] = None
     is_stale: Optional[bool] = None
     staleness_action: Optional[str] = None
+    # Cleanup stats (Hygiene Agent)
+    cleanup_stats: Optional[Dict[str, int]] = None
 
 
 @workflow.defn
@@ -78,7 +90,8 @@ class MaintenanceWorkflow:
     4. Archive old failed creatives
     5. Run data integrity checks
     6. Check system staleness (Inspiration System)
-    7. Emit maintenance event
+    7. Data cleanup (Hygiene Agent)
+    8. Emit maintenance event
     """
 
     @workflow.run
@@ -207,7 +220,31 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Staleness check failed: {e}")
                 result.integrity_issues.append(f"Staleness check error: {e}")
 
-        # Step 7: Emit maintenance event
+        # Step 7: Data cleanup (Hygiene Agent)
+        if input.run_cleanup:
+            try:
+                cleanup_stats = await workflow.execute_activity(
+                    run_all_cleanup,
+                    args=[
+                        input.import_queue_retention_days,
+                        input.knowledge_retention_days,
+                        input.buyer_states_retention_days,
+                        input.staleness_archive_days,
+                    ],
+                    start_to_close_timeout=timedelta(seconds=180),
+                    retry_policy=retry_policy,
+                )
+                result.cleanup_stats = cleanup_stats
+                total_cleaned = sum(cleanup_stats.values())
+                if total_cleaned > 0:
+                    workflow.logger.info(f"Cleaned {total_cleaned} records: {cleanup_stats}")
+                else:
+                    workflow.logger.info("No records to clean")
+            except Exception as e:
+                workflow.logger.error(f"Cleanup failed: {e}")
+                result.integrity_issues.append(f"Cleanup error: {e}")
+
+        # Step 8: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(

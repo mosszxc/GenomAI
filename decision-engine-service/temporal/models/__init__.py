@@ -30,6 +30,16 @@ from temporal.models.buyer import (
     HistoricalImportResult,
     CampaignData,
 )
+from temporal.models.hygiene import (
+    AlertSeverity,
+    CleanupStats,
+    IntegrityIssue,
+    HealthMetrics,
+    HealthCheckInput,
+    HealthCheckResult,
+    CleanupInput,
+    HygieneReport,
+)
 
 __all__ = [
     "CreativeInput",
@@ -49,4 +59,13 @@ __all__ = [
     "HistoricalImportInput",
     "HistoricalImportResult",
     "CampaignData",
+    # Hygiene
+    "AlertSeverity",
+    "CleanupStats",
+    "IntegrityIssue",
+    "HealthMetrics",
+    "HealthCheckInput",
+    "HealthCheckResult",
+    "CleanupInput",
+    "HygieneReport",
 ]

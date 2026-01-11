@@ -2,19 +2,19 @@
 
 **STEP 08 — Learning Loop (Minimal, MVP)**
 
-**Статус:** IMPLEMENTATION PLAYBOOK  
-**Scope:** MVP  
+**Статус:** IMPLEMENTED
+**Scope:** MVP
 **Зависимости:**
 - `07_outcome_ingestion_playbook.md` (daily snapshots существуют)
 - Outcome Aggregation (system outcome с decision_id)
 
-**Следующий шаг:** ❌ **НЕТ** (MVP завершается здесь)
+**Следующий шаг:** MVP завершается здесь
 
 ## 0. Назначение шага
 
 Этот шаг — **первое касание памяти**.
 
-Learning Loop не делает систему умной.  
+Learning Loop не делает систему умной.
 Он делает её чуть менее слепой.
 
 В MVP learning:
@@ -50,79 +50,82 @@ Learning Loop не делает систему умной.
 - `decision_id != null`
 - outcome ещё не использован для learning
 
-📌 **Если любое условие не выполнено → STOP без ошибки.**
+## 2. Реализация (Temporal)
 
-## 2. n8n Workflow
-
-**Workflow name:** `learning_loop_minimal`
+**Workflow:** `LearningLoopWorkflow`
+**Файл:** `temporal/workflows/learning_loop.py`
+**Task Queue:** `metrics`
+**Schedule:** Every 1 hour
 
 ### 2.1 Trigger
 
-- **Node:** Event Trigger
-- **Event:** `OutcomeAggregated`
+Schedule Trigger (hourly)
 
 ### 2.2 Guard: Eligibility Check
 
-- **Node:** Function
+**Activity:** `check_learning_eligibility`
 
 **Проверки:**
-- `if (origin_type !== 'system') STOP`
-- `if (!decision_id) STOP`
-- `if (outcome_already_applied) STOP`
+- `origin_type === 'system'`
+- `decision_id != null`
+- `outcome_already_applied === false`
 
-📌 **Повтор learning запрещён.**
+### 2.3 Load Current Score
 
-### 2.3 Load Current Confidence
-
-- **Node:** Supabase Select
+**Activity:** `load_idea_score`
 
 ```sql
-SELECT confidence
-FROM idea_confidence_versions
+SELECT score
+FROM idea_scores
 WHERE idea_id = :idea_id
 ORDER BY created_at DESC
 LIMIT 1;
 ```
 
-Если нет → считаем `confidence = 0`.
+Если нет → считаем `score = 0`.
 
 ## 3. Learning Rule (MVP)
 
 ### 3.1 Правило обновления
 
-Rule-based, бинарное:
+Rule-based, формула:
 
-**Пример:**
-- если `leads > 0` → `+1`
-- если `leads = 0` → `-1`
+```python
+if leads > 0 and roi > threshold:
+    score_delta = +1
+elif leads == 0 or roi < 0:
+    score_delta = -1
+else:
+    score_delta = 0
+```
 
-📌 **Формула фиксирована, не обучаемая.**
+### 3.2 Persist New Score
 
-### 3.2 Persist New Confidence Version
-
-- **Node:** Supabase Insert
-- **Таблица:** `idea_confidence_versions`
+**Activity:** `save_idea_score`
+**Таблица:** `idea_scores`
 
 **Поля:**
 - `id` (uuid)
 - `idea_id`
-- `confidence`
+- `score`
 - `source_outcome_id`
 - `created_at`
 
-📌 **append-only**  
-📌 **UPDATE запрещён**
+### 3.3 Check Death Condition
 
-### 3.3 Mark Outcome as Applied
+**Activity:** `check_death_condition`
 
-- **Node:** Supabase Update
-- **Таблица:** `outcome_aggregates`
-- **Поле:**
-  - `learning_applied = true`
+Если `score <= death_threshold`:
+- Update idea status to `dead`
+- Emit `IdeaDied` event
 
-📌 **Единственный допустимый UPDATE в этом шаге.**
+### 3.4 Mark Outcome as Applied
 
-### 2.6 Emit Event
+**Activity:** `mark_outcome_applied`
+**Таблица:** `outcome_aggregates`
+**Поле:** `learning_applied = true`
+
+### 3.5 Emit Event
 
 **OutcomeAppliedToLearning**
 
@@ -130,19 +133,19 @@ Rule-based, бинарное:
 {
   "idea_id": "uuid",
   "outcome_id": "uuid",
-  "new_confidence": 3
+  "new_score": 3
 }
 ```
 
 ## 4. Хранилище
 
-### Таблица idea_confidence_versions
+### Таблица idea_scores
 
 ```sql
-idea_confidence_versions (
+idea_scores (
   id                 uuid primary key,
   idea_id            uuid not null,
-  confidence         int not null,
+  score              int not null,
   source_outcome_id  uuid not null,
   created_at         timestamp not null
 )
@@ -164,7 +167,17 @@ idea_confidence_versions (
 {
   "idea_id": "uuid",
   "outcome_id": "uuid",
-  "new_confidence": 3
+  "new_score": 3
+}
+```
+
+### IdeaDied (conditional)
+
+```json
+{
+  "idea_id": "uuid",
+  "final_score": -3,
+  "reason": "score_threshold"
 }
 ```
 
@@ -172,34 +185,31 @@ idea_confidence_versions (
 
 - любые re-learning events
 - любые decay events
-- любые fatigue events
+- любые resurrection events
 
 ## 6. Definition of Done (DoD)
 
 Шаг считается выполненным, если:
-- ✅ learning применяется только к system outcome
-- ✅ confidence обновляется append-only
-- ✅ outcome не используется повторно
-- ✅ событие `OutcomeAppliedToLearning` эмитится
-- ✅ не используется:
-  - decay
-  - fatigue
-  - resurrection
-  - ML
+- learning применяется только к system outcome
+- score обновляется append-only
+- outcome не используется повторно
+- событие `OutcomeAppliedToLearning` эмитится
+- death condition проверяется
+- не используется: decay, resurrection, ML
 
 ## 7. Типовые ошибки (PR-блокеры)
 
-❌ **learning от user outcome**  
-❌ **повторное применение outcome**  
-❌ **пересчёт confidence**  
-❌ **ручной триггер learning**  
-❌ **сложные формулы**
+❌ **learning от user outcome**
+❌ **повторное применение outcome**
+❌ **пересчёт score**
+❌ **ручной триггер learning**
+❌ **сложные ML формулы**
 
 ## 8. Ручные проверки (обязательные)
 
 ### Check 1 — Happy path
 - system outcome
-- confidence увеличился / уменьшился
+- score увеличился / уменьшился
 - outcome помечен как applied
 
 ### Check 2 — Duplicate outcome
@@ -210,6 +220,10 @@ idea_confidence_versions (
 - `origin_type = user`
 - learning не применяется
 
+### Check 4 — Death condition
+- score достиг threshold
+- idea помечена как dead
+
 ## 9. Выход шага
 
 На выходе гарантировано:
@@ -219,3 +233,14 @@ idea_confidence_versions (
 
 **И это правильный финал MVP.**
 
+## 10. Жёсткие запреты
+
+❌ decay
+❌ resurrection
+❌ ML
+❌ сложные эвристики
+
+## 11. Связанные документы
+
+- `docs/TEMPORAL_WORKFLOWS.md` — Temporal workflows reference
+- `docs/layer-1-logic/DECISION_ENGINE.md` — Death memory integration

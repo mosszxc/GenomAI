@@ -2,8 +2,8 @@
 
 **STEP 07 — Outcome Ingestion (MVP)**
 
-**Статус:** IMPLEMENTATION PLAYBOOK  
-**Scope:** MVP  
+**Статус:** IMPLEMENTED
+**Scope:** MVP
 **Зависимости:**
 - `06_telegram_output_playbook.md` (hypotheses доставлены)
 
@@ -35,99 +35,53 @@ Outcome ingestion отвечает не на вопрос "почему",
   - неполными
   - запаздывающими
 
-## 2. n8n Workflow
+## 2. Реализация (Temporal)
 
-**Workflow name:** `Outcome Ingestion Keitaro`  
-**Workflow ID:** `zMHVFT2rM7PpTiJj`  
-**Статус:** Создан, требует тестирования
+**Workflow:** `KeitaroPollerWorkflow`
+**Файл:** `temporal/workflows/keitaro_poller.py`
+**Task Queue:** `metrics`
+**Schedule:** Every 10 minutes
 
 ### 2.1 Trigger
 
-- **Node:** Schedule Trigger (Cron)
-- **Frequency:** 1 раз в сутки
-- **Time:** 03:00 UTC (cron: `0 3 * * *`)
-- **Manual Trigger:** Для тестирования и отладки
-
-📌 **Нет realtime ingestion в MVP.**
+- Schedule Trigger (cron)
+- Frequency: каждые 10 минут
 
 ### 2.2 Load Keitaro Config
 
-- **Node:** Supabase Get
-- **Таблица:** `keitaro_config`
-- **Фильтр:** `is_active = true`
-
-**Назначение:** Загрузка активной конфигурации Keitaro (domain и api_key) из БД.
-
-📌 **Credentials хранятся в БД, а не в environment variables.**
+**Activity:** `load_keitaro_config`
+**Таблица:** `keitaro_config`
+**Фильтр:** `is_active = true`
 
 ### 2.3 Pull Raw Metrics
 
+**Activity:** `fetch_keitaro_metrics`
+
 **Логика:**
-1. **Get All Campaigns** (HTTP Request GET `/admin_api/v1/campaigns`)
-   - Получить список всех кампаний из Keitaro
-   - Headers: `Api-Key: {{ api_key }}`
-2. **Extract Campaign IDs** (Function node)
-   - Извлечь `campaign_id` из каждой кампании
-   - `campaign_id` = `tracker_id` в нашей системе
-3. **Loop Over Campaigns** (SplitInBatches)
-   - Итерация по всем `campaign_id`
-4. **Get Campaign Metrics** (HTTP Request POST `/admin_api/v1/report/build`)
-   - Для каждой кампании получить метрики за вчерашний день
-   - Фильтр: `campaign_id` = текущий `tracker_id`
-   - Период: last 24h (yesterday)
-5. **Check Has Data** (IF node)
-   - Проверка наличия данных (rows.length > 0)
-   - Если данных нет → возврат в цикл (пропуск кампании)
-   - Если данные есть → обработка
+1. Get All Campaigns (`/admin_api/v1/campaigns`)
+2. Extract Campaign IDs
+3. For each campaign: Get Metrics (`/admin_api/v1/report/build`)
+4. Aggregate metrics
 
 **Параметры:**
-- период: last 24h (yesterday)
-- идентификация по `campaign_id` (который = `tracker_id`)
+- период: configurable window
+- идентификация по `campaign_id` (= `tracker_id`)
 
-📌 **Ошибка Keitaro ≠ ошибка системы.**
-📌 **Если данных нет для кампании → пропускаем, не падаем.**
+### 2.4 Persist Raw Metrics
 
-### 2.4 Aggregate Metrics
-
-- **Node:** Function node
-- **Назначение:** Агрегация метрик из Keitaro response
-- **Поля:**
-  - `clicks` (сумма всех clicks)
-  - `conversions` (сумма всех conversions/leads)
-  - `revenue` (сумма всего revenue)
-  - `cost` (сумма всего cost/spend)
-
-### 2.5 Persist Raw Metrics (Mutable)
-
-- **Node:** Supabase Get → IF → Update/Create
-- **Таблица:** `raw_metrics_current`
-
-**Логика:**
-1. **Persist Raw Metrics** (Supabase Get)
-   - Проверка существования записи по `tracker_id` и `date`
-2. **Check Exists** (IF node)
-   - Если существует → Update
-   - Если не существует → Create
-3. **Update Raw Metrics** / **Create Raw Metrics**
-   - Сохранение агрегированных метрик
+**Activity:** `save_raw_metrics`
+**Таблица:** `raw_metrics_current`
 
 **Поля:**
 - tracker_id (text, primary key)
 - date (date, not null)
-- metrics (jsonb, not null) - содержит: clicks, conversions, revenue, cost
+- metrics (jsonb, not null)
 - updated_at (timestamp, not null)
 
-📌 **UPDATE разрешён.**
-
-### 2.6 Emit Event
+### 2.5 Emit Event
 
 **RawMetricsObserved**
 
-- **Node:** Supabase Create (event_log)
-- **Event Type:** `RawMetricsObserved`
-- **Entity Type:** `tracker`
-- **Entity ID:** `tracker_id`
-- **Payload:**
 ```json
 {
   "tracker_id": "campaign_id_from_keitaro",
@@ -135,43 +89,47 @@ Outcome ingestion отвечает не на вопрос "почему",
 }
 ```
 
-### 2.7 Daily Snapshot Creation
+## 3. Metrics Processing
 
-- **Node:** Supabase Create
-- **Таблица:** `daily_metrics_snapshot`
+**Workflow:** `MetricsProcessingWorkflow`
+**Файл:** `temporal/workflows/metrics_processing.py`
+**Schedule:** Every 30 minutes
+
+### 3.1 Process Metrics to Outcomes
+
+**Activity:** `process_metrics_to_outcomes`
+
+Преобразует raw metrics в outcome_aggregates:
+- Привязка к idea_id через creative → idea mapping
+- Агрегация по windows (D1, D3, D7)
+
+### 3.2 Create Daily Snapshot
+
+**Activity:** `create_daily_snapshot`
+**Таблица:** `daily_metrics_snapshot`
 
 **Поля:**
-- `id` (uuid, primary key, auto-generated)
-- `tracker_id` (text, not null)
-- `date` (date, not null)
-- `metrics` (jsonb, not null) - содержит: clicks, conversions, revenue, cost
-- `created_at` (timestamp, not null, default now())
+- `id` (uuid)
+- `tracker_id`
+- `date`
+- `metrics` (jsonb)
+- `created_at`
 
-**Unique constraint:** `(tracker_id, date)` - предотвращает дубликаты
-
-📌 **append-only**  
-📌 **отсутствие snapshot = валидно**
-
-### 2.8 Emit Event
+### 3.3 Emit Event
 
 **DailyMetricsSnapshotCreated**
 
-- **Node:** Supabase Create (event_log)
-- **Event Type:** `DailyMetricsSnapshotCreated`
-- **Entity Type:** `tracker`
-- **Entity ID:** `tracker_id`
-- **Payload:**
 ```json
 {
-  "tracker_id": "campaign_id_from_keitaro",
+  "tracker_id": "campaign_id",
   "date": "YYYY-MM-DD",
   "snapshot_id": "uuid"
 }
 ```
 
-## 3. Хранилище
+## 4. Хранилище
 
-### 3.1 keitaro_config (configuration)
+### 4.1 keitaro_config
 
 ```sql
 keitaro_config (
@@ -184,9 +142,7 @@ keitaro_config (
 )
 ```
 
-📌 **Только одна активная конфигурация должна существовать.**
-
-### 3.2 raw_metrics_current (mutable)
+### 4.2 raw_metrics_current (mutable)
 
 ```sql
 raw_metrics_current (
@@ -197,7 +153,7 @@ raw_metrics_current (
 )
 ```
 
-### 3.3 daily_metrics_snapshot (immutable)
+### 4.3 daily_metrics_snapshot (immutable)
 
 ```sql
 daily_metrics_snapshot (
@@ -210,7 +166,7 @@ daily_metrics_snapshot (
 )
 ```
 
-## 4. События
+## 5. События
 
 **Обязательные:**
 
@@ -238,36 +194,28 @@ daily_metrics_snapshot (
 - любые learning events
 - любые decision events
 
-## 5. Definition of Done (DoD)
+## 6. Definition of Done (DoD)
 
 Шаг считается выполненным, если:
-- ✅ Workflow создан и настроен
-- ✅ raw metrics подтягиваются по cron
-- ✅ raw_metrics_current обновляется
-- ✅ daily snapshot создаётся
-- ✅ события эмитятся
-- ✅ не происходит:
-  - интерпретация
-  - learning
-  - принятие решений
+- Workflow запускается по расписанию
+- raw metrics подтягиваются из Keitaro
+- raw_metrics_current обновляется
+- daily snapshot создаётся
+- события эмитятся
+- не происходит: интерпретация, learning, решения
 
-**Текущий статус:**
-- ✅ Workflow создан (ID: `zMHVFT2rM7PpTiJj`)
-- ⏳ Требуется тестирование
-- ⏳ Требуется проверка данных в БД
+## 7. Типовые ошибки (PR-блокеры)
 
-## 6. Типовые ошибки (PR-блокеры)
-
-❌ **обучение на raw данных**  
-❌ **принятие решений на raw данных**  
-❌ **realtime ingestion**  
-❌ **отсутствие snapshot layer**  
+❌ **обучение на raw данных**
+❌ **принятие решений на raw данных**
+❌ **realtime ingestion**
+❌ **отсутствие snapshot layer**
 ❌ **"если данных мало — не сохраняем"**
 
-## 7. Ручные проверки (обязательные)
+## 8. Ручные проверки (обязательные)
 
 ### Check 1 — Happy path
-- cron отрабатывает
+- schedule отрабатывает
 - snapshot появляется
 
 ### Check 2 — Missing data
@@ -275,27 +223,26 @@ daily_metrics_snapshot (
 - workflow не падает
 
 ### Check 3 — Retry safety
-- повторный cron
+- повторный запуск
 - duplicate snapshot не создаётся
 
-## 8. Выход шага
+## 9. Выход шага
 
 На выходе гарантировано:
 
 **Система знает, что произошло,**
 **но не знает, хорошо это или плохо.**
 
-## 9. Жёсткие запреты
+## 10. Жёсткие запреты
 
-❌ learning  
-❌ интерпретация  
-❌ оптимизация  
+❌ learning
+❌ интерпретация
+❌ оптимизация
 ❌ decision
 
-## 10. Готовность к следующему шагу
+## 11. Готовность к следующему шагу
 
 Можно переходить к `08_learning_loop_playbook.md`, если:
-- ✅ snapshots создаются стабильно
-- ✅ raw слой не ломает систему
-- ✅ нет скрытой логики
-
+- snapshots создаются стабильно
+- raw слой не ломает систему
+- нет скрытой логики

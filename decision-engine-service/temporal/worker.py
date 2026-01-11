@@ -36,6 +36,7 @@ from temporal.workflows.recommendation import (
     SingleRecommendationDeliveryWorkflow,
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow
+from temporal.workflows.health_check import HealthCheckWorkflow
 from temporal.workflows.buyer_onboarding import BuyerOnboardingWorkflow
 from temporal.workflows.historical_import import (
     HistoricalImportWorkflow,
@@ -141,6 +142,16 @@ from temporal.activities.maintenance import (
     check_data_integrity,
     emit_maintenance_event,
     check_staleness,
+)
+
+# Import activities - Hygiene (cleanup & health)
+from temporal.activities.hygiene_cleanup import run_all_cleanup
+from temporal.activities.hygiene_health import (
+    check_supabase_connection,
+    get_table_sizes,
+    get_pending_counts,
+    send_admin_alert,
+    save_hygiene_report,
 )
 
 # Import activities - Knowledge Extraction
@@ -283,6 +294,7 @@ async def run_all_workers():
             DailyRecommendationWorkflow,
             SingleRecommendationDeliveryWorkflow,
             MaintenanceWorkflow,
+            HealthCheckWorkflow,
         ],
         activities=[
             # Keitaro activities
@@ -318,6 +330,13 @@ async def run_all_workers():
             check_data_integrity,
             emit_maintenance_event,
             check_staleness,
+            # Hygiene activities (cleanup & health)
+            run_all_cleanup,
+            check_supabase_connection,
+            get_table_sizes,
+            get_pending_counts,
+            send_admin_alert,
+            save_hygiene_report,
         ],
     )
 

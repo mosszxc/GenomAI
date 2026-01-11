@@ -2,14 +2,11 @@
 
 ## Overview
 
-GenomAI использует Temporal для оркестрации бизнес-процессов. Temporal заменяет n8n workflows, обеспечивая:
+GenomAI использует Temporal для оркестрации бизнес-процессов:
 - **Durability** — workflows переживают перезапуски и сбои
 - **Visibility** — полная история выполнения в Temporal UI
 - **Scalability** — горизонтальное масштабирование workers
 - **Built-in retry** — автоматические повторы с backoff
-
-**Миграция:** n8n → Temporal (Issue #241, Phases 1-5)
-**Статус:** Phase 5 Complete
 
 ## Architecture
 
@@ -30,6 +27,7 @@ GenomAI использует Temporal для оркестрации бизнес
 │  │              Task Queues                             │   │
 │  │  • creative-pipeline                                 │   │
 │  │  • metrics                                           │   │
+│  │  • telegram                                          │   │
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                            │
@@ -92,14 +90,6 @@ class CreativePipelineWorkflow:
 - `video_url`: URL видео для транскрипции
 - `buyer_id`: Optional buyer ID
 
-**Replaces n8n workflows:**
-- `WMnFHqsFh8i7ddjV` GenomAI - Creative Transcription
-- `mv6diVtqnuwr7qev` creative_decomposition_llm
-- `cGSyJPROrkqLVHZP` idea_registry_create
-- `YT2d7z5h9bPy1R4v` decision_engine_mvp
-- `oxG1DqxtkTGCqLZi` hypothesis_factory_generate
-- `5q3mshC9HRPpL6C0` Telegram Hypothesis Delivery
-
 ### KeitaroPollerWorkflow
 
 **Queue:** `metrics`
@@ -111,8 +101,6 @@ class CreativePipelineWorkflow:
 3. Upsert в raw_metrics
 4. Создать daily snapshots
 
-**Replaces:** `0TrVJOtHiNEEAsTN` Keitaro Poller
-
 ### MetricsProcessingWorkflow
 
 **Queue:** `metrics`
@@ -122,11 +110,6 @@ class CreativePipelineWorkflow:
 1. Получить unprocessed snapshots
 2. Создать outcomes
 3. Emit events
-
-**Replaces:**
-- `Gii8l2XwnX43Wqr4` Snapshot Creator
-- `bbbQC4Aua5E3SYSK` Outcome Processor
-- `243QnGrUSDtXLjqU` Outcome Aggregator
 
 ### LearningLoopWorkflow
 
@@ -139,8 +122,6 @@ class CreativePipelineWorkflow:
 3. Проверить death conditions
 4. Emit learning events
 
-**Replaces:** `fzXkoG805jQZUR3S` Learning Loop v2
-
 ### DailyRecommendationWorkflow
 
 **Queue:** `metrics`
@@ -151,10 +132,6 @@ class CreativePipelineWorkflow:
 2. Для каждого сгенерировать recommendation
 3. Отправить в Telegram
 4. Обновить статус
-
-**Replaces:**
-- `wgEdEqt2BA3P9JlA` Daily Recommendation Generator
-- `QC8bmnAYdH5mkntG` Recommendation Delivery
 
 ### MaintenanceWorkflow
 
@@ -168,16 +145,32 @@ class CreativePipelineWorkflow:
 4. Archive old failed creatives (> 7 days)
 5. Data integrity checks
 6. Staleness detection (Inspiration System)
-7. Emit maintenance event
+7. Data cleanup (Hygiene Agent)
+8. Emit maintenance event
 
-**Replaces:** `H1uuOanSy627H4kg` Pipeline Health Monitor
+### HealthCheckWorkflow
+
+**Queue:** `metrics`
+**Schedule:** Every 3 hours
+
+Мониторинг здоровья системы (Hygiene Agent):
+1. Check Supabase connection + latency
+2. Get table sizes (8 tables)
+3. Get pending counts (4 queue tables)
+4. Compute health score (0.0-1.0)
+5. Send Telegram alert if threshold breached
+6. Save report to hygiene_reports
+
+**Alerts:**
+- CRITICAL: score < 0.5 (connection failure)
+- WARNING: score < 0.8 (high latency, backlog)
 
 ### BuyerOnboardingWorkflow
 
 **Queue:** `telegram`
 **Trigger:** Telegram /start command
 
-Workflow для онбординга новых баеров через Telegram.
+Workflow для онбординга новых байеров через Telegram.
 
 ### HistoricalImportWorkflow
 
@@ -211,8 +204,6 @@ Quick registration of creative from video URL.
 - `campaign_id`: Keitaro campaign ID
 - `video_url`: Video URL to process
 - `buyer_id`: Buyer UUID
-
-**Replaces:** `UYgvqpsU3TMzb2Qd` Historical Import Video Handler
 
 ## Activities
 
@@ -319,6 +310,7 @@ Quick registration of creative from video URL.
 | `learning-loop` | LearningLoopWorkflow | 1 hour | Update component scores |
 | `daily-recommendations` | DailyRecommendationWorkflow | 09:00 UTC | Generate daily recommendations |
 | `maintenance` | MaintenanceWorkflow | 6 hours | Cleanup and integrity checks |
+| `health-check` | HealthCheckWorkflow | 3 hours | Health monitoring + alerts |
 
 ### Schedule Management
 
@@ -369,43 +361,8 @@ KEITARO_API_URL=https://xxx.keitaro.io
 |-------|---------|---------|
 | `creative-pipeline` | 1+ | Creative processing pipeline |
 | `metrics` | 1+ | Metrics, learning, recommendations, maintenance |
-
-## Migration from n8n
-
-### Migrated Workflows (31 total)
-
-| n8n ID | Name | Temporal Workflow |
-|--------|------|-------------------|
-| `WMnFHqsFh8i7ddjV` | Creative Transcription | CreativePipelineWorkflow |
-| `mv6diVtqnuwr7qev` | creative_decomposition_llm | CreativePipelineWorkflow |
-| `cGSyJPROrkqLVHZP` | idea_registry_create | CreativePipelineWorkflow |
-| `YT2d7z5h9bPy1R4v` | decision_engine_mvp | CreativePipelineWorkflow |
-| `oxG1DqxtkTGCqLZi` | hypothesis_factory_generate | CreativePipelineWorkflow |
-| `5q3mshC9HRPpL6C0` | Telegram Hypothesis Delivery | CreativePipelineWorkflow |
-| `0TrVJOtHiNEEAsTN` | Keitaro Poller | KeitaroPollerWorkflow |
-| `Gii8l2XwnX43Wqr4` | Snapshot Creator | MetricsProcessingWorkflow |
-| `bbbQC4Aua5E3SYSK` | Outcome Processor | MetricsProcessingWorkflow |
-| `243QnGrUSDtXLjqU` | Outcome Aggregator | MetricsProcessingWorkflow |
-| `fzXkoG805jQZUR3S` | Learning Loop v2 | LearningLoopWorkflow |
-| `wgEdEqt2BA3P9JlA` | Daily Recommendation Generator | DailyRecommendationWorkflow |
-| `QC8bmnAYdH5mkntG` | Recommendation Delivery | DailyRecommendationWorkflow |
-| `H1uuOanSy627H4kg` | Pipeline Health Monitor | MaintenanceWorkflow |
-| `ClXUPP2IvWRgu99y` | keep_alive_decision_engine | **DELETED** (not needed) |
-
-### Deleted Workflows
-
-| n8n ID | Name | Reason |
-|--------|------|--------|
-| `ClXUPP2IvWRgu99y` | keep_alive_decision_engine | Temporal has persistent workers |
-
-### Archived Workflows
-
-Legacy workflows archived in `infrastructure/n8n-archive/`:
-- Performance Metrics Collector
-- Backfill Cost for Historical Queue
-- And other legacy/manual workflows
+| `telegram` | 1+ | Buyer onboarding, historical import |
 
 ## See Also
 
 - [TEMPORAL_RUNBOOK.md](./TEMPORAL_RUNBOOK.md) — Operational runbook
-- [N8N_WORKFLOWS.md](./N8N_WORKFLOWS.md) — Legacy n8n documentation (archived)

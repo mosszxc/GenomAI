@@ -39,6 +39,7 @@ from temporal.workflows.recommendation import (
     DailyRecommendationInput,
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow, MaintenanceInput
+from temporal.workflows.health_check import HealthCheckWorkflow, HealthCheckInput
 
 
 logging.basicConfig(
@@ -84,11 +85,27 @@ SCHEDULES = {
                 buyer_state_timeout_hours=6,
                 recommendation_expiry_days=7,
                 run_integrity_checks=True,
+                run_cleanup=True,
             )
         ],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=6),
-        "description": "Maintenance tasks every 6 hours: cleanup stale states, expire recommendations",
+        "description": "Maintenance + cleanup every 6 hours",
+    },
+    "health-check": {
+        "workflow": HealthCheckWorkflow.run,
+        "args": [
+            HealthCheckInput(
+                check_supabase=True,
+                check_table_sizes=True,
+                check_pending=True,
+                alert_on_warning=True,
+                alert_on_critical=True,
+            )
+        ],
+        "task_queue": settings.temporal.TASK_QUEUE_METRICS,
+        "interval": timedelta(hours=3),
+        "description": "Health monitoring every 3 hours",
     },
 }
 
