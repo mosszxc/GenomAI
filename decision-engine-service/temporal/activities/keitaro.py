@@ -27,6 +27,7 @@ class KeitaroMetrics:
     conversions: int = 0
     revenue: float = 0.0
     cost: float = 0.0
+    profit_confirmed: float = 0.0  # Confirmed profit from Keitaro
 
     def to_dict(self) -> dict:
         return {
@@ -34,6 +35,7 @@ class KeitaroMetrics:
             "conversions": self.conversions,
             "revenue": self.revenue,
             "cost": self.cost,
+            "profit_confirmed": self.profit_confirmed,
         }
 
 
@@ -143,7 +145,7 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
 
     payload = {
         "range": {"interval": input.interval},
-        "metrics": ["clicks", "conversions", "revenue", "cost"],
+        "metrics": ["clicks", "conversions", "revenue", "cost", "profit_confirmed"],
         "filters": [
             {"name": "sub_id_1", "operator": "EQUALS", "expression": input.tracker_id}
         ],
@@ -177,12 +179,13 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
         conversions=int(row.get("conversions", 0) or 0),
         revenue=float(row.get("revenue", 0) or 0),
         cost=float(row.get("cost", 0) or 0),
+        profit_confirmed=float(row.get("profit_confirmed", 0) or 0),
     )
 
     activity.logger.info(
         f"Metrics for {input.tracker_id}: "
         f"clicks={metrics.clicks}, conversions={metrics.conversions}, "
-        f"cost={metrics.cost}"
+        f"cost={metrics.cost}, profit_confirmed={metrics.profit_confirmed}"
     )
 
     return GetTrackerMetricsOutput(metrics=metrics, found=True)
@@ -445,7 +448,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     # Get all metrics with sub_id_1 dimension
     payload = {
         "range": {"interval": input.interval},
-        "metrics": ["clicks", "conversions", "revenue", "cost"],
+        "metrics": ["clicks", "conversions", "revenue", "cost", "profit_confirmed"],
         "dimensions": ["sub_id_1"],
     }
 
@@ -482,6 +485,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
                 conversions=int(row.get("conversions", 0) or 0),
                 revenue=float(row.get("revenue", 0) or 0),
                 cost=float(row.get("cost", 0) or 0),
+                profit_confirmed=float(row.get("profit_confirmed", 0) or 0),
             )
             results.append(metrics)
         else:
