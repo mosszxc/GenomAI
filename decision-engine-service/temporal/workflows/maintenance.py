@@ -25,6 +25,7 @@ with workflow.unsafe.imports_passed_through():
         reset_stale_buyer_states,
         expire_old_recommendations,
         mark_stuck_transcriptions_failed,
+        archive_failed_creatives,
         check_data_integrity,
         emit_maintenance_event,
         check_staleness,
@@ -41,6 +42,8 @@ class MaintenanceInput:
     recommendation_expiry_days: int = 7
     # Stuck transcription timeout in minutes
     stuck_transcription_timeout_minutes: int = 10
+    # Failed creative retention before archival in days
+    failed_creative_retention_days: int = 7
     # Run data integrity checks
     run_integrity_checks: bool = True
     # Run staleness detection (Inspiration System)
@@ -54,6 +57,7 @@ class MaintenanceResult:
     stale_buyers_reset: int
     recommendations_expired: int
     stuck_transcriptions_failed: int
+    failed_creatives_archived: int
     integrity_issues: List[str]
     completed_at: str
     # Staleness detection results
@@ -71,9 +75,10 @@ class MaintenanceWorkflow:
     1. Reset stale buyer states (stuck in awaiting_* for > 6 hours)
     2. Expire old recommendations
     3. Mark stuck transcriptions as failed
-    4. Run data integrity checks
-    5. Check system staleness (Inspiration System)
-    6. Emit maintenance event
+    4. Archive old failed creatives
+    5. Run data integrity checks
+    6. Check system staleness (Inspiration System)
+    7. Emit maintenance event
     """
 
     @workflow.run
@@ -90,6 +95,7 @@ class MaintenanceWorkflow:
             stale_buyers_reset=0,
             recommendations_expired=0,
             stuck_transcriptions_failed=0,
+            failed_creatives_archived=0,
             integrity_issues=[],
             completed_at="",
         )
@@ -139,7 +145,24 @@ class MaintenanceWorkflow:
             workflow.logger.error(f"Failed to mark stuck transcriptions: {e}")
             result.integrity_issues.append(f"Stuck transcription check failed: {e}")
 
-        # Step 4: Data integrity checks (optional)
+        # Step 4: Archive old failed creatives
+        try:
+            archived_count = await workflow.execute_activity(
+                archive_failed_creatives,
+                input.failed_creative_retention_days,
+                start_to_close_timeout=timedelta(seconds=60),
+                retry_policy=retry_policy,
+            )
+            result.failed_creatives_archived = archived_count
+            if archived_count > 0:
+                workflow.logger.info(f"Archived {archived_count} failed creatives")
+            else:
+                workflow.logger.info("No old failed creatives to archive")
+        except Exception as e:
+            workflow.logger.error(f"Failed to archive failed creatives: {e}")
+            result.integrity_issues.append(f"Failed creative archival failed: {e}")
+
+        # Step 5: Data integrity checks (optional)
         if input.run_integrity_checks:
             try:
                 issues = await workflow.execute_activity(
@@ -156,7 +179,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Integrity check failed: {e}")
                 result.integrity_issues.append(f"Integrity check error: {e}")
 
-        # Step 5: Staleness detection (Inspiration System)
+        # Step 6: Staleness detection (Inspiration System)
         if input.run_staleness_check:
             try:
                 staleness_result = await workflow.execute_activity(
@@ -184,7 +207,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Staleness check failed: {e}")
                 result.integrity_issues.append(f"Staleness check error: {e}")
 
-        # Step 6: Emit maintenance event
+        # Step 7: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
@@ -201,6 +224,7 @@ class MaintenanceWorkflow:
         workflow.logger.info(
             f"Maintenance complete: reset={result.stale_buyers_reset}, "
             f"expired={result.recommendations_expired}, stuck={result.stuck_transcriptions_failed}, "
+            f"archived={result.failed_creatives_archived}, "
             f"issues={len(result.integrity_issues)}, stale={result.is_stale}"
         )
 

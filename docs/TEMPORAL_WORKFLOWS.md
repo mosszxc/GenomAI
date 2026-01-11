@@ -164,8 +164,11 @@ class CreativePipelineWorkflow:
 Периодические задачи обслуживания:
 1. Reset stale buyer states (> 6h)
 2. Expire old recommendations (> 7 days)
-3. Data integrity checks
-4. Emit maintenance event
+3. Mark stuck transcriptions as failed (> 10 min)
+4. Archive old failed creatives (> 7 days)
+5. Data integrity checks
+6. Staleness detection (Inspiration System)
+7. Emit maintenance event
 
 **Replaces:** `H1uuOanSy627H4kg` Pipeline Health Monitor
 

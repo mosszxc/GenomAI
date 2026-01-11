@@ -79,8 +79,10 @@ from temporal.activities.maintenance import (
     reset_stale_buyer_states,
     expire_old_recommendations,
     mark_stuck_transcriptions_failed,
+    archive_failed_creatives,
     check_data_integrity,
     emit_maintenance_event,
+    check_staleness,
 )
 
 __all__ = [
@@ -149,6 +151,8 @@ __all__ = [
     "reset_stale_buyer_states",
     "expire_old_recommendations",
     "mark_stuck_transcriptions_failed",
+    "archive_failed_creatives",
     "check_data_integrity",
     "emit_maintenance_event",
+    "check_staleness",
 ]
