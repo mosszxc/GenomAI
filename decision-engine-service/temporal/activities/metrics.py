@@ -329,8 +329,8 @@ class EmitMetricsEventInput:
 
     event_type: str  # metrics.collected, snapshot.created, etc.
     entity_type: str  # tracker, snapshot, etc.
-    entity_id: str
     payload: dict
+    entity_id: Optional[str] = None  # Must be UUID or None (workflow_id is NOT UUID)
 
 
 @activity.defn
@@ -346,7 +346,7 @@ async def emit_metrics_event(input: EmitMetricsEventInput) -> bool:
     Returns:
         True if successful
     """
-    activity.logger.info(f"Emitting event: {input.event_type} for {input.entity_id}")
+    activity.logger.info(f"Emitting event: {input.event_type}")
 
     url = _get_supabase_url("event_log")
     headers = _get_supabase_headers(for_write=True)
@@ -354,10 +354,12 @@ async def emit_metrics_event(input: EmitMetricsEventInput) -> bool:
     payload = {
         "event_type": input.event_type,
         "entity_type": input.entity_type,
-        "entity_id": input.entity_id,
         "payload": input.payload,
         "occurred_at": datetime.now().isoformat(),
     }
+    # Only add entity_id if provided (must be valid UUID, workflow_id is NOT UUID)
+    if input.entity_id:
+        payload["entity_id"] = input.entity_id
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.post(url, headers=headers, json=payload)

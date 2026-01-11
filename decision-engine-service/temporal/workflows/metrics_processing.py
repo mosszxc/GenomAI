@@ -173,8 +173,8 @@ class MetricsProcessingWorkflow:
                 EmitMetricsEventInput(
                     event_type="metrics.processing.completed",
                     entity_type="processor",
-                    entity_id=workflow.info().workflow_id,
                     payload={
+                        "workflow_id": workflow.info().workflow_id,
                         "snapshots_processed": len(snapshot_ids),
                         "outcomes_created": outcomes_created,
                         "outcomes_failed": outcomes_failed,

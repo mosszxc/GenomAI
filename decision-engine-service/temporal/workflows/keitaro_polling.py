@@ -234,8 +234,8 @@ class KeitaroPollerWorkflow:
                 EmitMetricsEventInput(
                     event_type="keitaro.polling.completed",
                     entity_type="poller",
-                    entity_id=workflow.info().workflow_id,
                     payload={
+                        "workflow_id": workflow.info().workflow_id,
                         "interval": input.interval,
                         "trackers_found": len(tracker_ids),
                         "metrics_collected": metrics_collected,
