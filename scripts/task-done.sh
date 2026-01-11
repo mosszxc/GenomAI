@@ -164,6 +164,29 @@ if [ "$SKIP_VERIFY" != "true" ]; then
     if [ -n "$QA_NOTE" ]; then
         echo "✓ qa-notes found: $(basename "$QA_NOTE")"
 
+        # Check for PRODUCTION TEST PASSED (A006 enforcement)
+        if grep -qi "production test.*passed\|test.*passed\|✅.*test\|PASSED" "$QA_NOTE"; then
+            echo "✓ Production test result found"
+        else
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║  ⛔ BLOCKED: NO PRODUCTION TEST RESULT IN qa-notes           ║"
+            echo "║                                                              ║"
+            echo "║  A006: Issue closed BEFORE test = CRITICAL violation         ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo ""
+            echo "qa-notes must contain production test result:"
+            echo ""
+            echo "  ## Test Results"
+            echo "  Production test: PASSED"
+            echo "    Command: <что выполняли>"
+            echo "    Result: <что получили>"
+            echo ""
+            echo "After testing, add result to: $(basename "$QA_NOTE")"
+            echo ""
+            exit 1
+        fi
+
         # Check for lesson
         if grep -q "## Lesson" "$QA_NOTE" && ! grep -q "<!-- Заполни если" "$QA_NOTE"; then
             echo ""
