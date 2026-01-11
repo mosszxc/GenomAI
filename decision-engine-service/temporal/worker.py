@@ -197,6 +197,13 @@ from temporal.activities.agent_supervisor import (
     get_supervisor_stats,
 )
 
+# Import activities - Module Extraction (Modular Creative System, Issue #376)
+from temporal.activities.module_extraction import (
+    extract_modules_from_decomposition,
+    get_creative_metrics,
+    upsert_module,
+)
+
 
 # Configure logging
 logging.basicConfig(
@@ -251,6 +258,10 @@ async def run_worker():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
+            # Module Extraction (Modular Creative System)
+            extract_modules_from_decomposition,
+            get_creative_metrics,
+            upsert_module,
         ],
     )
 
@@ -309,6 +320,10 @@ async def run_all_workers():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
+            # Module Extraction (Modular Creative System)
+            extract_modules_from_decomposition,
+            get_creative_metrics,
+            upsert_module,
         ],
     )
 
