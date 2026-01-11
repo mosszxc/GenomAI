@@ -4,10 +4,14 @@ Recommendation Service
 Generates recommendations for buyers: which components to use in creatives.
 Uses Thompson Sampling for exploration/exploitation balance.
 
+Includes Cross-Segment Transfer (Inspiration System):
+- 10% of explorations try to transfer successful components from other segments
+
 Issue: #124
 """
 
 import os
+import random
 import httpx
 from typing import Optional
 from dataclasses import dataclass
@@ -19,10 +23,14 @@ from src.services.exploration import (
     MIN_SAMPLES_FOR_CONFIDENCE,
 )
 from src.services.component_learning import TRACKABLE_COMPONENTS
+from src.services.cross_transfer import find_transfer_candidates, execute_cross_transfer
 from src.utils.errors import SupabaseError
 
 
 SCHEMA = "genomai"
+
+# Cross-segment transfer rate: 10% of explorations should try cross-transfer
+CROSS_TRANSFER_RATE = 0.10
 
 # Component descriptions for human-readable recommendations
 COMPONENT_DESCRIPTIONS = {
@@ -239,14 +247,67 @@ async def generate_exploitation_recommendation(
     return components
 
 
+async def generate_cross_transfer_recommendation(
+    avatar_id: Optional[str] = None, geo: Optional[str] = None
+) -> tuple[list[RecommendedComponent], bool]:
+    """
+    Try to generate recommendation using cross-segment transfer.
+
+    Finds successful components from OTHER segments and injects them.
+
+    Returns: (components, success)
+    """
+    try:
+        # Find transfer candidates
+        candidates = await find_transfer_candidates(
+            target_avatar_id=avatar_id,
+            target_geo=geo,
+            limit=6,  # Top 6 components
+        )
+
+        if not candidates:
+            return [], False
+
+        components = []
+        for candidate in candidates:
+            # Inject into target segment
+            await execute_cross_transfer(candidate)
+
+            components.append(
+                RecommendedComponent(
+                    component_type=candidate.component_type,
+                    component_value=candidate.component_value,
+                    confidence=candidate.transfer_confidence,
+                    sample_size=0,  # Newly injected
+                    is_exploration=True,
+                )
+            )
+
+        return components, True
+    except Exception:
+        # On error, return empty to fallback to regular exploration
+        return [], False
+
+
 async def generate_exploration_recommendation(
     avatar_id: Optional[str] = None, geo: Optional[str] = None
 ) -> tuple[list[RecommendedComponent], str]:
     """
     Generate exploration recommendation using Thompson Sampling.
 
+    10% of explorations try cross-segment transfer first.
+
     Returns: (components, exploration_type)
     """
+    # Try cross-segment transfer first (10% of explorations)
+    if random.random() < CROSS_TRANSFER_RATE:
+        transfer_components, success = await generate_cross_transfer_recommendation(
+            avatar_id, geo
+        )
+        if success and transfer_components:
+            return transfer_components, "cross_transfer"
+
+    # Regular Thompson Sampling exploration
     components = []
     exploration_types = []
 

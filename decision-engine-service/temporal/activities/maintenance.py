@@ -3,12 +3,18 @@ Maintenance Activities
 
 Temporal activities for periodic maintenance tasks.
 Replaces n8n workflow H1uuOanSy627H4kg (Pipeline Health Monitor).
+
+Includes:
+- Stale buyer state reset
+- Recommendation expiry
+- Data integrity checks
+- Staleness detection (Inspiration System)
 """
 
 import os
 import uuid
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -348,3 +354,50 @@ async def emit_maintenance_event(
         data = response.json()
 
         return data[0] if data else event
+
+
+@activity.defn
+async def check_staleness(
+    avatar_id: Optional[str] = None,
+    geo: Optional[str] = None,
+) -> dict:
+    """
+    Check system staleness and save snapshot.
+
+    Part of Inspiration System - detects when system needs external inspiration.
+
+    Args:
+        avatar_id: Optional avatar filter (None = global)
+        geo: Optional geo filter
+
+    Returns:
+        dict with staleness metrics and is_stale flag
+    """
+    # Import here to avoid circular imports
+    from src.services.staleness_detector import check_staleness_and_act
+
+    activity.logger.info(f"Checking staleness for avatar={avatar_id}, geo={geo}")
+
+    try:
+        result = await check_staleness_and_act(avatar_id, geo)
+
+        if result["is_stale"]:
+            activity.logger.warning(
+                f"System is STALE! Score: {result['metrics']['staleness_score']:.2f}, "
+                f"recommended action: {result['recommended_action']}"
+            )
+        else:
+            activity.logger.info(
+                f"System is healthy. Staleness score: {result['metrics']['staleness_score']:.2f}"
+            )
+
+        return result
+    except Exception as e:
+        activity.logger.error(f"Staleness check failed: {e}")
+        # Return neutral result on error
+        return {
+            "metrics": {},
+            "is_stale": False,
+            "recommended_action": None,
+            "error": str(e),
+        }
