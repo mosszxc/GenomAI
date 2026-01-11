@@ -137,14 +137,18 @@ async def transcribe_via_n8n(
     activity.logger.info(f"Creating transcript record for creative {creative_id}")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # Insert transcript record
+        # Extract Google Drive file ID for VideoID field
+        video_id = extract_gdrive_file_id(video_url)
+
+        # Insert transcript record with VideoID for pg_cron worker
         insert_resp = await client.post(
             f"{supabase_url}/rest/v1/transcripts",
             headers=headers,
             json={
                 "creative_id": creative_id,
-                "TranscribeStatus": "queued",
-                "Status": "processing",
+                "VideoID": video_id,  # Google Drive file ID for Convert stage
+                "ConvertStatus": "queued",  # Triggers pg_cron worker
+                "Status": "queued",
             },
         )
 
@@ -175,26 +179,13 @@ async def transcribe_via_n8n(
 
         activity.logger.info(f"Created transcript record id={transcript_db_id}")
 
-    # Step 2: Call n8n webhook
-    activity.logger.info(f"Calling n8n webhook for video_url={video_url}")
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        n8n_resp = await client.post(
-            N8N_WEBHOOK_URL,
-            json={
-                "url": video_url,
-                "id": str(transcript_db_id),
-            },
-        )
-
-        if n8n_resp.status_code not in (200, 201, 202):
-            activity.logger.warning(
-                f"n8n webhook returned {n8n_resp.status_code}: {n8n_resp.text}"
-            )
-            # Continue anyway - n8n might process async
-
-    # Step 3: Poll transcripts table for result
-    activity.logger.info(f"Polling transcript {transcript_db_id} for completion")
+    # Step 2: Poll transcripts table for result
+    # pg_cron worker will pick up the record and call webhooks:
+    # ConvertStatus=queued → MP3MP4 webhook → AudioID
+    # TranscribeStatus=queued → AudioTranscribe webhook → transcript_text
+    activity.logger.info(
+        f"Waiting for pg_cron worker to process transcript {transcript_db_id}"
+    )
 
     elapsed = 0
 
