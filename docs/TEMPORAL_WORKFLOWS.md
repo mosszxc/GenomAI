@@ -39,9 +39,11 @@ GenomAI использует Temporal для оркестрации бизнес
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │            Creative Pipeline Worker                   │   │
 │  │  Queue: creative-pipeline                            │   │
-│  │  Workflows: CreativePipelineWorkflow                 │   │
+│  │  Workflows: CreativePipelineWorkflow,               │   │
+│  │             ModularHypothesisWorkflow               │   │
 │  │  Activities: transcription, decomposition,           │   │
-│  │              hypothesis, telegram, decision          │   │
+│  │              hypothesis, telegram, decision,         │   │
+│  │              modular_generation                      │   │
 │  └─────────────────────────────────────────────────────┘   │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │                Metrics Worker                         │   │
@@ -98,6 +100,39 @@ class CreativePipelineWorkflow:
 - `creative_id`: UUID креатива
 - `video_url`: URL видео для транскрипции
 - `buyer_id`: Optional buyer ID
+
+### ModularHypothesisWorkflow
+
+**Queue:** `creative-pipeline`
+**Trigger:** Programmatic (from CreativePipelineWorkflow or manual)
+
+Генерация гипотез из комбинаций модулей (Modular Creative System):
+1. Проверка готовности модулей (check_modular_readiness)
+2. Выбор комбинаций hook → promise → proof (select_module_combinations)
+3. LLM синтез текста (synthesize_hypothesis_text)
+4. Сохранение с review_status=pending_review (save_modular_hypothesis)
+
+```python
+@workflow.defn
+class ModularHypothesisWorkflow:
+    @workflow.run
+    async def run(self, input: ModularHypothesisInput) -> ModularHypothesisResult:
+        # Check readiness → Select combinations → LLM synthesis → Save
+```
+
+**Input:**
+- `idea_id`: UUID idea
+- `decision_id`: UUID decision
+- `count`: Количество гипотез (default: 3)
+- `vertical`: Optional фильтр по вертикали
+- `geo`: Optional фильтр по GEO
+- `buyer_id`: Optional buyer ID
+
+**Requirements:**
+- hooks >= 3 (status=active)
+- promises >= 3 (status=active)
+- proofs >= 2 (status=active)
+- explored modules >= 2 (sample_size >= 5)
 
 ### KeitaroPollerWorkflow
 
