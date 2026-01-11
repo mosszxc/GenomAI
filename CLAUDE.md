@@ -122,7 +122,18 @@ Always push after commit. No exceptions.
 
 **Issue workflow:** При работе над issue коммит делается автоматически без вопросов. Не спрашивать "делать коммит?".
 
-**Перед push в main:** Проверить `mcp__render__list_deploys` — если есть активный деплой, ждать завершения (см. Multi-Agent Coordination).
+### Multi-Agent Deploy Coordination
+Несколько агентов могут работать параллельно. Правила:
+
+```
+1. Push в feature ветку     — без проверки деплоя
+2. Создать PR               — без проверки деплоя
+3. Проверить gh pr checks   — ждать пока пройдут
+4. Проверить list_deploys   — если status != "live", ждать
+5. gh pr merge              — только после п.4
+```
+
+⚠️ **Merge блокируется активным деплоем.** Push в ветки — свободно.
 
 ## TodoWrite Rules
 При создании todo списка **ВСЕГДА** добавлять последним пунктом:
@@ -200,19 +211,11 @@ FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
 ## Render Deploy
 Free tier = **3 минуты** на deploy. После push: один `sleep 180`, не несколько коротких.
 
-### Multi-Agent Coordination (CRITICAL)
-**Несколько агентов работают параллельно.** Перед деплоем:
-
+### Deploy Queue (serviceId: srv-d54vf524d50c739kc2m0)
 ```
-1. mcp__render__list_deploys(serviceId: "srv-d54vf524d50c739kc2m0")
-2. Если status = "build_in_progress" или "update_in_progress" → ЖДАТЬ
-3. Только когда status = "live" → push
-4. sleep 180
+mcp__render__list_deploys → status != "live" → ЖДАТЬ перед merge
 ```
-
-**Скрипт:** `./scripts/safe-deploy.sh` (требует RENDER_API_KEY)
-
-**Правило:** Никогда не пушить в main если есть активный деплой другого агента.
+См. секцию "Multi-Agent Deploy Coordination" в Git.
 
 ## Temporal
 Документация: `docs/TEMPORAL_WORKFLOWS.md` | `docs/TEMPORAL_RUNBOOK.md`
