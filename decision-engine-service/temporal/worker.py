@@ -125,6 +125,15 @@ from temporal.activities.learning import (
     emit_learning_event,
 )
 
+# Import activities - Module Learning (Modular Creative System)
+from temporal.activities.module_learning import (
+    get_modules_for_creative,
+    update_module_stats,
+    update_compatibility_stats,
+    process_module_learning,
+    process_module_learning_batch,
+)
+
 # Import activities - Recommendation
 from temporal.activities.recommendation import (
     get_active_buyers,
@@ -343,6 +352,12 @@ async def run_all_workers():
             process_single_outcome,
             check_death_conditions,
             emit_learning_event,
+            # Module learning activities (Modular Creative System)
+            get_modules_for_creative,
+            update_module_stats,
+            update_compatibility_stats,
+            process_module_learning,
+            process_module_learning_batch,
             # Recommendation activities
             get_active_buyers,
             generate_recommendation_for_buyer,
