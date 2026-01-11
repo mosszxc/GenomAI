@@ -223,6 +223,16 @@ async def transcribe_via_n8n(
 
                     if status == "finish":
                         activity.logger.info("Transcription completed via n8n")
+
+                        # Update Status to finish to unblock pg_cron queue
+                        # n8n webhook only sets TranscribeStatus, not Status
+                        await client.patch(
+                            f"{supabase_url}/rest/v1/transcripts",
+                            headers=headers,
+                            params={"id": f"eq.{transcript_db_id}"},
+                            json={"Status": "finish"},
+                        )
+
                         return {
                             "transcript_id": record.get(
                                 "assemblyai_transcript_id", str(transcript_db_id)
