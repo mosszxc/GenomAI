@@ -4,10 +4,12 @@ Genome Heatmap Service
 Generates component performance matrix (heatmap) showing win rates
 by component × geography.
 
-Issue: #293
+Issue: #293 - base heatmap
+Issue: #296 - segmented analysis (--by geo/avatar/week)
 """
 
 import os
+from datetime import datetime, timedelta
 from typing import Optional
 import httpx
 
@@ -254,3 +256,381 @@ async def get_available_component_types() -> list[str]:
     # Get unique component types
     types = list(set(row.get("component_type") for row in data if row.get("component_type")))
     return sorted(types)
+
+
+async def get_segmented_analysis(
+    component_value: str,
+    segment_by: str = "geo",
+    component_type: str = "emotion_primary",
+) -> dict:
+    """
+    Get segmented analysis for a specific component value.
+
+    Args:
+        component_value: The component to analyze (e.g., "fear", "hope")
+        segment_by: Segment dimension - "geo", "avatar", or "week"
+        component_type: Type of component (default: emotion_primary)
+
+    Returns:
+        {
+            "component_value": "fear",
+            "segment_by": "geo",
+            "segments": [
+                {"segment": "US", "win_rate": 0.15, "sample_size": 10},
+                {"segment": "EU", "win_rate": 0.22, "sample_size": 5},
+            ],
+            "insight": "fear works best in EU"
+        }
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    segments = []
+
+    if segment_by == "geo":
+        segments = await _get_segments_by_geo(
+            rest_url, headers, component_value, component_type
+        )
+    elif segment_by == "avatar":
+        segments = await _get_segments_by_avatar(
+            rest_url, headers, component_value, component_type
+        )
+    elif segment_by == "week":
+        segments = await _get_segments_by_week(
+            rest_url, headers, component_value, component_type
+        )
+
+    # Generate insight
+    insight = _generate_insight(component_value, segment_by, segments)
+
+    return {
+        "component_value": component_value,
+        "component_type": component_type,
+        "segment_by": segment_by,
+        "segments": segments,
+        "insight": insight,
+    }
+
+
+async def _get_segments_by_geo(
+    rest_url: str, headers: dict, component_value: str, component_type: str
+) -> list[dict]:
+    """Get segments by geography from component_learnings."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{rest_url}/component_learnings"
+            f"?component_type=eq.{component_type}"
+            f"&component_value=eq.{component_value}"
+            f"&avatar_id=is.null"
+            f"&select=geo,win_rate,sample_size"
+            f"&order=sample_size.desc"
+            f"&limit=10",
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    segments = []
+    for row in data:
+        geo = row.get("geo") or "GLOBAL"
+        win_rate = row.get("win_rate")
+        sample_size = row.get("sample_size") or 0
+
+        if win_rate is not None:
+            try:
+                win_rate = float(win_rate)
+            except (TypeError, ValueError):
+                win_rate = None
+
+        segments.append({
+            "segment": geo,
+            "win_rate": win_rate,
+            "sample_size": sample_size,
+        })
+
+    return segments
+
+
+async def _get_segments_by_avatar(
+    rest_url: str, headers: dict, component_value: str, component_type: str
+) -> list[dict]:
+    """Get segments by avatar from component_learnings + avatars."""
+    async with httpx.AsyncClient() as client:
+        # Get component learnings with avatar_id
+        response = await client.get(
+            f"{rest_url}/component_learnings"
+            f"?component_type=eq.{component_type}"
+            f"&component_value=eq.{component_value}"
+            f"&avatar_id=not.is.null"
+            f"&select=avatar_id,win_rate,sample_size,geo"
+            f"&order=sample_size.desc"
+            f"&limit=10",
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Get avatar names
+        avatar_ids = list(set(row.get("avatar_id") for row in data if row.get("avatar_id")))
+        avatar_names = {}
+
+        if avatar_ids:
+            avatar_list = ",".join(f'"{aid}"' for aid in avatar_ids)
+            avatars_resp = await client.get(
+                f"{rest_url}/avatars"
+                f"?id=in.({avatar_list})"
+                f"&select=id,name",
+                headers=headers,
+            )
+            if avatars_resp.status_code == 200:
+                avatars = avatars_resp.json()
+                avatar_names = {a["id"]: a.get("name", "Unknown") for a in avatars}
+
+    segments = []
+    for row in data:
+        avatar_id = row.get("avatar_id")
+        avatar_name = avatar_names.get(avatar_id, avatar_id[:8] if avatar_id else "Unknown")
+        win_rate = row.get("win_rate")
+        sample_size = row.get("sample_size") or 0
+
+        if win_rate is not None:
+            try:
+                win_rate = float(win_rate)
+            except (TypeError, ValueError):
+                win_rate = None
+
+        segments.append({
+            "segment": avatar_name,
+            "win_rate": win_rate,
+            "sample_size": sample_size,
+        })
+
+    return segments
+
+
+async def _get_segments_by_week(
+    rest_url: str, headers: dict, component_value: str, component_type: str
+) -> list[dict]:
+    """
+    Get segments by week.
+
+    Aggregates from decomposed_creatives + creatives since
+    component_learnings doesn't have time dimension.
+    """
+    # Calculate date range (last 4 weeks)
+    now = datetime.utcnow()
+    weeks_ago = now - timedelta(weeks=4)
+
+    async with httpx.AsyncClient() as client:
+        # Use RPC for complex aggregation
+        # Fall back to simple query joining tables
+        response = await client.get(
+            f"{rest_url}/rpc/get_component_weekly_stats"
+            f"?component_type={component_type}"
+            f"&component_value={component_value}"
+            f"&weeks=4",
+            headers=headers,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return [
+                {
+                    "segment": row.get("week_label", "Unknown"),
+                    "win_rate": float(row["win_rate"]) if row.get("win_rate") else None,
+                    "sample_size": row.get("sample_size", 0),
+                }
+                for row in data
+            ]
+
+        # Fallback: aggregate client-side if RPC doesn't exist
+        # Get creatives with test results in date range
+        response = await client.get(
+            f"{rest_url}/creatives"
+            f"?test_result=not.is.null"
+            f"&concluded_at=gte.{weeks_ago.isoformat()}"
+            f"&select=id,test_result,concluded_at,idea_id",
+            headers=headers,
+        )
+        if response.status_code != 200:
+            return []
+
+        creatives = response.json()
+        creative_ids = [c["id"] for c in creatives]
+
+        if not creative_ids:
+            return []
+
+        # Get decomposed components for these creatives
+        creative_list = ",".join(f'"{cid}"' for cid in creative_ids[:50])  # Limit
+        response = await client.get(
+            f"{rest_url}/decomposed_creatives"
+            f"?creative_id=in.({creative_list})"
+            f"&select=creative_id,payload",
+            headers=headers,
+        )
+        if response.status_code != 200:
+            return []
+
+        decomposed = response.json()
+
+    # Build creative_id -> test_result, concluded_at mapping
+    creative_map = {
+        c["id"]: {
+            "result": c["test_result"],
+            "week": _get_week_label(c.get("concluded_at")),
+        }
+        for c in creatives
+    }
+
+    # Aggregate by week
+    week_stats = {}
+    for row in decomposed:
+        creative_id = row.get("creative_id")
+        payload = row.get("payload") or {}
+
+        # Check if this creative has the component
+        component_val = payload.get(component_type)
+        if component_val != component_value:
+            continue
+
+        info = creative_map.get(creative_id)
+        if not info:
+            continue
+
+        week = info["week"]
+        result = info["result"]
+
+        if week not in week_stats:
+            week_stats[week] = {"wins": 0, "total": 0}
+
+        week_stats[week]["total"] += 1
+        if result == "win":
+            week_stats[week]["wins"] += 1
+
+    # Convert to segments
+    segments = []
+    for week in sorted(week_stats.keys(), reverse=True):
+        stats = week_stats[week]
+        win_rate = stats["wins"] / stats["total"] if stats["total"] > 0 else None
+        segments.append({
+            "segment": week,
+            "win_rate": win_rate,
+            "sample_size": stats["total"],
+        })
+
+    return segments[:4]  # Last 4 weeks
+
+
+def _get_week_label(concluded_at: Optional[str]) -> str:
+    """Convert timestamp to week label."""
+    if not concluded_at:
+        return "Unknown"
+
+    try:
+        dt = datetime.fromisoformat(concluded_at.replace("Z", "+00:00"))
+        # ISO week format: "W01", "W02", etc.
+        return f"W{dt.isocalendar()[1]:02d}"
+    except (TypeError, ValueError):
+        return "Unknown"
+
+
+def _generate_insight(
+    component_value: str, segment_by: str, segments: list[dict]
+) -> str:
+    """Generate insight text based on segment data."""
+    if not segments:
+        return f"No data for {component_value}"
+
+    # Filter segments with valid data
+    valid_segments = [
+        s for s in segments
+        if s.get("win_rate") is not None and s.get("sample_size", 0) >= MIN_SAMPLE_SIZE
+    ]
+
+    if not valid_segments:
+        return f"Insufficient data for {component_value} (need ≥{MIN_SAMPLE_SIZE} samples)"
+
+    # Find best performing segment
+    best = max(valid_segments, key=lambda s: s["win_rate"])
+    worst = min(valid_segments, key=lambda s: s["win_rate"])
+
+    segment_type = {
+        "geo": "geography",
+        "avatar": "avatar",
+        "week": "time period",
+    }.get(segment_by, "segment")
+
+    if best["win_rate"] == worst["win_rate"]:
+        return f"{component_value} performs consistently across {segment_type}s"
+
+    return f"{component_value} works best in {best['segment']} ({best['win_rate']:.0%})"
+
+
+def format_segmented_telegram(data: dict) -> str:
+    """
+    Format segmented analysis for Telegram display.
+
+    Input format:
+        {
+            "component_value": "fear",
+            "segment_by": "geo",
+            "segments": [...],
+            "insight": "..."
+        }
+    """
+    component_value = data.get("component_value", "unknown")
+    segment_by = data.get("segment_by", "geo")
+    segments = data.get("segments", [])
+    insight = data.get("insight", "")
+
+    # Segment type emoji
+    emoji_map = {
+        "geo": "🌍",
+        "avatar": "👤",
+        "week": "📅",
+    }
+    header_emoji = emoji_map.get(segment_by, "📊")
+
+    # Segment type label
+    label_map = {
+        "geo": "Geography",
+        "avatar": "Avatar",
+        "week": "Week",
+    }
+    header_label = label_map.get(segment_by, segment_by.title())
+
+    if not segments:
+        return (
+            f"{header_emoji} <b>{component_value}</b> by {header_label}\n\n"
+            f"<i>No data available</i>"
+        )
+
+    lines = [
+        f"{header_emoji} <b>{component_value}</b> by {header_label}",
+        "",
+    ]
+
+    for seg in segments:
+        segment_name = seg.get("segment", "Unknown")
+        win_rate = seg.get("win_rate")
+        sample_size = seg.get("sample_size", 0)
+
+        # Format win rate
+        if win_rate is None or sample_size < MIN_SAMPLE_SIZE:
+            rate_str = "N/A"
+            emoji = EMOJI_NO_DATA
+        else:
+            rate_str = f"{win_rate:.0%}"
+            emoji = get_win_rate_emoji(win_rate, sample_size)
+
+        # Pad segment name
+        seg_display = segment_name[:12].ljust(12)
+
+        lines.append(f"<code>{seg_display}</code> {rate_str} (n={sample_size}) {emoji}")
+
+    # Add insight
+    if insight:
+        lines.extend(["", f"<i>💡 {insight}</i>"])
+
+    return "\n".join(lines)
