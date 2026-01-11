@@ -30,6 +30,10 @@ with workflow.unsafe.imports_passed_through():
         emit_maintenance_event,
         check_staleness,
     )
+    from temporal.activities.hygiene_cleanup import (
+        retry_failed_hypotheses,
+        cleanup_exhausted_hypotheses,
+    )
 
 
 @dataclass
@@ -48,6 +52,10 @@ class MaintenanceInput:
     run_integrity_checks: bool = True
     # Run staleness detection (Inspiration System)
     run_staleness_check: bool = True
+    # Retry failed hypotheses (Issue #313)
+    run_hypothesis_retry: bool = True
+    # Max retry attempts for hypotheses
+    hypothesis_max_retries: int = 3
 
 
 @dataclass
@@ -64,6 +72,10 @@ class MaintenanceResult:
     staleness_score: Optional[float] = None
     is_stale: Optional[bool] = None
     staleness_action: Optional[str] = None
+    # Hypothesis retry results (Issue #313)
+    hypotheses_retried: int = 0
+    hypotheses_retry_succeeded: int = 0
+    hypotheses_abandoned: int = 0
 
 
 @workflow.defn
@@ -207,7 +219,42 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Staleness check failed: {e}")
                 result.integrity_issues.append(f"Staleness check error: {e}")
 
-        # Step 7: Emit maintenance event
+        # Step 7: Retry failed hypotheses (Issue #313)
+        if input.run_hypothesis_retry:
+            try:
+                retry_stats = await workflow.execute_activity(
+                    retry_failed_hypotheses,
+                    input.hypothesis_max_retries,
+                    start_to_close_timeout=timedelta(seconds=120),
+                    retry_policy=retry_policy,
+                )
+                result.hypotheses_retried = retry_stats.get("retried", 0)
+                result.hypotheses_retry_succeeded = retry_stats.get("succeeded", 0)
+
+                if result.hypotheses_retried > 0:
+                    workflow.logger.info(
+                        f"Hypothesis retry: {result.hypotheses_retry_succeeded}/{result.hypotheses_retried} succeeded"
+                    )
+            except Exception as e:
+                workflow.logger.error(f"Hypothesis retry failed: {e}")
+                result.integrity_issues.append(f"Hypothesis retry error: {e}")
+
+            # Cleanup exhausted hypotheses
+            try:
+                abandoned_count = await workflow.execute_activity(
+                    cleanup_exhausted_hypotheses,
+                    7,  # retention_days
+                    start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=retry_policy,
+                )
+                result.hypotheses_abandoned = abandoned_count
+                if abandoned_count > 0:
+                    workflow.logger.info(f"Marked {abandoned_count} exhausted hypotheses as abandoned")
+            except Exception as e:
+                workflow.logger.error(f"Hypothesis cleanup failed: {e}")
+                result.integrity_issues.append(f"Hypothesis cleanup error: {e}")
+
+        # Step 8: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
@@ -225,7 +272,8 @@ class MaintenanceWorkflow:
             f"Maintenance complete: reset={result.stale_buyers_reset}, "
             f"expired={result.recommendations_expired}, stuck={result.stuck_transcriptions_failed}, "
             f"archived={result.failed_creatives_archived}, "
-            f"issues={len(result.integrity_issues)}, stale={result.is_stale}"
+            f"issues={len(result.integrity_issues)}, stale={result.is_stale}, "
+            f"hypothesis_retried={result.hypotheses_retried}"
         )
 
         return result

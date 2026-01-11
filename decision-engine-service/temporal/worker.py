@@ -143,6 +143,12 @@ from temporal.activities.maintenance import (
     check_staleness,
 )
 
+# Import activities - Hygiene Cleanup (Issue #313)
+from temporal.activities.hygiene_cleanup import (
+    retry_failed_hypotheses,
+    cleanup_exhausted_hypotheses,
+)
+
 # Import activities - Knowledge Extraction
 from temporal.activities.knowledge_extraction import (
     extract_knowledge_from_transcript,
@@ -318,6 +324,9 @@ async def run_all_workers():
             check_data_integrity,
             emit_maintenance_event,
             check_staleness,
+            # Hygiene Cleanup activities (Issue #313)
+            retry_failed_hypotheses,
+            cleanup_exhausted_hypotheses,
         ],
     )
 
