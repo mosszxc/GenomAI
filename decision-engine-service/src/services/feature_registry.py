@@ -4,7 +4,7 @@ Feature Registry Service
 Manages experimental ML features with lifecycle: shadow → active → deprecated.
 Provides governance rules for feature promotion based on sample size and correlation.
 
-Issue: #303
+Issues: #303, #306
 """
 
 import os
@@ -14,6 +14,14 @@ from datetime import datetime, timezone
 import httpx
 
 from src.utils.errors import SupabaseError
+from src.services.statistical_validation import (
+    validate_sample_size,
+    validate_feature_significance,
+    check_correlation_stability,
+    detect_simpsons_paradox,
+    full_validation_for_promotion,
+    STATISTICAL_RULES,
+)
 
 
 SCHEMA = "genomai"
@@ -189,10 +197,12 @@ async def can_promote(name: str) -> tuple[bool, str]:
     """
     Check if feature can be promoted from shadow to active.
 
-    Validation rules:
+    Basic validation rules:
     1. Sample size >= min_sample_size
     2. Absolute correlation >= min_abs_correlation
     3. Active features < max_active_features
+
+    For full statistical validation, use can_promote_with_statistics().
 
     Args:
         name: Feature name
@@ -221,6 +231,45 @@ async def can_promote(name: str) -> tuple[bool, str]:
         return False, f"Already {active_count} active features (max {FEATURE_RULES['max_active_features']})"
 
     return True, "OK"
+
+
+async def can_promote_with_statistics(
+    name: str,
+    p_value: Optional[float] = None,
+    correlation_history: Optional[list[float]] = None,
+    segment_correlations: Optional[dict[str, Optional[float]]] = None,
+) -> tuple[bool, list[str]]:
+    """
+    Check if feature can be promoted with full statistical validation.
+
+    Runs all basic checks plus:
+    1. Bonferroni-adjusted significance (if p_value provided)
+    2. Correlation stability over time (if history provided)
+    3. Simpson's paradox detection (if segment data provided)
+
+    Args:
+        name: Feature name
+        p_value: P-value from correlation test
+        correlation_history: Rolling correlation values over time
+        segment_correlations: Correlations by segment (geo, vertical, etc.)
+
+    Returns:
+        Tuple of (can_promote, list_of_errors)
+    """
+    # Run basic checks first
+    basic_ok, basic_reason = await can_promote(name)
+    if not basic_ok:
+        return False, [basic_reason]
+
+    # Run full statistical validation
+    validation = await full_validation_for_promotion(
+        feature_name=name,
+        p_value=p_value,
+        correlation_history=correlation_history,
+        segment_correlations=segment_correlations,
+    )
+
+    return validation.can_promote, validation.errors
 
 
 async def promote_feature(name: str) -> FeatureResult:
