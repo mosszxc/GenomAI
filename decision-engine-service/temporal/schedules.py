@@ -125,8 +125,8 @@ SCHEDULES = {
             )
         ],
         "task_queue": settings.temporal.TASK_QUEUE_AGENT_SUPERVISOR,
-        "interval": timedelta(minutes=5),
-        "description": "Agent supervisor: polls issues, assigns tasks (every 5 min)",
+        "interval": timedelta(hours=2),
+        "description": "Agent supervisor: polls issues, assigns tasks (every 2 hours)",
     },
 }
 

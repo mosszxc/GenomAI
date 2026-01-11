@@ -20,7 +20,7 @@ GenomAI использует Temporal для оркестрации бизнес
 │  │  • learning-loop (1 hour)                           │   │
 │  │  • daily-recommendations (09:00 UTC)                │   │
 │  │  • maintenance (6 hours)                            │   │
-│  │  • agent-supervisor (5 min)                         │   │
+│  │  • agent-supervisor (2 hours)                       │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                           │                                  │
 │                           ▼                                  │
@@ -374,7 +374,7 @@ Multi-agent task distribution supervisor:
 | `daily-recommendations` | DailyRecommendationWorkflow | 09:00 UTC | Generate daily recommendations |
 | `maintenance` | MaintenanceWorkflow | 6 hours | Cleanup and integrity checks |
 | `health-check` | HealthCheckWorkflow | 3 hours | Health monitoring + alerts |
-| `agent-supervisor` | AgentSupervisorWorkflow | 5 min | Multi-agent task distribution |
+| `agent-supervisor` | AgentSupervisorWorkflow | 2 hours | Multi-agent task distribution |
 
 ### Schedule Management
 
