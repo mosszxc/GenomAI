@@ -42,10 +42,23 @@
 | Table | Purpose | Mutable | Writer |
 |-------|---------|---------|--------|
 | `creatives` | Входящие креативы | Yes (status) | buyer_creative, transcription |
-| `transcripts` | Транскрипты видео | No (append-only) | transcription |
+| `transcripts` | Транскрипты видео | No (append-only) | CreativePipelineWorkflow |
 | `decomposed_creatives` | LLM-разбор | No (append-only) | decomposition |
 | `ideas` | Канонические идеи | Yes (death_state) | idea_registry, learning |
 | `decisions` | Решения DE | No (append-only) | Decision Engine API |
+
+#### transcripts (Issue #370)
+```
+PK: id (bigint, legacy)
+UNIQUE: (creative_id, version)
+Columns:
+  creative_id               uuid      -- Reference to creative
+  version                   int       -- Version number (starts at 1)
+  transcript_text           text      -- Full transcript from AssemblyAI
+  assemblyai_transcript_id  text      -- AssemblyAI ID for audit trail
+  created_at                timestamp
+```
+**Note:** Immutable table - UPDATE forbidden by trigger. New versions create new rows.
 
 #### decisions (constraints)
 ```
