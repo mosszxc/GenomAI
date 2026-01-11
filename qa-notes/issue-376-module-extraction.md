@@ -50,6 +50,29 @@ tests/unit/test_module_extraction.py::TestModuleFieldsDefinition (4 tests) - PAS
 - critical tests (hashing): PASSED
 - all unit tests: PASSED
 
+## Production Test
+
+```
+Command: python scripts/test_module_extraction.py
+Result: PASSED
+
+[1/5] Finding test creative...
+  Using creative: c7818783-5feb-4c68-839f-dfbc569d960e
+
+[2/5] Creating test decomposed_creative...
+  Created: dd6243b8-6e36-4275-961e-1a7b381d807e
+
+[3/5] Calling extract_modules_from_decomposition...
+  Result: {'hook_id': '96a95f3d-...', 'promise_id': 'b892d2e9-...', 'proof_id': 'fd66592d-...'}
+
+[4/5] Verifying modules in module_bank...
+  hook: 96a95f3d... key=579a18ab08faa2bb... status=emerging
+  promise: b892d2e9... key=28ad8b6dc1565cb9... status=emerging
+  proof: fd66592d... key=096f60252a70a23f... status=emerging
+
+[5/5] Cleanup... DONE
+```
+
 ## Dependencies
 - Requires migration #375 (module_bank schema) - VERIFIED EXISTS
 
