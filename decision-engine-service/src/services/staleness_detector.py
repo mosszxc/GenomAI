@@ -165,18 +165,14 @@ async def calculate_win_rate_trend(
     date_7d = (now - timedelta(days=7)).isoformat()
     date_30d = (now - timedelta(days=30)).isoformat()
 
-    filters = [f"created_at=gte.{date_30d}"]
-    if avatar_id:
-        filters.append(f"avatar_id=eq.{avatar_id}")
-    if geo:
-        filters.append(f"geo=eq.{geo}")
-
-    filter_str = "&".join(filters)
+    # outcome_aggregates doesn't have avatar_id/geo directly
+    # Filter by date only; avatar/geo filtering would require JOIN with creatives
+    filter_str = f"created_at=gte.{date_30d}"
 
     async with httpx.AsyncClient() as client:
-        # Get outcomes from last 30 days
+        # Get outcome_aggregates from last 30 days
         response = await client.get(
-            f"{rest_url}/outcomes?{filter_str}&select=cpa,created_at&limit=500",
+            f"{rest_url}/outcome_aggregates?{filter_str}&select=cpa,created_at&limit=500",
             headers=headers,
         )
         response.raise_for_status()
@@ -248,6 +244,7 @@ async def calculate_fatigue_ratio(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
+    # Build filter for active ideas
     filters = ["status=eq.active"]
     if avatar_id:
         filters.append(f"avatar_id=eq.{avatar_id}")
@@ -256,27 +253,52 @@ async def calculate_fatigue_ratio(
     filter_str = "&".join(filters)
 
     async with httpx.AsyncClient() as client:
+        # Step 1: Get active ideas
         response = await client.get(
-            f"{rest_url}/ideas?{filter_str}&select=id,fatigue_state&limit=500",
+            f"{rest_url}/ideas?{filter_str}&select=id&limit=500",
             headers=headers,
         )
         response.raise_for_status()
-        data = response.json()
+        active_ideas = response.json()
 
-    if not data:
-        return 0.0
+        if not active_ideas:
+            return 0.0
 
-    high_fatigue_count = 0
-    for row in data:
-        fatigue = row.get("fatigue_state")
-        if fatigue and isinstance(fatigue, dict):
-            # Check if any fatigue dimension is high
-            for key, value in fatigue.items():
-                if isinstance(value, (int, float)) and value > FATIGUE_THRESHOLD:
-                    high_fatigue_count += 1
-                    break
+        # Step 2: Get latest fatigue values from fatigue_state_versions
+        # Order by version desc to get latest first, then dedupe in code
+        idea_ids = [idea["id"] for idea in active_ideas]
+        idea_ids_str = ",".join(idea_ids)
 
-    return high_fatigue_count / len(data)
+        response = await client.get(
+            f"{rest_url}/fatigue_state_versions"
+            f"?idea_id=in.({idea_ids_str})"
+            f"&select=idea_id,fatigue_value,version"
+            f"&order=idea_id,version.desc"
+            f"&limit=1000",
+            headers=headers,
+        )
+        response.raise_for_status()
+        fatigue_data = response.json()
+
+    if not fatigue_data:
+        return 0.0  # No fatigue data = no fatigue
+
+    # Dedupe: keep only latest version per idea_id
+    latest_fatigue = {}
+    for row in fatigue_data:
+        idea_id = row.get("idea_id")
+        if idea_id and idea_id not in latest_fatigue:
+            latest_fatigue[idea_id] = row.get("fatigue_value", 0)
+
+    # Count high fatigue ideas
+    high_fatigue_count = sum(
+        1
+        for fv in latest_fatigue.values()
+        if fv is not None and float(fv) > FATIGUE_THRESHOLD
+    )
+
+    # Ratio based on active ideas count
+    return high_fatigue_count / len(active_ideas)
 
 
 async def calculate_days_since_new_component(
