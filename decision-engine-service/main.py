@@ -19,6 +19,7 @@ from src.routes.premise import router as premise_router
 from src.routes.telegram import router as telegram_router
 from src.routes.historical import router as historical_router
 from src.routes.schedules import router as schedules_router
+from src.routes.knowledge import router as knowledge_router
 from src.utils.errors import DecisionEngineError
 
 # Environment variables
@@ -54,6 +55,7 @@ app.include_router(premise_router, prefix="/premise", tags=["premise"])
 app.include_router(telegram_router, tags=["telegram"])
 app.include_router(historical_router, prefix="/api/historical", tags=["historical"])
 app.include_router(schedules_router, prefix="/api/schedules", tags=["schedules"])
+app.include_router(knowledge_router, prefix="/api/knowledge", tags=["knowledge"])
 
 
 @app.get("/health")
