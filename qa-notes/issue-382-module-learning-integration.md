@@ -92,3 +92,40 @@ Module learning will activate when:
 3. Learning loop processes outcomes
 
 The integration is ready and deployed. It will automatically update module stats when test data becomes available.
+
+## Production Test with Data (2026-01-11)
+
+### Test Setup
+```sql
+-- Creative with modules linked via hypothesis
+creative_id: f4fac92d-b731-43f2-a39f-26817fe670e5
+idea_id: 0629ea07-2ba6-4b7a-a69e-59b4affc81df
+hypothesis_id: a0ec6eaa-53d1-4c5b-b481-2f17f0265e82
+modules: hook, promise, proof (3 modules)
+
+-- Test outcome
+CPA: 10.0 (< 20 threshold = WIN)
+```
+
+### Results
+
+**module_bank updated:**
+| Module | sample_size | win_count | win_rate |
+|--------|-------------|-----------|----------|
+| hook | 0→1 | 0→1 | 100% |
+| promise | 0→1 | 0→1 | 100% |
+| proof | 0→1 | 0→1 | 100% |
+
+**module_compatibility created:**
+| Pair | sample_size | win_count | compatibility_score |
+|------|-------------|-----------|---------------------|
+| hook↔promise | 1 | 1 | 100% |
+| hook↔proof | 1 | 1 | 100% |
+| promise↔proof | 1 | 1 | 100% |
+
+### Fix Applied
+PR #408: Fixed `get_modules_for_creative` to use correct schema path:
+- Before: `creative_id → decisions` (wrong - decisions doesn't have these columns)
+- After: `creative_id → decomposed_creatives → idea_id → hypotheses`
+
+**Status: PASSED ✓**
