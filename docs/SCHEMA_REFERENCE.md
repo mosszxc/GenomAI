@@ -527,9 +527,42 @@ outcome_recorded_at     TIMESTAMPTZ
 
 ---
 
+### Infrastructure Tables
+
+#### agent_tasks (Multi-Agent Orchestration, Issue #350)
+
+Centralized task queue for multi-agent coordination.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | SERIAL | Primary key |
+| `issue_number` | INT | GitHub issue number (UNIQUE) |
+| `issue_title` | TEXT | Issue title |
+| `status` | TEXT | pending/claimed/completed/abandoned |
+| `claimed_by` | TEXT | Agent ID that claimed the task |
+| `claimed_at` | TIMESTAMPTZ | When claimed |
+| `completed_at` | TIMESTAMPTZ | When completed |
+| `last_heartbeat` | TIMESTAMPTZ | Last heartbeat timestamp |
+| `priority` | INT | Task priority (higher = more important) |
+| `created_at` | TIMESTAMPTZ | Created timestamp |
+| `updated_at` | TIMESTAMPTZ | Last update timestamp |
+
+**Functions:**
+- `claim_agent_task(issue_number, agent_id)` → BOOLEAN
+- `heartbeat_agent_task(issue_number, agent_id)` → BOOLEAN
+- `complete_agent_task(issue_number, agent_id)` → BOOLEAN
+- `release_orphaned_tasks(timeout_minutes)` → INT
+
+---
+
 ## Schema Version
 
-Current: genomai schema v1.3.0 (Release 2026-01-10)
+Current: genomai schema v1.4.0 (Release 2026-01-11)
+
+**Changes in v1.4.0:**
+- `agent_tasks`: New table for multi-agent coordination (#350)
+- Functions: `claim_agent_task`, `heartbeat_agent_task`, `complete_agent_task`, `release_orphaned_tasks`
+- `MaintenanceWorkflow`: Added orphan detection step
 
 **Changes in v1.3.0:**
 - `buyers`: Removed deprecated columns `geo` and `vertical` (migration 026)

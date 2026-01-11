@@ -443,6 +443,58 @@ async def emit_maintenance_event(
 
 
 @activity.defn
+async def release_orphaned_agent_tasks(timeout_minutes: int = 10) -> int:
+    """
+    Release agent tasks that have not received a heartbeat for too long.
+
+    Tasks with status='claimed' and last_heartbeat older than timeout_minutes
+    are marked as 'abandoned' and can be reclaimed.
+
+    Part of Multi-Agent Orchestration Phase 2 (Issue #350).
+
+    Args:
+        timeout_minutes: Minutes after which a task without heartbeat is abandoned
+
+    Returns:
+        Number of tasks released
+    """
+    rest_url, supabase_key = _get_credentials()
+
+    activity.logger.info(
+        f"Checking for orphaned agent tasks (timeout={timeout_minutes}min)"
+    )
+
+    async with httpx.AsyncClient() as client:
+        # Call the release_orphaned_tasks function via RPC
+        response = await client.post(
+            f"{rest_url}/rpc/release_orphaned_tasks",
+            headers={
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "application/json",
+            },
+            json={"p_timeout_minutes": timeout_minutes},
+        )
+
+        if response.status_code == 404:
+            # Function or table doesn't exist yet
+            activity.logger.info("release_orphaned_tasks function not found, skipping")
+            return 0
+
+        if response.status_code != 200:
+            activity.logger.warning(f"Error releasing orphaned tasks: {response.text}")
+            return 0
+
+        released_count = response.json()
+        if released_count > 0:
+            activity.logger.warning(f"Released {released_count} orphaned agent tasks")
+        else:
+            activity.logger.info("No orphaned agent tasks found")
+
+        return released_count
+
+
+@activity.defn
 async def check_staleness(
     avatar_id: Optional[str] = None,
     geo: Optional[str] = None,

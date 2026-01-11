@@ -30,6 +30,7 @@ with workflow.unsafe.imports_passed_through():
         check_data_integrity,
         emit_maintenance_event,
         check_staleness,
+        release_orphaned_agent_tasks,
     )
     from temporal.activities.hygiene_cleanup import (
         run_all_cleanup,
@@ -65,6 +66,10 @@ class MaintenanceInput:
     run_hypothesis_retry: bool = True
     # Max retry attempts for hypotheses
     hypothesis_max_retries: int = 3
+    # Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
+    run_orphan_detection: bool = True
+    # Timeout for agent heartbeats in minutes
+    agent_heartbeat_timeout_minutes: int = 10
 
 
 @dataclass
@@ -87,6 +92,8 @@ class MaintenanceResult:
     hypotheses_retried: int = 0
     hypotheses_retry_succeeded: int = 0
     hypotheses_abandoned: int = 0
+    # Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
+    orphaned_tasks_released: int = 0
 
 
 @workflow.defn
@@ -296,7 +303,25 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Hypothesis cleanup failed: {e}")
                 result.integrity_issues.append(f"Hypothesis cleanup error: {e}")
 
-        # Step 9: Emit maintenance event
+        # Step 9: Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
+        if input.run_orphan_detection:
+            try:
+                released_count = await workflow.execute_activity(
+                    release_orphaned_agent_tasks,
+                    input.agent_heartbeat_timeout_minutes,
+                    start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=retry_policy,
+                )
+                result.orphaned_tasks_released = released_count
+                if released_count > 0:
+                    workflow.logger.warning(
+                        f"Released {released_count} orphaned agent tasks"
+                    )
+            except Exception as e:
+                workflow.logger.error(f"Orphan detection failed: {e}")
+                result.integrity_issues.append(f"Orphan detection error: {e}")
+
+        # Step 10: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
@@ -316,7 +341,8 @@ class MaintenanceWorkflow:
             f"expired={result.recommendations_expired}, stuck={result.stuck_transcriptions_failed}, "
             f"archived={result.failed_creatives_archived}, "
             f"issues={len(result.integrity_issues)}, stale={result.is_stale}, "
-            f"hypothesis_retried={result.hypotheses_retried}"
+            f"hypothesis_retried={result.hypotheses_retried}, "
+            f"orphaned_tasks={result.orphaned_tasks_released}"
         )
 
         return result
