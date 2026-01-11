@@ -304,25 +304,34 @@ async def save_decomposed_creative(
 
     Args:
         creative_id: Source creative UUID
-        payload: LLM decomposition payload
+        payload: LLM decomposition payload (must be a dict)
         canonical_hash: Computed canonical hash
         transcript_id: Optional transcript reference
 
     Returns:
         Created decomposed_creative dict
+
+    Raises:
+        ValueError: If payload is not a valid dict
     """
     import uuid
-    import json
 
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
+    # Validate payload is a dict (not string, null, array, etc.)
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"payload must be a dict, got {type(payload).__name__}: {payload!r:.200}"
+        )
+
     # Note: canonical_hash and transcript_id are passed but not stored in DB
     # canonical_hash is used for idea deduplication later in workflow
+    # Don't use json.dumps() - Supabase REST API serializes the body automatically
     decomposed = {
         "id": str(uuid.uuid4()),
         "creative_id": creative_id,
-        "payload": json.dumps(payload) if isinstance(payload, dict) else payload,
+        "payload": payload,  # Pass dict directly, not json.dumps()
         "schema_version": payload.get("schema_version", "v1"),
         "created_at": datetime.utcnow().isoformat(),
     }
