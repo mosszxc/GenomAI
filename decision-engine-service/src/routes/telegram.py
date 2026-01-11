@@ -406,6 +406,7 @@ async def handle_help_command(message: TelegramMessage) -> None:
         "<b>Команды GenomAI</b>\n\n"
         "/start - Начать регистрацию\n"
         "/stats - Посмотреть статистику\n"
+        "/feedback - Оставить отзыв или сообщить о проблеме\n"
         "/genome - Матрица компонентов\n"
         "/genome fear --by geo - Сегментация по гео\n"
         "/genome fear --by avatar - Сегментация по аватару\n"
@@ -1097,6 +1098,95 @@ async def send_extraction_review_card(chat_id: str, extraction: dict) -> None:
         )
 
 
+async def handle_feedback_command(message: TelegramMessage) -> None:
+    """
+    Handle /feedback command - create GitHub issue from buyer feedback.
+
+    Usage: /feedback текст проблемы или предложения
+    """
+    from src.services.github_issue import create_feedback_issue
+
+    # Extract text after /feedback
+    text = message.text or ""
+    feedback_text = text.replace("/feedback", "", 1).strip()
+
+    if not feedback_text:
+        await send_telegram_message(
+            message.chat_id,
+            "Напишите текст отзыва после команды.\n\n"
+            "Пример: <code>/feedback Не работает загрузка видео</code>",
+        )
+        return
+
+    if len(feedback_text) < 10:
+        await send_telegram_message(
+            message.chat_id,
+            "Текст слишком короткий (минимум 10 символов).",
+        )
+        return
+
+    # Get buyer name if available
+    buyer_name = await get_buyer_name(message.user_id)
+
+    # Create GitHub issue
+    result = await create_feedback_issue(
+        text=feedback_text,
+        telegram_id=message.user_id,
+        buyer_name=buyer_name,
+    )
+
+    if result.success:
+        await send_telegram_message(
+            message.chat_id,
+            f"✅ Заявка #{result.issue_number} принята!\n\nСпасибо за обратную связь.",
+        )
+
+        # Log interaction
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="in",
+            message_type="feedback",
+            content=feedback_text,
+            context={"issue_number": result.issue_number},
+        )
+    else:
+        await send_telegram_message(
+            message.chat_id,
+            "Не удалось отправить отзыв. Попробуйте позже.",
+        )
+        logger.error(f"Feedback issue creation failed: {result.error}")
+
+
+async def get_buyer_name(telegram_id: str) -> str | None:
+    """Get buyer name by Telegram ID."""
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return None
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Accept-Profile": "genomai",
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{supabase_url}/rest/v1/buyers"
+                f"?telegram_id=eq.{telegram_id}"
+                f"&select=name",
+                headers=headers,
+            )
+            buyers = response.json()
+            return buyers[0].get("name") if buyers else None
+    except Exception:
+        return None
+
+
 async def handle_document_upload(message: TelegramMessage) -> None:
     """Handle document upload - start knowledge extraction for .txt/.md files."""
     import httpx
@@ -1492,6 +1582,8 @@ async def process_telegram_update(update: dict) -> None:
             await handle_recommend_command(message)
         elif text.startswith("/simulate"):
             await handle_simulate_command(message)
+        elif text.startswith("/feedback"):
+            await handle_feedback_command(message)
         elif text.startswith("/"):
             # Unknown command
             await send_telegram_message(
