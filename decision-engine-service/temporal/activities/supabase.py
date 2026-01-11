@@ -413,3 +413,125 @@ async def emit_event(
         data = response.json()
 
         return data[0] if data else event
+
+
+@activity.defn
+async def save_transcript(
+    creative_id: str,
+    transcript_text: str,
+    assemblyai_transcript_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Save transcript to Supabase transcripts table with version management.
+
+    If transcript for creative already exists, creates new version.
+    Implements idempotency - if same assemblyai_transcript_id exists, returns existing.
+
+    Args:
+        creative_id: Creative UUID
+        transcript_text: Full transcript text from AssemblyAI
+        assemblyai_transcript_id: AssemblyAI transcript ID for audit trail
+
+    Returns:
+        Saved transcript dict with id, creative_id, version, transcript_text
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+    read_headers = _get_headers(supabase_key)
+
+    async with httpx.AsyncClient() as client:
+        # Idempotency check: if same assemblyai_transcript_id exists, return it
+        if assemblyai_transcript_id:
+            response = await client.get(
+                f"{rest_url}/transcripts"
+                f"?assemblyai_transcript_id=eq.{assemblyai_transcript_id}"
+                f"&select=*&limit=1",
+                headers=read_headers,
+            )
+            response.raise_for_status()
+            existing = response.json()
+            if existing:
+                activity.logger.info(
+                    f"Transcript already exists for assemblyai_id={assemblyai_transcript_id}"
+                )
+                return existing[0]
+
+        # Get current max version for creative
+        response = await client.get(
+            f"{rest_url}/transcripts"
+            f"?creative_id=eq.{creative_id}"
+            f"&select=version"
+            f"&order=version.desc"
+            f"&limit=1",
+            headers=read_headers,
+        )
+        response.raise_for_status()
+        versions = response.json()
+
+        next_version = 1
+        if versions and versions[0].get("version"):
+            next_version = versions[0]["version"] + 1
+
+        # Insert new transcript
+        transcript = {
+            "creative_id": creative_id,
+            "version": next_version,
+            "transcript_text": transcript_text,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+
+        if assemblyai_transcript_id:
+            transcript["assemblyai_transcript_id"] = assemblyai_transcript_id
+
+        response = await client.post(
+            f"{rest_url}/transcripts",
+            headers=headers,
+            json=transcript,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if not data:
+            raise RuntimeError("Failed to save transcript: no data returned")
+
+        activity.logger.info(
+            f"Saved transcript for creative={creative_id}, version={next_version}"
+        )
+        return data[0]
+
+
+@activity.defn
+async def get_existing_transcript(creative_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get latest transcript for creative if exists.
+
+    Used for recovery: if decomposition fails, we can reuse saved transcript
+    instead of paying for re-transcription.
+
+    Args:
+        creative_id: Creative UUID
+
+    Returns:
+        Latest transcript dict or None
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{rest_url}/transcripts"
+            f"?creative_id=eq.{creative_id}"
+            f"&select=*"
+            f"&order=version.desc"
+            f"&limit=1",
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data:
+            activity.logger.info(
+                f"Found existing transcript for creative={creative_id}, "
+                f"version={data[0].get('version')}"
+            )
+        return data[0] if data else None

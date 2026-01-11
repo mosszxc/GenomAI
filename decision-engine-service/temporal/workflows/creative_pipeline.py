@@ -72,6 +72,8 @@ class CreativePipelineWorkflow:
                     create_idea,
                     update_creative_status,
                     emit_event,
+                    save_transcript,
+                    get_existing_transcript,
                 )
                 from temporal.activities.decision_engine import make_decision
                 from temporal.activities.transcription import transcribe_audio
@@ -113,39 +115,80 @@ class CreativePipelineWorkflow:
                 self._error = f"Creative {input.creative_id} not found"
                 return self._build_result()
 
-            # Step 2: Transcription (AssemblyAI with heartbeats)
-            self._status = "transcribing"
-            audio_url = creative.get("media_url") or creative.get("video_url")
-
-            if not audio_url:
-                self._error = "Creative has no media_url or video_url"
-                return self._build_result()
-
-            transcription_result = await workflow.execute_activity(
-                transcribe_audio,
-                audio_url,
-                None,  # language_code - auto-detect
-                start_to_close_timeout=timedelta(minutes=15),
-                heartbeat_timeout=timedelta(seconds=60),
-                retry_policy=long_running_retry,
-            )
-
-            transcript_text = transcription_result.get("text", "")
-            if not transcript_text:
-                self._error = "Transcription returned empty text"
-                return self._build_result()
-
-            # Emit transcription event
-            await workflow.execute_activity(
-                emit_event,
-                "TranscriptCreated",
-                {
-                    "creative_id": input.creative_id,
-                    "transcript_id": transcription_result.get("transcript_id"),
-                    "words": transcription_result.get("words", 0),
-                },
+            # Step 2: Check for existing transcript (RECOVERY PATH)
+            self._status = "checking_transcript"
+            existing_transcript = await workflow.execute_activity(
+                get_existing_transcript,
+                input.creative_id,
                 start_to_close_timeout=timedelta(seconds=10),
+                retry_policy=default_retry,
             )
+
+            transcript_text: str
+            assemblyai_transcript_id: str = None
+            saved_transcript_id: str = None
+
+            if existing_transcript:
+                # RECOVERY: Use existing transcript, skip AssemblyAI (saves time & money)
+                transcript_text = existing_transcript.get("transcript_text", "")
+                assemblyai_transcript_id = existing_transcript.get(
+                    "assemblyai_transcript_id"
+                )
+                saved_transcript_id = existing_transcript.get("id")
+                workflow.logger.info(
+                    f"Using existing transcript version={existing_transcript.get('version')} "
+                    f"for creative={input.creative_id}"
+                )
+            else:
+                # Step 2b: Transcription (AssemblyAI with heartbeats)
+                self._status = "transcribing"
+                audio_url = creative.get("media_url") or creative.get("video_url")
+
+                if not audio_url:
+                    self._error = "Creative has no media_url or video_url"
+                    return self._build_result()
+
+                transcription_result = await workflow.execute_activity(
+                    transcribe_audio,
+                    audio_url,
+                    None,  # language_code - auto-detect
+                    start_to_close_timeout=timedelta(minutes=15),
+                    heartbeat_timeout=timedelta(seconds=60),
+                    retry_policy=long_running_retry,
+                )
+
+                transcript_text = transcription_result.get("text", "")
+                assemblyai_transcript_id = transcription_result.get("transcript_id")
+
+                if not transcript_text:
+                    self._error = "Transcription returned empty text"
+                    return self._build_result()
+
+                # Step 2c: SAVE TRANSCRIPT (critical for recovery)
+                self._status = "saving_transcript"
+                saved_transcript = await workflow.execute_activity(
+                    save_transcript,
+                    input.creative_id,
+                    transcript_text,
+                    assemblyai_transcript_id,
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+                saved_transcript_id = saved_transcript.get("id")
+
+                # Emit transcription event
+                await workflow.execute_activity(
+                    emit_event,
+                    "TranscriptCreated",
+                    {
+                        "creative_id": input.creative_id,
+                        "transcript_id": saved_transcript_id,
+                        "assemblyai_transcript_id": assemblyai_transcript_id,
+                        "version": saved_transcript.get("version", 1),
+                        "words": len(transcript_text.split()) if transcript_text else 0,
+                    },
+                    start_to_close_timeout=timedelta(seconds=10),
+                )
 
             # Step 3: LLM Decomposition (OpenAI)
             self._status = "decomposing"
@@ -166,7 +209,7 @@ class CreativePipelineWorkflow:
                 input.creative_id,
                 decomposition_payload,
                 canonical_hash,
-                transcription_result.get("transcript_id"),
+                saved_transcript_id,  # DB transcript ID (not AssemblyAI ID)
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )

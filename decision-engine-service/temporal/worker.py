@@ -58,6 +58,8 @@ from temporal.activities.supabase import (
     save_decomposed_creative,
     update_creative_status,
     emit_event,
+    save_transcript,
+    get_existing_transcript,
 )
 
 # Import activities - Decision Engine
@@ -231,6 +233,8 @@ async def run_worker():
             save_decomposed_creative,
             update_creative_status,
             emit_event,
+            save_transcript,
+            get_existing_transcript,
             # Decision Engine
             make_decision,
             # Transcription (AssemblyAI)
@@ -287,6 +291,8 @@ async def run_all_workers():
             save_decomposed_creative,
             update_creative_status,
             emit_event,
+            save_transcript,
+            get_existing_transcript,
             # Decision Engine
             make_decision,
             # Transcription (AssemblyAI)

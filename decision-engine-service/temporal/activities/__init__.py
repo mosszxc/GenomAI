@@ -14,6 +14,8 @@ from temporal.activities.supabase import (
     save_decomposed_creative,
     update_creative_status,
     emit_event,
+    save_transcript,
+    get_existing_transcript,
 )
 from temporal.activities.decision_engine import make_decision
 from temporal.activities.transcription import (
@@ -100,6 +102,8 @@ __all__ = [
     "save_decomposed_creative",
     "update_creative_status",
     "emit_event",
+    "save_transcript",
+    "get_existing_transcript",
     # Decision Engine
     "make_decision",
     # Transcription (AssemblyAI)
