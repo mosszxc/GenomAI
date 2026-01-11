@@ -97,6 +97,35 @@ async def send_telegram_message(chat_id: str, text: str) -> bool:
         return True
 
 
+async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -> bool:
+    """Send a photo to Telegram chat by URL."""
+    import httpx
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        logger.error("TELEGRAM_BOT_TOKEN not configured")
+        return False
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://api.telegram.org/bot{bot_token}/sendPhoto",
+            json={
+                "chat_id": chat_id,
+                "photo": photo_url,
+                "caption": caption,
+                "parse_mode": "HTML",
+            },
+            timeout=30.0,
+        )
+
+        data = response.json()
+        if not data.get("ok"):
+            logger.error(f"Telegram sendPhoto error: {data.get('description')}")
+            return False
+
+        return True
+
+
 async def check_active_onboarding(telegram_id: str) -> Optional[str]:
     """
     Check if user has active onboarding workflow.
@@ -377,6 +406,8 @@ async def handle_help_command(message: TelegramMessage) -> None:
         "<b>GenomAI Bot Commands</b>\n\n"
         "/start - Start registration\n"
         "/stats - View your statistics\n"
+        "/genome - Component performance heatmap\n"
+        "/trends - Win rate trends chart (admin)\n"
         "/knowledge - View pending knowledge extractions\n"
         "/help - Show this help\n\n"
         "<b>To register a creative:</b>\n"
@@ -387,6 +418,127 @@ async def handle_help_command(message: TelegramMessage) -> None:
     )
 
     await send_telegram_message(message.chat_id, help_message)
+
+
+async def handle_genome_command(message: TelegramMessage) -> None:
+    """
+    Handle /genome command - show component performance heatmap.
+
+    Usage:
+        /genome - Show emotion_primary heatmap (default)
+        /genome angle_type - Show specific component type
+    """
+    from src.services.genome_heatmap import (
+        get_heatmap_data,
+        format_heatmap_telegram,
+        get_available_component_types,
+    )
+
+    # Parse component type from command
+    text = message.text or ""
+    parts = text.split()
+    component_type = parts[1] if len(parts) > 1 else "emotion_primary"
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Get available types for validation
+        available_types = await get_available_component_types()
+
+        if component_type not in available_types and available_types:
+            # Show available types
+            types_list = ", ".join(available_types[:10])
+            await send_telegram_message(
+                message.chat_id,
+                f"Unknown component type: <code>{component_type}</code>\n\n"
+                f"Available types:\n<code>{types_list}</code>\n\n"
+                f"Usage: /genome [component_type]",
+            )
+            return
+
+        # Get and format heatmap
+        data = await get_heatmap_data(component_type=component_type)
+        heatmap_text = format_heatmap_telegram(data)
+
+        await send_telegram_message(message.chat_id, heatmap_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=heatmap_text,
+            context={"component_type": component_type},
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate genome heatmap: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Failed to generate heatmap: {str(e)[:100]}",
+        )
+
+
+async def handle_trends_command(message: TelegramMessage) -> None:
+    """Handle /trends command - show win rate trends chart."""
+    from src.services.charts import generate_win_rate_chart_url
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "This command is only available for admins."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Service temporarily unavailable.")
+        return
+
+    try:
+        # Generate emotion win rate chart
+        chart_url = await generate_win_rate_chart_url(
+            supabase_url=supabase_url,
+            supabase_key=supabase_key,
+            chart_type="emotions",
+            days=7,
+        )
+
+        if not chart_url:
+            await send_telegram_message(
+                message.chat_id,
+                "No trend data available yet.\n"
+                "Win rate trends will appear after more creatives are tested.",
+            )
+            return
+
+        # Send chart as photo
+        caption = (
+            "<b>Win Rate Trends (7 days)</b>\n\n"
+            "Shows emotion performance over time.\n"
+            "Higher = better conversion rate."
+        )
+
+        success = await send_telegram_photo(message.chat_id, chart_url, caption)
+
+        if not success:
+            # Fallback to text if photo fails
+            await send_telegram_message(
+                message.chat_id,
+                f"Chart generated but couldn't send as image.\n"
+                f"View here: {chart_url[:100]}...",
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to generate trends chart: {e}")
+        await send_telegram_message(message.chat_id, "Failed to generate chart.")
 
 
 # Admin telegram IDs (for knowledge extraction)
@@ -899,6 +1051,10 @@ async def process_telegram_update(update: dict) -> None:
             await handle_help_command(message)
         elif text == "/knowledge":
             await handle_knowledge_command(message)
+        elif text.startswith("/genome"):
+            await handle_genome_command(message)
+        elif text.startswith("/trends"):
+            await handle_trends_command(message)
         elif text.startswith("/"):
             # Unknown command
             await send_telegram_message(
