@@ -266,12 +266,19 @@ async def get_campaigns_by_source(
     url = _get_keitaro_url("/report/build")
     headers = _get_keitaro_headers()
 
-    # Build date range
-    range_config = {}
+    # Build date range (Keitaro doesn't support "last_30_days" format)
     if input.date_from and input.date_to:
         range_config = {"from": input.date_from, "to": input.date_to, "timezone": "UTC"}
     else:
-        range_config = {"interval": "last_30_days"}
+        # Default to last 30 days with explicit dates
+        from datetime import datetime, timedelta
+        today = datetime.utcnow().date()
+        date_from = today - timedelta(days=30)
+        range_config = {
+            "from": date_from.isoformat(),
+            "to": today.isoformat(),
+            "timezone": "UTC",
+        }
 
     # NOTE: Buyers are identified by sub_id_10, NOT by source
     # See docs/KEITARO_BUYER_METRICS.md
