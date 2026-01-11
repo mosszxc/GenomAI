@@ -652,6 +652,9 @@ FROM genomai.daily_metrics_snapshot;
 **Критерии:**
 - `days_since_last <= 1` (snapshots should be daily)
 
+**Note:** Snapshots создаются за **вчерашний** день (`interval="yesterday"` в KeitaroPollerWorkflow),
+т.к. метрики за текущий день ещё неполные. Поэтому `days_since_last = 1` — это нормальное состояние.
+
 **Severity:** days_since_last > 1 = WARNING, > 3 = ERROR
 
 ### 2C.4 Config Keys Validation
