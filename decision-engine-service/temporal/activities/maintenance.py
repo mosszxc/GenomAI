@@ -13,6 +13,7 @@ Includes:
 
 import os
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -492,6 +493,143 @@ async def release_orphaned_agent_tasks(timeout_minutes: int = 10) -> int:
             activity.logger.info("No orphaned agent tasks found")
 
         return released_count
+
+
+@dataclass
+class StuckCreative:
+    """Creative stuck in pipeline."""
+
+    creative_id: str
+    buyer_id: Optional[str]
+    stuck_reason: str  # "transcription" | "decomposition"
+    stuck_since: str  # ISO timestamp
+
+
+@activity.defn
+async def find_stuck_creatives(
+    transcription_timeout_minutes: int = 5,
+    decomposition_timeout_minutes: int = 30,
+) -> List[dict]:
+    """
+    Find creatives stuck in transcription or decomposition stages.
+
+    Issue #398: Creatives can get stuck if:
+    1. Workflow never started (status='pending', no transcript)
+    2. Workflow failed between transcript and decomposition
+
+    Args:
+        transcription_timeout_minutes: Minutes to wait before considering
+            transcription as stuck
+        decomposition_timeout_minutes: Minutes to wait before considering
+            decomposition as stuck
+
+    Returns:
+        List of stuck creatives with their creative_id, buyer_id, and stuck_reason
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    stuck_creatives = []
+
+    # Cutoffs
+    transcription_cutoff = (
+        datetime.utcnow() - timedelta(minutes=transcription_timeout_minutes)
+    ).isoformat()
+    decomposition_cutoff = (
+        datetime.utcnow() - timedelta(minutes=decomposition_timeout_minutes)
+    ).isoformat()
+
+    activity.logger.info(
+        f"Looking for stuck creatives: "
+        f"transcription>{transcription_timeout_minutes}min, "
+        f"decomposition>{decomposition_timeout_minutes}min"
+    )
+
+    async with httpx.AsyncClient() as client:
+        # 1. Find creatives stuck on transcription
+        # status='pending' AND no transcript AND created > X minutes ago
+        response = await client.get(
+            f"{rest_url}/creatives"
+            f"?status=eq.pending"
+            f"&created_at=lt.{transcription_cutoff}"
+            f"&created_at=gt.{(datetime.utcnow() - timedelta(hours=24)).isoformat()}"
+            "&select=id,buyer_id,created_at",
+            headers=headers,
+        )
+
+        if response.status_code == 200:
+            pending_creatives = response.json()
+
+            for creative in pending_creatives:
+                # Check if transcript exists
+                transcript_resp = await client.get(
+                    f"{rest_url}/transcripts?creative_id=eq.{creative['id']}&limit=1",
+                    headers=headers,
+                )
+                if transcript_resp.status_code == 200 and not transcript_resp.json():
+                    stuck_creatives.append(
+                        {
+                            "creative_id": creative["id"],
+                            "buyer_id": creative.get("buyer_id"),
+                            "stuck_reason": "transcription",
+                            "stuck_since": creative["created_at"],
+                        }
+                    )
+
+        # 2. Find creatives stuck on decomposition
+        # Has transcript but no decomposed_creative AND transcript created > X minutes ago
+        response = await client.get(
+            f"{rest_url}/transcripts"
+            f"?created_at=lt.{decomposition_cutoff}"
+            f"&created_at=gt.{(datetime.utcnow() - timedelta(hours=24)).isoformat()}"
+            "&select=creative_id,created_at",
+            headers=headers,
+        )
+
+        if response.status_code == 200:
+            transcripts = response.json()
+
+            for transcript in transcripts:
+                creative_id = transcript["creative_id"]
+
+                # Check if decomposed_creative exists
+                decomp_resp = await client.get(
+                    f"{rest_url}/decomposed_creatives"
+                    f"?creative_id=eq.{creative_id}&limit=1",
+                    headers=headers,
+                )
+
+                if decomp_resp.status_code == 200 and not decomp_resp.json():
+                    # Get buyer_id from creative
+                    creative_resp = await client.get(
+                        f"{rest_url}/creatives?id=eq.{creative_id}&select=buyer_id",
+                        headers=headers,
+                    )
+                    buyer_id = None
+                    if creative_resp.status_code == 200:
+                        creatives = creative_resp.json()
+                        if creatives:
+                            buyer_id = creatives[0].get("buyer_id")
+
+                    stuck_creatives.append(
+                        {
+                            "creative_id": creative_id,
+                            "buyer_id": buyer_id,
+                            "stuck_reason": "decomposition",
+                            "stuck_since": transcript["created_at"],
+                        }
+                    )
+
+    if stuck_creatives:
+        activity.logger.warning(
+            f"Found {len(stuck_creatives)} stuck creatives: "
+            f"transcription={len([s for s in stuck_creatives if s['stuck_reason'] == 'transcription'])}, "
+            f"decomposition={len([s for s in stuck_creatives if s['stuck_reason'] == 'decomposition'])}"
+        )
+    else:
+        activity.logger.info("No stuck creatives found")
+
+    return stuck_creatives
 
 
 @activity.defn

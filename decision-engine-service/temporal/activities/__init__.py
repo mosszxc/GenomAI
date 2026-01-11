@@ -85,6 +85,8 @@ from temporal.activities.maintenance import (
     check_data_integrity,
     emit_maintenance_event,
     check_staleness,
+    release_orphaned_agent_tasks,
+    find_stuck_creatives,
 )
 from temporal.activities.feature_monitoring import (
     update_feature_correlations,
@@ -174,6 +176,8 @@ __all__ = [
     "check_data_integrity",
     "emit_maintenance_event",
     "check_staleness",
+    "release_orphaned_agent_tasks",
+    "find_stuck_creatives",
     # Feature monitoring activities
     "update_feature_correlations",
     "detect_feature_drift",
