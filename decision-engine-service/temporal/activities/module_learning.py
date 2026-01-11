@@ -304,6 +304,133 @@ async def update_compatibility_stats(
 
 
 @dataclass
+class GetModulesForCreativeInput:
+    """Input for get_modules_for_creative activity"""
+
+    creative_id: str
+
+
+@dataclass
+class GetModulesForCreativeOutput:
+    """Output from get_modules_for_creative activity"""
+
+    creative_id: str
+    module_ids: list[str]
+    hook_module_id: Optional[str] = None
+    promise_module_id: Optional[str] = None
+    proof_module_id: Optional[str] = None
+    generation_mode: Optional[str] = None
+
+
+@activity.defn
+async def get_modules_for_creative(
+    input: GetModulesForCreativeInput,
+) -> GetModulesForCreativeOutput:
+    """
+    Get module IDs associated with a creative via hypothesis.
+
+    Flow: creative_id → decisions → hypothesis_id → hypothesis.module_ids
+
+    Args:
+        input: creative_id to look up
+
+    Returns:
+        GetModulesForCreativeOutput with module IDs
+    """
+    import httpx
+
+    activity.logger.info(f"Getting modules for creative: {input.creative_id}")
+
+    headers = {
+        "apikey": settings.supabase.service_role_key,
+        "Authorization": f"Bearer {settings.supabase.service_role_key}",
+        "Accept-Profile": SCHEMA,
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Get decision for this creative (most recent APPROVE)
+            decision_url = (
+                f"{settings.supabase.url}/rest/v1/decisions"
+                f"?creative_id=eq.{input.creative_id}"
+                f"&verdict=eq.APPROVE"
+                f"&select=hypothesis_id"
+                f"&order=created_at.desc"
+                f"&limit=1"
+            )
+            response = await client.get(decision_url, headers=headers)
+            response.raise_for_status()
+            decisions = response.json()
+
+            if not decisions or not decisions[0].get("hypothesis_id"):
+                activity.logger.info(
+                    f"No approved decision with hypothesis for creative: {input.creative_id}"
+                )
+                return GetModulesForCreativeOutput(
+                    creative_id=input.creative_id,
+                    module_ids=[],
+                )
+
+            hypothesis_id = decisions[0]["hypothesis_id"]
+
+            # Get hypothesis with module IDs
+            hypothesis_url = (
+                f"{settings.supabase.url}/rest/v1/hypotheses"
+                f"?id=eq.{hypothesis_id}"
+                f"&select=hook_module_id,promise_module_id,proof_module_id,generation_mode"
+            )
+            response = await client.get(hypothesis_url, headers=headers)
+            response.raise_for_status()
+            hypotheses = response.json()
+
+            if not hypotheses:
+                activity.logger.info(f"Hypothesis not found: {hypothesis_id}")
+                return GetModulesForCreativeOutput(
+                    creative_id=input.creative_id,
+                    module_ids=[],
+                )
+
+            hypothesis = hypotheses[0]
+            hook_id = hypothesis.get("hook_module_id")
+            promise_id = hypothesis.get("promise_module_id")
+            proof_id = hypothesis.get("proof_module_id")
+            generation_mode = hypothesis.get("generation_mode")
+
+            # Collect non-null module IDs
+            module_ids = [
+                mid for mid in [hook_id, promise_id, proof_id] if mid is not None
+            ]
+
+            activity.logger.info(
+                f"Found {len(module_ids)} modules for creative {input.creative_id}: "
+                f"mode={generation_mode}"
+            )
+
+            return GetModulesForCreativeOutput(
+                creative_id=input.creative_id,
+                module_ids=module_ids,
+                hook_module_id=hook_id,
+                promise_module_id=promise_id,
+                proof_module_id=proof_id,
+                generation_mode=generation_mode,
+            )
+
+    except httpx.HTTPStatusError as e:
+        activity.logger.error(f"HTTP error getting modules: {e.response.status_code}")
+        return GetModulesForCreativeOutput(
+            creative_id=input.creative_id,
+            module_ids=[],
+        )
+    except Exception as e:
+        activity.logger.error(f"Error getting modules for creative: {str(e)}")
+        return GetModulesForCreativeOutput(
+            creative_id=input.creative_id,
+            module_ids=[],
+        )
+
+
+@dataclass
 class BatchModuleOutcome:
     """Single module outcome in a batch"""
 
@@ -418,3 +545,146 @@ async def process_module_learning(
         compatibilities_updated=compatibilities_updated,
         errors=errors,
     )
+
+
+@dataclass
+class ProcessModuleLearningBatchInput:
+    """Input for process_module_learning_batch activity"""
+
+    hours_lookback: int = 2  # Process outcomes from last N hours
+
+
+@dataclass
+class ProcessModuleLearningBatchOutput:
+    """Output from process_module_learning_batch activity"""
+
+    creatives_processed: int
+    modules_updated: int
+    compatibilities_updated: int
+    errors: list[str]
+
+
+@activity.defn
+async def process_module_learning_batch(
+    input: ProcessModuleLearningBatchInput,
+) -> ProcessModuleLearningBatchOutput:
+    """
+    Process module learning for recently processed outcomes (batch mode).
+
+    Gets outcomes processed in the last N hours and updates module statistics.
+    Designed to run after batch learning processing in LearningLoopWorkflow.
+
+    Args:
+        input: hours_lookback for time window
+
+    Returns:
+        ProcessModuleLearningBatchOutput with counts
+    """
+    import httpx
+    from datetime import datetime, timedelta as td
+
+    activity.logger.info(
+        f"Processing module learning batch (lookback: {input.hours_lookback}h)"
+    )
+
+    headers = {
+        "apikey": settings.supabase.service_role_key,
+        "Authorization": f"Bearer {settings.supabase.service_role_key}",
+        "Accept-Profile": SCHEMA,
+        "Content-Type": "application/json",
+    }
+
+    errors: list[str] = []
+    creatives_processed = 0
+    total_modules_updated = 0
+    total_compatibilities_updated = 0
+
+    # Target CPA threshold for win/loss determination
+    TARGET_CPA = 20.0
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Get recently processed outcomes
+            cutoff = datetime.utcnow() - td(hours=input.hours_lookback)
+            cutoff_iso = cutoff.isoformat()
+
+            outcomes_url = (
+                f"{settings.supabase.url}/rest/v1/outcome_aggregates"
+                f"?learning_applied=eq.true"
+                f"&updated_at=gte.{cutoff_iso}"
+                f"&select=creative_id,cpa,spend"
+                f"&limit=100"
+            )
+            response = await client.get(outcomes_url, headers=headers)
+            response.raise_for_status()
+            outcomes = response.json()
+
+            activity.logger.info(f"Found {len(outcomes)} recent outcomes to process")
+
+            # Deduplicate by creative_id (take latest outcome per creative)
+            creative_outcomes: dict[str, dict] = {}
+            for outcome in outcomes:
+                creative_id = outcome.get("creative_id")
+                if creative_id and creative_id not in creative_outcomes:
+                    creative_outcomes[creative_id] = outcome
+
+            # Process each creative
+            for creative_id, outcome in creative_outcomes.items():
+                try:
+                    # Get modules for this creative
+                    modules_result = await get_modules_for_creative(
+                        GetModulesForCreativeInput(creative_id=creative_id)
+                    )
+
+                    if not modules_result.module_ids:
+                        continue  # No modules associated with this creative
+
+                    # Determine win/loss based on CPA
+                    cpa = float(outcome.get("cpa") or 0)
+                    spend = float(outcome.get("spend") or 0)
+                    is_win = cpa > 0 and cpa < TARGET_CPA
+
+                    # Process module learning
+                    learning_result = await process_module_learning(
+                        ProcessModuleLearningInput(
+                            creative_id=creative_id,
+                            module_ids=modules_result.module_ids,
+                            is_win=is_win,
+                            spend=spend,
+                            revenue=spend / cpa if cpa > 0 else 0,  # Estimate revenue
+                        )
+                    )
+
+                    if learning_result.success:
+                        creatives_processed += 1
+                        total_modules_updated += learning_result.modules_updated
+                        total_compatibilities_updated += (
+                            learning_result.compatibilities_updated
+                        )
+                    else:
+                        errors.extend(learning_result.errors)
+
+                except Exception as e:
+                    errors.append(f"Creative {creative_id}: {str(e)}")
+
+        activity.logger.info(
+            f"Module learning batch complete: {creatives_processed} creatives, "
+            f"{total_modules_updated} modules, "
+            f"{total_compatibilities_updated} compatibilities"
+        )
+
+        return ProcessModuleLearningBatchOutput(
+            creatives_processed=creatives_processed,
+            modules_updated=total_modules_updated,
+            compatibilities_updated=total_compatibilities_updated,
+            errors=errors,
+        )
+
+    except Exception as e:
+        activity.logger.error(f"Module learning batch failed: {str(e)}")
+        return ProcessModuleLearningBatchOutput(
+            creatives_processed=0,
+            modules_updated=0,
+            compatibilities_updated=0,
+            errors=[str(e)],
+        )

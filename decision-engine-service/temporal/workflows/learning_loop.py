@@ -41,6 +41,11 @@ with workflow.unsafe.imports_passed_through():
         detect_feature_drift,
         emit_feature_event,
     )
+    from temporal.activities.module_learning import (
+        ProcessModuleLearningBatchInput,
+        ProcessModuleLearningBatchOutput,
+        process_module_learning_batch,
+    )
 
 
 @dataclass
@@ -61,7 +66,13 @@ class LearningLoopResult:
     component_updates: int
     premise_updates: int
     fatigue_updates: int
-    errors: list[str]
+    module_updates: int = 0
+    compatibility_updates: int = 0
+    errors: list[str] = None
+
+    def __post_init__(self):
+        if self.errors is None:
+            self.errors = []
 
 
 # Retry policy for learning operations
@@ -146,6 +157,9 @@ class LearningLoopWorkflow:
             # Feature correlation monitoring (after processing outcomes)
             await self._run_feature_monitoring()
 
+            # Module learning (update module stats and compatibility)
+            module_result = await self._run_module_learning_batch()
+
             return LearningLoopResult(
                 processed_count=result.processed_count,
                 updated_ideas=result.updated_ideas,
@@ -153,7 +167,9 @@ class LearningLoopWorkflow:
                 component_updates=result.component_updates,
                 premise_updates=result.premise_updates,
                 fatigue_updates=result.fatigue_updates,
-                errors=result.errors,
+                module_updates=module_result.get("modules_updated", 0),
+                compatibility_updates=module_result.get("compatibilities_updated", 0),
+                errors=result.errors + module_result.get("errors", []),
             )
 
         except Exception as e:
@@ -165,6 +181,8 @@ class LearningLoopWorkflow:
                 component_updates=0,
                 premise_updates=0,
                 fatigue_updates=0,
+                module_updates=0,
+                compatibility_updates=0,
                 errors=[str(e)],
             )
 
@@ -254,6 +272,9 @@ class LearningLoopWorkflow:
         # Feature correlation monitoring (after processing outcomes)
         await self._run_feature_monitoring()
 
+        # Module learning (update module stats and compatibility)
+        module_result = await self._run_module_learning_batch()
+
         return LearningLoopResult(
             processed_count=processed_count,
             updated_ideas=updated_ideas,
@@ -261,7 +282,9 @@ class LearningLoopWorkflow:
             component_updates=0,  # Not tracked in individual mode
             premise_updates=0,
             fatigue_updates=processed_count,  # Each outcome updates fatigue
-            errors=errors,
+            module_updates=module_result.get("modules_updated", 0),
+            compatibility_updates=module_result.get("compatibilities_updated", 0),
+            errors=errors + module_result.get("errors", []),
         )
 
     async def _run_feature_monitoring(self) -> None:
@@ -360,3 +383,44 @@ class LearningLoopWorkflow:
 
         except Exception as e:
             workflow.logger.error(f"Feature drift detection failed: {e}")
+
+    async def _run_module_learning_batch(self) -> dict:
+        """
+        Run module learning for recently processed outcomes.
+
+        Updates module_bank stats and module_compatibility scores
+        for all modules used in creatives that were just processed.
+
+        Returns:
+            Dict with modules_updated, compatibilities_updated, errors
+        """
+        workflow.logger.info("Running module learning batch")
+
+        try:
+            result: ProcessModuleLearningBatchOutput = await workflow.execute_activity(
+                process_module_learning_batch,
+                ProcessModuleLearningBatchInput(hours_lookback=2),
+                start_to_close_timeout=timedelta(minutes=5),
+                retry_policy=LEARNING_RETRY_POLICY,
+            )
+
+            workflow.logger.info(
+                f"Module learning complete: "
+                f"{result.creatives_processed} creatives, "
+                f"{result.modules_updated} modules, "
+                f"{result.compatibilities_updated} compatibilities"
+            )
+
+            return {
+                "modules_updated": result.modules_updated,
+                "compatibilities_updated": result.compatibilities_updated,
+                "errors": result.errors,
+            }
+
+        except Exception as e:
+            workflow.logger.error(f"Module learning batch failed: {e}")
+            return {
+                "modules_updated": 0,
+                "compatibilities_updated": 0,
+                "errors": [str(e)],
+            }
