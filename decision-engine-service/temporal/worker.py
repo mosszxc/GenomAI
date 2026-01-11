@@ -209,14 +209,6 @@ from temporal.activities.agent_supervisor import (
     get_supervisor_stats,
 )
 
-# Import activities - Module Extraction (Modular Creative System, Issue #376)
-from temporal.activities.module_extraction import (
-    extract_modules_from_decomposition,
-    get_creative_metrics,
-    upsert_module,
-)
-
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
