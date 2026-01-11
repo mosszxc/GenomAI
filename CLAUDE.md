@@ -51,6 +51,16 @@ cd decision-engine-service && python -m temporal.schedules trigger <schedule-id>
 | New process | `docs/layer-3-implementation-design/SERVICE_BOUNDARIES.md` |
 | Decision Engine | `docs/layer-1-logic/DECISION_ENGINE.md` |
 
+## Plan Mode → Issue (MANDATORY)
+После аппрува плана через `ExitPlanMode`:
+1. Создать issue из плана:
+```bash
+./scripts/task-new.sh "Краткий title задачи"
+```
+2. Продолжить работу в созданном worktree
+
+**НЕ начинать имплементацию без issue!**
+
 ## /idea Workflow (Recommended)
 Быстрый старт задачи с изоляцией:
 ```
@@ -86,13 +96,33 @@ gh issue create -t "title" -l enhancement
 ./scripts/task-done.sh <issue-number>
 ```
 
+## ⛔ STOP-GATE: Before Writing ANY Code
+**ПЕРВОЕ ДЕЙСТВИЕ** при получении задачи с issue:
+```
+1. pwd → проверить что НЕ в main worktree
+2. Если в main → ./scripts/task-start.sh {N}
+3. Только ПОСЛЕ этого писать код
+```
+
+**Чеклист (выполнить ДО первого Edit/Write):**
+```
+- [ ] Issue номер известен? (fix #N, issue #N, etc.)
+- [ ] Я в worktree? (pwd содержит .worktrees/)
+- [ ] Если нет → task-start.sh СЕЙЧАС
+```
+
+⛔ **Коммит в main без worktree = A007 CRITICAL violation**
+Нет исключений. "Быстрый фикс" не аргумент.
+
 ## Issue Workflow
 **Детали:** `.claude/docs/issue-workflow.md`
 
-**Правило:** Работа над issue → `./scripts/task-start.sh {N}` → worktree.
-
 ## Git
 Always push after commit. No exceptions.
+
+**Issue workflow:** При работе над issue коммит делается автоматически без вопросов. Не спрашивать "делать коммит?".
+
+**Перед push в main:** Проверить `mcp__render__list_deploys` — если есть активный деплой, ждать завершения (см. Multi-Agent Coordination).
 
 ## TodoWrite Rules
 При создании todo списка **ВСЕГДА** добавлять последним пунктом:
@@ -108,7 +138,15 @@ Always push after commit. No exceptions.
 - [ ] qa-notes/issue-{N}-*.md создан
 - [ ] docs/* обновлён (если schema/API/workflow изменились)
 - [ ] Summary в последнем сообщении
+- [ ] Явно написать "Post-Task Loop выполнен ✓" в финальном сообщении
 ```
+
+**Формат закрытия issue:**
+```
+Issue #XXX закрыт.
+Post-Task Loop выполнен ✓
+```
+
 ⛔ Нарушение = A006 антипаттерн (см. LESSONS.md)
 
 ## Testing (BLOCKING)
