@@ -145,7 +145,11 @@ Always push after commit. No exceptions.
 ## STOP-GATE: Before Saying "Done"
 **НИКОГДА** не говорить "готово/done/завершено" без прохождения:
 ```
-- [ ] TEST выполнен и прошёл
+- [ ] TEST ВЫПОЛНЕН (реальный execution, не syntax check):
+      - Telegram команда: WebFetch webhook → проверить логи/БД
+      - API endpoint: curl → HTTP 200 + body
+      - Workflow: trigger → данные в БД
+      - Migration: execute_sql SELECT → constraints OK
 - [ ] qa-notes/issue-{N}-*.md создан
 - [ ] docs/* обновлён (если schema/API/workflow изменились)
 - [ ] Summary в последнем сообщении
