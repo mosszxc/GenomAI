@@ -18,6 +18,7 @@ class OnboardingState(str, Enum):
     AWAITING_VERTICAL = "AWAITING_VERTICAL"
     AWAITING_KEITARO = "AWAITING_KEITARO"
     LOADING_HISTORY = "LOADING_HISTORY"
+    AWAITING_VIDEOS = "AWAITING_VIDEOS"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
     TIMED_OUT = "TIMED_OUT"
@@ -197,16 +198,18 @@ VALID_GEOS = [
 ]
 
 VALID_VERTICALS = [
-    "gambling",
-    "nutra",
-    "crypto",
-    "dating",
-    "ecommerce",
-    "finance",
-    "gaming",
-    "sweepstakes",
-    "insurance",
-    "health",
+    "потенция",
+    "простатит",
+    "цистит",
+    "грибок",
+    "давление",
+    "диабет",
+    "зрение",
+    "суставы",
+    "похудение",
+    "варикоз",
+    "паразиты",
+    "слух",
 ]
 
 
