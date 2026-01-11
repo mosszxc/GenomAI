@@ -412,6 +412,7 @@ async def handle_help_command(message: TelegramMessage) -> None:
         "/genome fear --by week - Segment by week\n"
         "/confidence - Win rate confidence intervals\n"
         "/trends - Win rate trends chart (admin)\n"
+        "/drift - Performance drift detection (admin)\n"
         "/knowledge - View pending knowledge extractions\n"
         "/help - Show this help\n\n"
         "<b>To register a creative:</b>\n"
@@ -674,6 +675,82 @@ async def handle_trends_command(message: TelegramMessage) -> None:
     except Exception as e:
         logger.error(f"Failed to generate trends chart: {e}")
         await send_telegram_message(message.chat_id, "Failed to generate chart.")
+
+
+async def handle_drift_command(message: TelegramMessage) -> None:
+    """
+    Handle /drift command - detect performance drift in components.
+
+    Usage:
+        /drift - Show all components with drift (medium+ severity)
+        /drift emotion_primary - Filter by component type
+    """
+    from src.services.drift_detection import (
+        detect_drift,
+        format_drift_telegram,
+        get_available_component_types,
+    )
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "This command is only available for admins."
+        )
+        return
+
+    # Parse component type from command
+    text = message.text or ""
+    parts = text.split()
+    component_type = parts[1] if len(parts) > 1 else None
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Validate component type if specified
+        if component_type:
+            available_types = await get_available_component_types()
+            if component_type not in available_types and available_types:
+                types_list = ", ".join(available_types[:10])
+                await send_telegram_message(
+                    message.chat_id,
+                    f"Unknown component type: <code>{component_type}</code>\n\n"
+                    f"Available types:\n<code>{types_list}</code>\n\n"
+                    f"Usage: /drift [component_type]",
+                )
+                return
+
+        # Detect drift
+        results = await detect_drift(
+            component_type=component_type,
+            min_severity="medium",
+        )
+
+        drift_text = format_drift_telegram(results)
+        await send_telegram_message(message.chat_id, drift_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=drift_text,
+            context={
+                "component_type": component_type,
+                "drift_count": len(results),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to detect drift: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Failed to detect drift: {str(e)[:100]}",
+        )
 
 
 # Admin telegram IDs (for knowledge extraction)
@@ -1192,6 +1269,8 @@ async def process_telegram_update(update: dict) -> None:
             await handle_confidence_command(message)
         elif text.startswith("/trends"):
             await handle_trends_command(message)
+        elif text.startswith("/drift"):
+            await handle_drift_command(message)
         elif text.startswith("/"):
             # Unknown command
             await send_telegram_message(
