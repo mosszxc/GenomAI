@@ -67,6 +67,15 @@ SELECT * FROM genomai.hygiene_reports ORDER BY created_at DESC LIMIT 5;
 ## Verification Checklist
 - [x] Migration applied (031_hygiene_reports)
 - [x] Schedule created (health-check)
-- [ ] Workflow executed successfully
-- [ ] Report saved to hygiene_reports
-- [ ] Alert sent to Telegram (if thresholds breached)
+- [x] Workflow executed successfully
+- [x] Report saved to hygiene_reports (2 records, health_score: 0.88)
+- [x] Alert threshold logic verified (no alert at score 0.88 > 0.8 threshold)
+
+## Verification Results (2026-01-11)
+```
+hygiene_reports: 2 records
+- health_score: 0.88
+- supabase_connected: true
+- supabase_latency_ms: ~253ms
+- alerts_sent: 0 (score above threshold)
+```
