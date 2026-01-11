@@ -150,8 +150,7 @@ class CreativePipelineWorkflow:
 
                 transcription_result = await workflow.execute_activity(
                     transcribe_audio,
-                    audio_url,
-                    None,  # language_code - auto-detect
+                    args=[audio_url, None],  # language_code - auto-detect
                     start_to_close_timeout=timedelta(minutes=15),
                     heartbeat_timeout=timedelta(seconds=60),
                     retry_policy=long_running_retry,
@@ -168,9 +167,7 @@ class CreativePipelineWorkflow:
                 self._status = "saving_transcript"
                 saved_transcript = await workflow.execute_activity(
                     save_transcript,
-                    input.creative_id,
-                    transcript_text,
-                    assemblyai_transcript_id,
+                    args=[input.creative_id, transcript_text, assemblyai_transcript_id],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
@@ -179,14 +176,18 @@ class CreativePipelineWorkflow:
                 # Emit transcription event
                 await workflow.execute_activity(
                     emit_event,
-                    "TranscriptCreated",
-                    {
-                        "creative_id": input.creative_id,
-                        "transcript_id": saved_transcript_id,
-                        "assemblyai_transcript_id": assemblyai_transcript_id,
-                        "version": saved_transcript.get("version", 1),
-                        "words": len(transcript_text.split()) if transcript_text else 0,
-                    },
+                    args=[
+                        "TranscriptCreated",
+                        {
+                            "creative_id": input.creative_id,
+                            "transcript_id": saved_transcript_id,
+                            "assemblyai_transcript_id": assemblyai_transcript_id,
+                            "version": saved_transcript.get("version", 1),
+                            "words": len(transcript_text.split())
+                            if transcript_text
+                            else 0,
+                        },
+                    ],
                     start_to_close_timeout=timedelta(seconds=10),
                 )
 
@@ -194,8 +195,7 @@ class CreativePipelineWorkflow:
             self._status = "decomposing"
             decomposition_result = await workflow.execute_activity(
                 decompose_creative,
-                transcript_text,
-                input.creative_id,
+                args=[transcript_text, input.creative_id],
                 start_to_close_timeout=timedelta(seconds=120),
                 retry_policy=default_retry,
             )
@@ -206,10 +206,12 @@ class CreativePipelineWorkflow:
             # Save decomposed creative
             decomposed = await workflow.execute_activity(
                 save_decomposed_creative,
-                input.creative_id,
-                decomposition_payload,
-                canonical_hash,
-                saved_transcript_id,  # DB transcript ID (not AssemblyAI ID)
+                args=[
+                    input.creative_id,
+                    decomposition_payload,
+                    canonical_hash,
+                    saved_transcript_id,
+                ],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -217,13 +219,15 @@ class CreativePipelineWorkflow:
             # Emit decomposition event
             await workflow.execute_activity(
                 emit_event,
-                "CreativeDecomposed",
-                {
-                    "creative_id": input.creative_id,
-                    "decomposed_creative_id": decomposed["id"],
-                    "canonical_hash": canonical_hash,
-                    "schema_version": decomposition_result["schema_version"],
-                },
+                args=[
+                    "CreativeDecomposed",
+                    {
+                        "creative_id": input.creative_id,
+                        "decomposed_creative_id": decomposed["id"],
+                        "canonical_hash": canonical_hash,
+                        "schema_version": decomposition_result["schema_version"],
+                    },
+                ],
                 start_to_close_timeout=timedelta(seconds=10),
             )
 
@@ -245,9 +249,7 @@ class CreativePipelineWorkflow:
                 idea_status = "new"
                 new_idea = await workflow.execute_activity(
                     create_idea,
-                    canonical_hash,
-                    decomposed["id"],
-                    input.buyer_id,
+                    args=[canonical_hash, decomposed["id"], input.buyer_id],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
@@ -256,12 +258,14 @@ class CreativePipelineWorkflow:
             # Emit idea event
             await workflow.execute_activity(
                 emit_event,
-                "IdeaRegistered",
-                {
-                    "idea_id": self._idea_id,
-                    "status": idea_status,
-                    "canonical_hash": canonical_hash,
-                },
+                args=[
+                    "IdeaRegistered",
+                    {
+                        "idea_id": self._idea_id,
+                        "status": idea_status,
+                        "canonical_hash": canonical_hash,
+                    },
+                ],
                 start_to_close_timeout=timedelta(seconds=10),
             )
 
@@ -279,13 +283,15 @@ class CreativePipelineWorkflow:
             # Emit decision event
             await workflow.execute_activity(
                 emit_event,
-                "DecisionMade",
-                {
-                    "idea_id": self._idea_id,
-                    "decision_id": decision_result.decision_id,
-                    "decision_type": decision_result.decision_type,
-                    "decision_reason": decision_result.decision_reason,
-                },
+                args=[
+                    "DecisionMade",
+                    {
+                        "idea_id": self._idea_id,
+                        "decision_id": decision_result.decision_id,
+                        "decision_type": decision_result.decision_type,
+                        "decision_reason": decision_result.decision_reason,
+                    },
+                ],
                 start_to_close_timeout=timedelta(seconds=10),
             )
 
@@ -297,9 +303,11 @@ class CreativePipelineWorkflow:
                 # Generate hypotheses
                 hypothesis_result = await workflow.execute_activity(
                     generate_hypotheses,
-                    self._idea_id,
-                    decision_result.decision_id,
-                    decomposition_payload,
+                    args=[
+                        self._idea_id,
+                        decision_result.decision_id,
+                        decomposition_payload,
+                    ],
                     start_to_close_timeout=timedelta(seconds=120),
                     retry_policy=default_retry,
                 )
@@ -307,12 +315,14 @@ class CreativePipelineWorkflow:
                 # Save hypotheses with variables from decomposition
                 saved_hypotheses = await workflow.execute_activity(
                     save_hypotheses,
-                    hypothesis_result["hypotheses"],
-                    self._idea_id,
-                    decision_result.decision_id,
-                    hypothesis_result["prompt_version"],
-                    decomposition_payload,  # Pass variables for denormalization
-                    input.buyer_id,  # Propagate buyer_id for delivery routing
+                    args=[
+                        hypothesis_result["hypotheses"],
+                        self._idea_id,
+                        decision_result.decision_id,
+                        hypothesis_result["prompt_version"],
+                        decomposition_payload,  # Pass variables for denormalization
+                        input.buyer_id,  # Propagate buyer_id for delivery routing
+                    ],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
@@ -322,12 +332,14 @@ class CreativePipelineWorkflow:
                 # Emit hypothesis event
                 await workflow.execute_activity(
                     emit_event,
-                    "HypothesisGenerated",
-                    {
-                        "idea_id": self._idea_id,
-                        "decision_id": decision_result.decision_id,
-                        "count": self._hypothesis_count,
-                    },
+                    args=[
+                        "HypothesisGenerated",
+                        {
+                            "idea_id": self._idea_id,
+                            "decision_id": decision_result.decision_id,
+                            "count": self._hypothesis_count,
+                        },
+                    ],
                     start_to_close_timeout=timedelta(seconds=10),
                 )
 
@@ -350,10 +362,12 @@ class CreativePipelineWorkflow:
 
                         delivery_result = await workflow.execute_activity(
                             send_hypothesis_to_telegram,
-                            hypothesis_id,
-                            first_hypothesis["content"],
-                            chat_id,
-                            self._idea_id,
+                            args=[
+                                hypothesis_id,
+                                first_hypothesis["content"],
+                                chat_id,
+                                self._idea_id,
+                            ],
                             start_to_close_timeout=timedelta(seconds=30),
                             retry_policy=default_retry,
                         )
@@ -361,17 +375,18 @@ class CreativePipelineWorkflow:
                         # Emit delivery event
                         await workflow.execute_activity(
                             emit_delivery_event,
-                            hypothesis_id,
-                            self._idea_id,
-                            delivery_result["status"],
+                            args=[
+                                hypothesis_id,
+                                self._idea_id,
+                                delivery_result["status"],
+                            ],
                             start_to_close_timeout=timedelta(seconds=10),
                         )
 
             # Update creative status
             await workflow.execute_activity(
                 update_creative_status,
-                input.creative_id,
-                "processed",
+                args=[input.creative_id, "processed"],
                 start_to_close_timeout=timedelta(seconds=10),
             )
 

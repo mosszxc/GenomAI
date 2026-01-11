@@ -129,8 +129,16 @@ if [ -d "$WORKTREES_DIR" ]; then
         dirname=$(basename "$dir")
 
         # Check if this worktree is still registered
-        if ! git worktree list | grep -q "$dir"; then
-            echo "  Orphaned: $dirname"
+        # Use -F for fixed string matching (handles unicode/cyrillic paths)
+        if ! git worktree list | grep -qF "$dirname"; then
+            # Orphaned directory - but still respect TTL!
+            # Don't delete active work just because git lost track of it
+            if [ "$FORCE_CLEAN" != "true" ] && ! is_expired "$dir"; then
+                echo "  Orphaned (preserved - TTL not expired): $dirname"
+                ((PRESERVED++)) || true
+                continue
+            fi
+            echo "  Orphaned (expired): $dirname"
             if [ "$DRY_RUN" != "true" ]; then
                 rm -rf "$dir"
             fi

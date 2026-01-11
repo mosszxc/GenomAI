@@ -175,22 +175,36 @@ Options:
 ```
 Этот пункт блокирует закрытие задачи до выполнения Post-Task Loop.
 
-## STOP-GATE: Before Saying "Done"
-**НИКОГДА** не говорить "готово/done/завершено" без прохождения:
+## ⛔ Issue Closure Order (STRICT)
+
+**Порядок ОБЯЗАТЕЛЕН. Шаг N+1 только после завершения шага N:**
+
 ```
-- [ ] TEST ВЫПОЛНЕН (реальный execution, не syntax check):
-      - Telegram команда: WebFetch webhook → проверить логи/БД
-      - API endpoint: curl → HTTP 200 + body
-      - Workflow: trigger → данные в БД
-      - Migration: execute_sql SELECT → constraints OK
-- [ ] qa-notes/issue-{N}-*.md создан
-- [ ] docs/* обновлён (если schema/API/workflow изменились)
-- [ ] Summary в последнем сообщении
-- [ ] Явно написать "Post-Task Loop выполнен ✓" в финальном сообщении
+1. ✓ Code complete
+2. ✓ git commit + push
+3. ✓ Deploy finished (if applicable)
+4. ✓ PRODUCTION TEST PASSED ← BLOCKING
+5. ✓ qa-notes written (с результатами теста)
+6. ✓ docs updated (если нужно)
+7. ✓ Issue closed ← ТОЛЬКО после шага 4-6
 ```
 
-**Формат закрытия issue:**
+⛔ **Issue closed BEFORE test = A006 CRITICAL violation**
+
+### Production Test Types
+| Изменение | Тест | Критерий успеха |
+|-----------|------|-----------------|
+| Workflow | `temporal.schedules trigger` | данные в БД |
+| API | `curl` endpoint | HTTP 200 + body |
+| Migration | `execute_sql` SELECT | constraints OK |
+| Telegram | `WebFetch` webhook | логи + БД |
+
+### Формат закрытия
 ```
+Production test: PASSED
+  Command: <команда>
+  Result: <результат>
+
 Issue #XXX закрыт.
 Post-Task Loop выполнен ✓
 ```

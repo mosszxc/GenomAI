@@ -157,7 +157,11 @@ async def create_schedule(client: Client, schedule_id: str, config: dict) -> boo
                 state=ScheduleState(note=config["description"]),
                 policy=SchedulePolicy(
                     overlap=ScheduleOverlapPolicy.SKIP,  # Skip if previous run still running
-                    catchup_window=timedelta(minutes=5),  # Don't catch up missed runs
+                    # For cron schedules (daily), allow 24h catchup to handle deploys
+                    # For interval schedules, 5 min is fine as they run frequently
+                    catchup_window=timedelta(hours=24)
+                    if "cron" in config
+                    else timedelta(minutes=5),
                 ),
             ),
         )
