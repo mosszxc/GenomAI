@@ -57,6 +57,14 @@ CHECK: decision IN ('approve', 'reject', 'defer')
 | `hypotheses` | Генерированные гипотезы | Yes (status) | hypothesis_factory |
 | `deliveries` | Лог доставок | No (append-only) | telegram_delivery |
 
+#### hypotheses (retry columns, Issue #313)
+```
+retry_count     INT DEFAULT 0      -- Delivery retry attempts (max 3)
+last_retry_at   TIMESTAMPTZ        -- Last retry timestamp
+last_error      TEXT               -- Last delivery error message
+```
+Status flow: `null` -> `failed` -> (retry) -> `delivered` | `abandoned`
+
 ### Metrics Tables
 
 | Table | Purpose | Mutable | Writer |

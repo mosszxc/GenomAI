@@ -145,7 +145,11 @@ from temporal.activities.maintenance import (
 )
 
 # Import activities - Hygiene (cleanup & health)
-from temporal.activities.hygiene_cleanup import run_all_cleanup
+from temporal.activities.hygiene_cleanup import (
+    run_all_cleanup,
+    retry_failed_hypotheses,
+    cleanup_exhausted_hypotheses,
+)
 from temporal.activities.hygiene_health import (
     check_supabase_connection,
     get_table_sizes,
@@ -332,6 +336,8 @@ async def run_all_workers():
             check_staleness,
             # Hygiene activities (cleanup & health)
             run_all_cleanup,
+            retry_failed_hypotheses,
+            cleanup_exhausted_hypotheses,
             check_supabase_connection,
             get_table_sizes,
             get_pending_counts,
