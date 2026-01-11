@@ -169,11 +169,12 @@ class KeitaroPollerWorkflow:
                         EmitMetricsEventInput(
                             event_type="RawMetricsObserved",
                             entity_type="tracker",
-                            entity_id=workflow.info().workflow_id,
+                            # entity_id is None (workflow_id is not a UUID)
                             payload={
                                 "tracker_id": metrics.tracker_id,
                                 "date": metrics.date,
                                 "interval": input.interval,
+                                "workflow_id": workflow.info().workflow_id,
                             },
                         ),
                         start_to_close_timeout=timedelta(seconds=15),
