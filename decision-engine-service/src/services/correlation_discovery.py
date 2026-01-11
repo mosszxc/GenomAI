@@ -25,10 +25,10 @@ MIN_PAIR_SAMPLES = 5
 MIN_SINGLE_SAMPLES = 10
 
 # Lift thresholds for categorization
-STRONG_POSITIVE_LIFT = 1.15  # +15% lift = strong synergy
-WEAK_POSITIVE_LIFT = 1.05  # +5% lift = weak synergy
-WEAK_NEGATIVE_LIFT = 0.95  # -5% lift = weak conflict
-STRONG_NEGATIVE_LIFT = 0.85  # -15% lift = strong conflict
+STRONG_POSITIVE_LIFT = 1.15  # +15% прирост = strong synergy
+WEAK_POSITIVE_LIFT = 1.05  # +5% прирост = weak synergy
+WEAK_NEGATIVE_LIFT = 0.95  # -5% прирост = weak conflict
+STRONG_NEGATIVE_LIFT = 0.85  # -15% прирост = strong conflict
 
 
 @dataclass
@@ -39,7 +39,7 @@ class Correlation:
     component_a_value: str
     component_b_type: str
     component_b_value: str
-    lift: float
+    прирост: float
     pair_win_rate: float
     pair_sample_size: int
     a_win_rate: float
@@ -50,9 +50,9 @@ class Correlation:
     strength: str  # "strong" or "weak"
 
     @property
-    def lift_percent(self) -> float:
+    def прирост_percent(self) -> float:
         """Lift as percentage change."""
-        return (self.lift - 1.0) * 100
+        return (self.прирост - 1.0) * 100
 
 
 def _get_credentials():
@@ -76,13 +76,13 @@ def _get_headers(supabase_key: str) -> dict:
     }
 
 
-def _calculate_lift(
+def _calculate_прирост(
     pair_win_rate: float,
     a_win_rate: float,
     b_win_rate: float,
 ) -> float:
     """
-    Calculate lift for a component pair.
+    Calculate прирост for a component pair.
 
     Lift = P(win|A∩B) / (P(win|A) * P(win|B))
 
@@ -101,28 +101,28 @@ def _calculate_lift(
     return pair_win_rate / expected
 
 
-def _categorize_lift(lift: float) -> tuple[str, str]:
+def _categorize_прирост(прирост: float) -> tuple[str, str]:
     """
-    Categorize lift into type and strength.
+    Categorize прирост into type and strength.
 
     Returns:
         (correlation_type, strength)
     """
-    if lift >= STRONG_POSITIVE_LIFT:
+    if прирост >= STRONG_POSITIVE_LIFT:
         return ("positive", "strong")
-    elif lift >= WEAK_POSITIVE_LIFT:
+    elif прирост >= WEAK_POSITIVE_LIFT:
         return ("positive", "weak")
-    elif lift <= STRONG_NEGATIVE_LIFT:
+    elif прирост <= STRONG_NEGATIVE_LIFT:
         return ("negative", "strong")
-    elif lift <= WEAK_NEGATIVE_LIFT:
+    elif прирост <= WEAK_NEGATIVE_LIFT:
         return ("negative", "weak")
     else:
         return ("neutral", "none")
 
 
 async def discover_correlations(
-    min_lift_positive: float = WEAK_POSITIVE_LIFT,
-    min_lift_negative: float = WEAK_NEGATIVE_LIFT,
+    min_прирост_positive: float = WEAK_POSITIVE_LIFT,
+    min_прирост_negative: float = WEAK_NEGATIVE_LIFT,
     component_types: Optional[list[str]] = None,
     limit: int = 20,
 ) -> list[Correlation]:
@@ -130,13 +130,13 @@ async def discover_correlations(
     Discover correlations between component pairs.
 
     Args:
-        min_lift_positive: Minimum lift for positive correlations (default: 1.05)
-        min_lift_negative: Maximum lift for negative correlations (default: 0.95)
+        min_прирост_positive: Minimum прирост for positive correlations (default: 1.05)
+        min_прирост_negative: Maximum прирост for negative correlations (default: 0.95)
         component_types: Filter to specific component types (e.g., ["emotion_primary", "angle_type"])
         limit: Maximum correlations to return
 
     Returns:
-        List of Correlation objects sorted by absolute lift distance from 1.0
+        List of Correlation objects sorted by absolute прирост distance from 1.0
     """
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
@@ -240,12 +240,12 @@ async def discover_correlations(
             b_win_rate, _, b_total = calc_stats(ids_b)
             pair_win_rate, _, pair_total = calc_stats(pair_ids)
 
-            # Calculate lift
-            lift = _calculate_lift(pair_win_rate, a_win_rate, b_win_rate)
+            # Calculate прирост
+            прирост = _calculate_прирост(pair_win_rate, a_win_rate, b_win_rate)
 
-            # Filter by lift threshold
-            if lift >= min_lift_positive or lift <= min_lift_negative:
-                corr_type, strength = _categorize_lift(lift)
+            # Filter by прирост threshold
+            if прирост >= min_прирост_positive or прирост <= min_прирост_negative:
+                corr_type, strength = _categorize_прирост(прирост)
 
                 if corr_type == "neutral":
                     continue
@@ -256,7 +256,7 @@ async def discover_correlations(
                         component_a_value=key_a[1],
                         component_b_type=key_b[0],
                         component_b_value=key_b[1],
-                        lift=lift,
+                        прирост=прирост,
                         pair_win_rate=pair_win_rate,
                         pair_sample_size=pair_total,
                         a_win_rate=a_win_rate,
@@ -269,7 +269,7 @@ async def discover_correlations(
                 )
 
     # Sort by absolute distance from 1.0 (most significant first)
-    correlations.sort(key=lambda c: abs(c.lift - 1.0), reverse=True)
+    correlations.sort(key=lambda c: abs(c.прирост - 1.0), reverse=True)
 
     return correlations[:limit]
 
@@ -281,8 +281,8 @@ async def get_top_recommendations(limit: int = 3) -> list[Correlation]:
     Returns strongest positive synergies that could be tested.
     """
     correlations = await discover_correlations(
-        min_lift_positive=STRONG_POSITIVE_LIFT,
-        min_lift_negative=2.0,  # Effectively disable negative
+        min_прирост_positive=STRONG_POSITIVE_LIFT,
+        min_прирост_negative=2.0,  # Effectively disable negative
         limit=limit,
     )
 
@@ -300,21 +300,21 @@ def format_correlations_telegram(
     🔗 Discovered Correlations
 
     Strong positive:
-    ├── hope + question_opening → +23% lift
-    └── curiosity + story_structure → +18% lift
+    ├── hope + question_opening → +23% прирост
+    └── curiosity + story_structure → +18% прирост
 
     Strong negative:
-    ├── fear + guaranteed_promise → -31% penalty
-    └── urgency + long_form → -25% penalty
+    ├── fear + guaranteed_promise → -31% штраф
+    └── urgency + long_form → -25% штраф
 
-    💡 Recommendation: Test hope + question combo
+    💡 Recommendation: Test hope + question комбо
     """
     if not correlations:
         return (
             "🔗 <b>Correlation Discovery</b>\n\n"
-            "<i>No significant correlations found yet.</i>\n\n"
-            "Need more test results to discover patterns.\n"
-            f"Minimum samples: {MIN_PAIR_SAMPLES} per pair"
+            "<i>Значимых корреляций пока не найдено.</i>\n\n"
+            "Нужно больше тестовых результатов.\n"
+            f"Минимум семплов: {MIN_PAIR_SAMPLES} на пару"
         )
 
     # Separate positive and negative
@@ -339,7 +339,7 @@ def format_correlations_telegram(
         if c.correlation_type == "negative" and c.strength == "weak"
     ]
 
-    lines = ["🔗 <b>Discovered Correlations</b>", ""]
+    lines = ["🔗 <b>Найденные корреляции</b>", ""]
 
     def format_correlation(c: Correlation, is_last: bool = False) -> str:
         """Format single correlation line."""
@@ -350,17 +350,17 @@ def format_correlations_telegram(
 
         if c.correlation_type == "positive":
             sign = "+"
-            suffix = "lift"
+            suffix = "прирост"
         else:
             sign = ""
-            suffix = "penalty"
+            suffix = "штраф"
 
-        pct = c.lift_percent
+        pct = c.прирост_percent
         return f"{prefix} {a_short} + {b_short} → {sign}{pct:.0f}% {suffix}"
 
     # Strong positive
     if strong_positive:
-        lines.append("<b>Strong positive:</b>")
+        lines.append("<b>Сильные положительные:</b>")
         for i, c in enumerate(strong_positive[:4]):
             is_last = i == len(strong_positive[:4]) - 1
             lines.append(format_correlation(c, is_last))
@@ -368,7 +368,7 @@ def format_correlations_telegram(
 
     # Strong negative
     if strong_negative:
-        lines.append("<b>Strong negative:</b>")
+        lines.append("<b>Сильные отрицательные:</b>")
         for i, c in enumerate(strong_negative[:4]):
             is_last = i == len(strong_negative[:4]) - 1
             lines.append(format_correlation(c, is_last))
@@ -377,14 +377,14 @@ def format_correlations_telegram(
     # Weak correlations (optional, show only if no strong ones)
     if not strong_positive and not strong_negative:
         if weak_positive:
-            lines.append("<b>Weak positive:</b>")
+            lines.append("<b>Слабые положительные:</b>")
             for i, c in enumerate(weak_positive[:3]):
                 is_last = i == len(weak_positive[:3]) - 1
                 lines.append(format_correlation(c, is_last))
             lines.append("")
 
         if weak_negative:
-            lines.append("<b>Weak negative:</b>")
+            lines.append("<b>Слабые отрицательные:</b>")
             for i, c in enumerate(weak_negative[:3]):
                 is_last = i == len(weak_negative[:3]) - 1
                 lines.append(format_correlation(c, is_last))
@@ -394,7 +394,7 @@ def format_correlations_telegram(
     if show_recommendation and strong_positive:
         best = strong_positive[0]
         lines.append(
-            f"💡 <b>Recommendation:</b> Test {best.component_a_value} + {best.component_b_value} combo"
+            f"💡 <b>Рекомендация:</b> Тестировать {best.component_a_value} + {best.component_b_value} комбо"
         )
         lines.append(
             f"   (n={best.pair_sample_size}, win rate {best.pair_win_rate:.0%})"

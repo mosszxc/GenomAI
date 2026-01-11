@@ -170,12 +170,12 @@ def format_heatmap_telegram(data: dict, title: Optional[str] = None) -> str:
 
     if not geos or not components:
         return (
-            "🧬 <b>Component Performance Matrix</b>\n\n"
-            f"<i>No data for {component_type}</i>\n\n"
-            "Components need at least 3 samples to appear."
+            "🧬 <b>Матрица компонентов</b>\n\n"
+            f"<i>Нет данных для {component_type}</i>\n\n"
+            "Нужно минимум 3 семпла для отображения."
         )
 
-    title = title or "Component Performance Matrix"
+    title = title or "Матрица компонентов"
 
     # Limit display to top 6 components by total sample size
     component_totals = {}
@@ -230,7 +230,7 @@ def format_heatmap_telegram(data: dict, title: Optional[str] = None) -> str:
             "",
             f"{EMOJI_GREEN} &gt;30%  {EMOJI_YELLOW} 15-30%  {EMOJI_RED} &lt;15%  {EMOJI_NO_DATA} &lt;3 samples",
             "",
-            f"<i>Type: {component_type}</i>",
+            f"<i>Тип: {component_type}</i>",
         ]
     )
 
@@ -270,7 +270,7 @@ async def get_segmented_analysis(
 
     Args:
         component_value: The component to analyze (e.g., "fear", "hope")
-        segment_by: Segment dimension - "geo", "avatar", or "week"
+        segment_by: Segment dimension - "geo", "аватарам", or "week"
         component_type: Type of component (default: emotion_primary)
 
     Returns:
@@ -278,10 +278,10 @@ async def get_segmented_analysis(
             "component_value": "fear",
             "segment_by": "geo",
             "segments": [
-                {"segment": "US", "win_rate": 0.15, "sample_size": 10},
-                {"segment": "EU", "win_rate": 0.22, "sample_size": 5},
+                {"сегментам": "US", "win_rate": 0.15, "sample_size": 10},
+                {"сегментам": "EU", "win_rate": 0.22, "sample_size": 5},
             ],
-            "insight": "fear works best in EU"
+            "insight": "fear лучше работает в EU"
         }
     """
     rest_url, supabase_key = _get_credentials()
@@ -293,7 +293,7 @@ async def get_segmented_analysis(
         segments = await _get_segments_by_geo(
             rest_url, headers, component_value, component_type
         )
-    elif segment_by == "avatar":
+    elif segment_by == "аватарам":
         segments = await _get_segments_by_avatar(
             rest_url, headers, component_value, component_type
         )
@@ -346,7 +346,7 @@ async def _get_segments_by_geo(
 
         segments.append(
             {
-                "segment": geo,
+                "сегментам": geo,
                 "win_rate": win_rate,
                 "sample_size": sample_size,
             }
@@ -407,7 +407,7 @@ async def _get_segments_by_avatar(
 
         segments.append(
             {
-                "segment": avatar_name,
+                "сегментам": avatar_name,
                 "win_rate": win_rate,
                 "sample_size": sample_size,
             }
@@ -444,7 +444,7 @@ async def _get_segments_by_week(
             data = response.json()
             return [
                 {
-                    "segment": row.get("week_label", "Unknown"),
+                    "сегментам": row.get("week_label", "Unknown"),
                     "win_rate": float(row["win_rate"]) if row.get("win_rate") else None,
                     "sample_size": row.get("sample_size", 0),
                 }
@@ -523,7 +523,7 @@ async def _get_segments_by_week(
         win_rate = stats["wins"] / stats["total"] if stats["total"] > 0 else None
         segments.append(
             {
-                "segment": week,
+                "сегментам": week,
                 "win_rate": win_rate,
                 "sample_size": stats["total"],
             }
@@ -550,7 +550,7 @@ def _generate_insight(
 ) -> str:
     """Generate insight text based on segment data."""
     if not segments:
-        return f"No data for {component_value}"
+        return f"Нет данных для {component_value}"
 
     # Filter segments with valid data
     valid_segments = [
@@ -560,24 +560,24 @@ def _generate_insight(
     ]
 
     if not valid_segments:
-        return (
-            f"Insufficient data for {component_value} (need ≥{MIN_SAMPLE_SIZE} samples)"
-        )
+        return f"Недостаточно данных для {component_value} (нужно ≥{MIN_SAMPLE_SIZE} семплов)"
 
     # Find best performing segment
     best = max(valid_segments, key=lambda s: s["win_rate"])
     worst = min(valid_segments, key=lambda s: s["win_rate"])
 
     segment_type = {
-        "geo": "geography",
-        "avatar": "avatar",
-        "week": "time period",
-    }.get(segment_by, "segment")
+        "geo": "географии",
+        "аватарам": "аватарам",
+        "week": "периодам",
+    }.get(segment_by, "сегментам")
 
     if best["win_rate"] == worst["win_rate"]:
-        return f"{component_value} performs consistently across {segment_type}s"
+        return f"{component_value} стабилен по {segment_type}s"
 
-    return f"{component_value} works best in {best['segment']} ({best['win_rate']:.0%})"
+    return (
+        f"{component_value} лучше работает в {best['segment']} ({best['win_rate']:.0%})"
+    )
 
 
 def format_segmented_telegram(data: dict) -> str:
@@ -600,32 +600,32 @@ def format_segmented_telegram(data: dict) -> str:
     # Segment type emoji
     emoji_map = {
         "geo": "🌍",
-        "avatar": "👤",
+        "аватарам": "👤",
         "week": "📅",
     }
     header_emoji = emoji_map.get(segment_by, "📊")
 
     # Segment type label
     label_map = {
-        "geo": "Geography",
-        "avatar": "Avatar",
-        "week": "Week",
+        "geo": "Гео",
+        "аватарам": "Аватар",
+        "week": "Неделя",
     }
     header_label = label_map.get(segment_by, segment_by.title())
 
     if not segments:
         return (
-            f"{header_emoji} <b>{component_value}</b> by {header_label}\n\n"
-            f"<i>No data available</i>"
+            f"{header_emoji} <b>{component_value}</b> по {header_label}\n\n"
+            f"<i>Данных нет</i>"
         )
 
     lines = [
-        f"{header_emoji} <b>{component_value}</b> by {header_label}",
+        f"{header_emoji} <b>{component_value}</b> по {header_label}",
         "",
     ]
 
     for seg in segments:
-        segment_name = seg.get("segment", "Unknown")
+        segment_name = seg.get("сегментам", "Unknown")
         win_rate = seg.get("win_rate")
         sample_size = seg.get("sample_size", 0)
 

@@ -100,7 +100,7 @@ async def send_hypothesis_to_telegram(
 def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> str:
     """Format hypothesis content for Telegram message."""
     lines = [
-        "<b>New Hypothesis Generated</b>",
+        "<b>Новая гипотеза</b>",
         "",
         content,
     ]
@@ -109,7 +109,7 @@ def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> s
         lines.extend(
             [
                 "",
-                f"<i>Idea: {idea_id[:8]}...</i>",
+                f"<i>Идея: {idea_id[:8]}...</i>",
             ]
         )
 

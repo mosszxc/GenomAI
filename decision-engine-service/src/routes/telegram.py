@@ -214,15 +214,15 @@ async def handle_start_command(message: TelegramMessage) -> None:
         logger.info(f"Workflow already running for user: {message.user_id}")
         await send_telegram_message(
             message.chat_id,
-            "You already have an active registration in progress.\n"
-            "Please complete it or wait for timeout.",
+            "У вас уже есть активная регистрация.\n"
+            "Завершите её или дождитесь таймаута.",
         )
 
     except Exception as e:
         logger.error(f"Failed to start onboarding: {e}")
         await send_telegram_message(
             message.chat_id,
-            "Failed to start registration. Please try again later.",
+            "Не удалось начать регистрацию. Попробуйте позже.",
         )
 
 
@@ -283,7 +283,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not supabase_key:
-        await send_telegram_message(message.chat_id, "Stats temporarily unavailable.")
+        await send_telegram_message(message.chat_id, "Статистика временно недоступна.")
         return
 
     try:
@@ -306,7 +306,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             if not buyers:
                 await send_telegram_message(
                     message.chat_id,
-                    "You're not registered yet. Send /start to begin.",
+                    "Вы ещё не зарегистрированы. Отправьте /start для начала.",
                 )
                 return
 
@@ -368,12 +368,12 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             stats_message = (
                 f"📊 <b>Твоя статистика:</b>\n\n"
                 f"Креативов: {total}\n"
-                f"✅ Wins: {wins} ({win_rate:.0f}%)\n"
-                f"❌ Losses: {losses}\n"
-                f"⏳ Testing: {testing}\n\n"
+                f"✅ Побед: {wins} ({win_rate:.0f}%)\n"
+                f"❌ Поражений: {losses}\n"
+                f"⏳ Тестируется: {testing}\n\n"
                 f"ROI: {roi_sign}{roi:.1f}%\n"
-                f"Spend: ${total_spend:.0f}\n"
-                f"Revenue: ${total_revenue:.0f}"
+                f"Расход: ${total_spend:.0f}\n"
+                f"Доход: ${total_revenue:.0f}"
             )
 
             await send_telegram_message(message.chat_id, stats_message)
@@ -397,31 +397,31 @@ async def handle_stats_command(message: TelegramMessage) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
-        await send_telegram_message(message.chat_id, "Failed to load stats.")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить статистику.")
 
 
 async def handle_help_command(message: TelegramMessage) -> None:
     """Handle /help command."""
     help_message = (
-        "<b>GenomAI Bot Commands</b>\n\n"
-        "/start - Start registration\n"
-        "/stats - View your statistics\n"
-        "/genome - Component performance heatmap\n"
-        "/genome fear --by geo - Segment by geography\n"
-        "/genome fear --by avatar - Segment by avatar\n"
-        "/genome fear --by week - Segment by week\n"
-        "/confidence - Win rate confidence intervals\n"
-        "/correlations - Discover component synergies (admin)\n"
-        "/recommend - Today's best bet combination (admin)\n"
-        "/simulate fear + hope + ugc - What-If simulator (admin)\n"
-        "/trends - Win rate trends chart (admin)\n"
-        "/drift - Performance drift detection (admin)\n"
-        "/knowledge - View pending knowledge extractions\n"
-        "/help - Show this help\n\n"
-        "<b>To register a creative:</b>\n"
-        "Just send a video URL and we'll process it for you.\n\n"
-        "<b>To extract knowledge:</b>\n"
-        "Upload a .txt or .md file with training transcript.\n\n"
+        "<b>Команды GenomAI</b>\n\n"
+        "/start - Начать регистрацию\n"
+        "/stats - Посмотреть статистику\n"
+        "/genome - Матрица компонентов\n"
+        "/genome fear --by geo - Сегментация по гео\n"
+        "/genome fear --by avatar - Сегментация по аватару\n"
+        "/genome fear --by week - Сегментация по неделям\n"
+        "/confidence - Доверительные интервалы\n"
+        "/correlations - Синергии компонентов (admin)\n"
+        "/recommend - Лучшая комбинация дня (admin)\n"
+        "/simulate fear + hope + ugc - What-If симулятор (admin)\n"
+        "/trends - Тренды конверсии (admin)\n"
+        "/drift - Обнаружение дрифта (admin)\n"
+        "/knowledge - Ожидающие извлечения знаний\n"
+        "/help - Показать справку\n\n"
+        "<b>Регистрация креатива:</b>\n"
+        "Просто отправьте ссылку на видео.\n\n"
+        "<b>Извлечение знаний:</b>\n"
+        "Загрузите .txt или .md файл с транскриптом.\n\n"
         "<i>Example: https://example.com/video.mp4</i>"
     )
 
@@ -479,17 +479,17 @@ async def handle_genome_command(message: TelegramMessage) -> None:
             if segment_by not in valid_segments:
                 await send_telegram_message(
                     message.chat_id,
-                    f"Invalid segment type: <code>{segment_by}</code>\n\n"
-                    f"Valid options: <code>geo</code>, <code>avatar</code>, <code>week</code>\n\n"
-                    f"Usage: /genome fear --by geo",
+                    f"Неверный тип сегментации: <code>{segment_by}</code>\n\n"
+                    f"Доступные: <code>geo</code>, <code>avatar</code>, <code>week</code>\n\n"
+                    f"Пример: /genome fear --by geo",
                 )
                 return
 
             if not component_value:
                 await send_telegram_message(
                     message.chat_id,
-                    "Please specify a component value.\n\n"
-                    "Usage: /genome fear --by geo\n"
+                    "Укажите значение компонента.\n\n"
+                    "Пример: /genome fear --by geo\n"
                     "       /genome hope --by avatar\n"
                     "       /genome curiosity --by week",
                 )
@@ -529,8 +529,8 @@ async def handle_genome_command(message: TelegramMessage) -> None:
             types_list = ", ".join(available_types[:10])
             await send_telegram_message(
                 message.chat_id,
-                f"Unknown component type: <code>{component_type}</code>\n\n"
-                f"Available types:\n<code>{types_list}</code>\n\n"
+                f"Неизвестный тип компонента: <code>{component_type}</code>\n\n"
+                f"Доступные типы:\n<code>{types_list}</code>\n\n"
                 f"Usage:\n"
                 f"  /genome [component_type] - heatmap\n"
                 f"  /genome fear --by geo - segment analysis",
@@ -556,7 +556,7 @@ async def handle_genome_command(message: TelegramMessage) -> None:
         logger.error(f"Failed to generate genome heatmap: {e}")
         await send_telegram_message(
             message.chat_id,
-            f"Failed to generate heatmap: {str(e)[:100]}",
+            f"Не удалось сгенерировать матрицу: {str(e)[:100]}",
         )
 
 
@@ -595,8 +595,8 @@ async def handle_confidence_command(message: TelegramMessage) -> None:
                 types_list = ", ".join(available_types[:10])
                 await send_telegram_message(
                     message.chat_id,
-                    f"Unknown component type: <code>{component_type}</code>\n\n"
-                    f"Available types:\n<code>{types_list}</code>\n\n"
+                    f"Неизвестный тип компонента: <code>{component_type}</code>\n\n"
+                    f"Доступные типы:\n<code>{types_list}</code>\n\n"
                     f"Usage: /confidence [component_type]",
                 )
                 return
@@ -617,10 +617,10 @@ async def handle_confidence_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to generate confidence intervals: {e}")
+        logger.error(f"Не удалось рассчитать доверительные интервалы: {e}")
         await send_telegram_message(
             message.chat_id,
-            f"Failed to generate confidence intervals: {str(e)[:100]}",
+            f"Не удалось рассчитать доверительные интервалы: {str(e)[:100]}",
         )
 
 
@@ -630,7 +630,7 @@ async def handle_trends_command(message: TelegramMessage) -> None:
 
     if not is_admin(message.user_id):
         await send_telegram_message(
-            message.chat_id, "This command is only available for admins."
+            message.chat_id, "Эта команда доступна только администраторам."
         )
         return
 
@@ -638,7 +638,7 @@ async def handle_trends_command(message: TelegramMessage) -> None:
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not supabase_key:
-        await send_telegram_message(message.chat_id, "Service temporarily unavailable.")
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
@@ -653,16 +653,15 @@ async def handle_trends_command(message: TelegramMessage) -> None:
         if not chart_url:
             await send_telegram_message(
                 message.chat_id,
-                "No trend data available yet.\n"
-                "Win rate trends will appear after more creatives are tested.",
+                "Данных пока нет.\nТренды появятся после тестирования креативов.",
             )
             return
 
         # Send chart as photo
         caption = (
-            "<b>Win Rate Trends (7 days)</b>\n\n"
-            "Shows emotion performance over time.\n"
-            "Higher = better conversion rate."
+            "<b>Тренды конверсии (7 дней)</b>\n\n"
+            "Показывает динамику эмоций.\n"
+            "Выше = лучше конверсия."
         )
 
         success = await send_telegram_photo(message.chat_id, chart_url, caption)
@@ -671,13 +670,13 @@ async def handle_trends_command(message: TelegramMessage) -> None:
             # Fallback to text if photo fails
             await send_telegram_message(
                 message.chat_id,
-                f"Chart generated but couldn't send as image.\n"
-                f"View here: {chart_url[:100]}...",
+                f"График создан, но не удалось отправить картинку.\n"
+                f"Ссылка: {chart_url[:100]}...",
             )
 
     except Exception as e:
         logger.error(f"Failed to generate trends chart: {e}")
-        await send_telegram_message(message.chat_id, "Failed to generate chart.")
+        await send_telegram_message(message.chat_id, "Не удалось создать график.")
 
 
 async def handle_simulate_command(message: TelegramMessage) -> None:
@@ -697,7 +696,7 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
 
     if not is_admin(message.user_id):
         await send_telegram_message(
-            message.chat_id, "This command is only available for admins."
+            message.chat_id, "Эта команда доступна только администраторам."
         )
         return
 
@@ -727,13 +726,13 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
     if not components:
         await send_telegram_message(
             message.chat_id,
-            "🧪 <b>What-If Simulator</b>\n\n"
-            "Predict win rate for component combinations.\n\n"
-            "<b>Usage:</b>\n"
+            "🧪 <b>What-If Симулятор</b>\n\n"
+            "Предсказание конверсии для комбинаций компонентов.\n\n"
+            "<b>Использование:</b>\n"
             "<code>/simulate fear + question + ugc</code>\n"
             "<code>/simulate hope curiosity testimonial</code>\n"
             "<code>/simulate fear question --geo US</code>\n\n"
-            "Components can be separated by +, comma, or space.",
+            "Компоненты разделяются +, запятой или пробелом.",
         )
         return
 
@@ -759,10 +758,10 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to run simulation: {e}")
+        logger.error(f"Не удалось запустить симуляцию: {e}")
         await send_telegram_message(
             message.chat_id,
-            f"Failed to run simulation: {str(e)[:100]}",
+            f"Не удалось запустить симуляцию: {str(e)[:100]}",
         )
 
 
@@ -782,7 +781,7 @@ async def handle_drift_command(message: TelegramMessage) -> None:
 
     if not is_admin(message.user_id):
         await send_telegram_message(
-            message.chat_id, "This command is only available for admins."
+            message.chat_id, "Эта команда доступна только администраторам."
         )
         return
 
@@ -807,8 +806,8 @@ async def handle_drift_command(message: TelegramMessage) -> None:
                 types_list = ", ".join(available_types[:10])
                 await send_telegram_message(
                     message.chat_id,
-                    f"Unknown component type: <code>{component_type}</code>\n\n"
-                    f"Available types:\n<code>{types_list}</code>\n\n"
+                    f"Неизвестный тип компонента: <code>{component_type}</code>\n\n"
+                    f"Доступные типы:\n<code>{types_list}</code>\n\n"
                     f"Usage: /drift [component_type]",
                 )
                 return
@@ -835,10 +834,10 @@ async def handle_drift_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to detect drift: {e}")
+        logger.error(f"Не удалось обнаружить дрифт: {e}")
         await send_telegram_message(
             message.chat_id,
-            f"Failed to detect drift: {str(e)[:100]}",
+            f"Не удалось обнаружить дрифт: {str(e)[:100]}",
         )
 
 
@@ -856,7 +855,7 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
 
     if not is_admin(message.user_id):
         await send_telegram_message(
-            message.chat_id, "This command is only available for admins."
+            message.chat_id, "Эта команда доступна только администраторам."
         )
         return
 
@@ -895,10 +894,10 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to discover correlations: {e}")
+        logger.error(f"Не удалось найти корреляции: {e}")
         await send_telegram_message(
             message.chat_id,
-            f"Failed to discover correlations: {str(e)[:100]}",
+            f"Не удалось найти корреляции: {str(e)[:100]}",
         )
 
 
@@ -921,7 +920,7 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
 
     if not is_admin(message.user_id):
         await send_telegram_message(
-            message.chat_id, "This command is only available for admins."
+            message.chat_id, "Эта команда доступна только администраторам."
         )
         return
 
@@ -958,10 +957,10 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to generate recommendation: {e}")
+        logger.error(f"Не удалось сгенерировать рекомендацию: {e}")
         await send_telegram_message(
             message.chat_id,
-            f"Failed to generate recommendation: {str(e)[:100]}",
+            f"Не удалось сгенерировать рекомендацию: {str(e)[:100]}",
         )
 
 
@@ -980,7 +979,7 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
 
     if not is_admin(message.user_id):
         await send_telegram_message(
-            message.chat_id, "This command is only available for admins."
+            message.chat_id, "Эта команда доступна только администраторам."
         )
         return
 
@@ -988,7 +987,7 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not supabase_key:
-        await send_telegram_message(message.chat_id, "Service temporarily unavailable.")
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
@@ -1010,8 +1009,8 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
             if not extractions:
                 await send_telegram_message(
                     message.chat_id,
-                    "No pending knowledge extractions.\n\n"
-                    "Upload a .txt or .md transcript file to extract knowledge.",
+                    "Нет ожидающих извлечений знаний.\n\n"
+                    "Загрузите .txt или .md файл с транскриптом для извлечения.",
                 )
                 return
 
@@ -1022,12 +1021,12 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
             if len(extractions) > 1:
                 await send_telegram_message(
                     message.chat_id,
-                    f"<i>+{len(extractions) - 1} more pending</i>",
+                    f"<i>+{len(extractions) - 1} ещё ожидают</i>",
                 )
 
     except Exception as e:
         logger.error(f"Failed to get knowledge extractions: {e}")
-        await send_telegram_message(message.chat_id, "Failed to load extractions.")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить извлечения.")
 
 
 async def send_extraction_review_card(chat_id: str, extraction: dict) -> None:
@@ -1057,13 +1056,13 @@ async def send_extraction_review_card(chat_id: str, extraction: dict) -> None:
     quote_str = f'"{quotes[0][:150]}..."' if quotes else "No quotes"
 
     card = (
-        f"{emoji} <b>Knowledge Extraction</b>\n\n"
-        f"<b>Type:</b> {knowledge_type}\n"
-        f"<b>Name:</b> {extraction.get('name')}\n"
-        f"<b>Confidence:</b> {confidence_str}\n\n"
-        f"<b>Description:</b>\n{extraction.get('description', 'N/A')[:200]}\n\n"
-        f"<b>Quote:</b>\n<i>{quote_str}</i>\n\n"
-        f"<b>Payload:</b>\n<code>{payload_preview}</code>"
+        f"{emoji} <b>Извлечение знаний</b>\n\n"
+        f"<b>Тип:</b> {knowledge_type}\n"
+        f"<b>Название:</b> {extraction.get('name')}\n"
+        f"<b>Уверенность:</b> {confidence_str}\n\n"
+        f"<b>Описание:</b>\n{extraction.get('description', 'N/A')[:200]}\n\n"
+        f"<b>Цитата:</b>\n<i>{quote_str}</i>\n\n"
+        f"<b>Данные:</b>\n<code>{payload_preview}</code>"
     )
 
     extraction_id = extraction.get("id")
@@ -1076,11 +1075,11 @@ async def send_extraction_review_card(chat_id: str, extraction: dict) -> None:
     keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ Approve", "callback_data": f"ke_approve_{extraction_id}"},
-                {"text": "❌ Reject", "callback_data": f"ke_reject_{extraction_id}"},
+                {"text": "✅ Одобрить", "callback_data": f"ke_approve_{extraction_id}"},
+                {"text": "❌ Отклонить", "callback_data": f"ke_reject_{extraction_id}"},
             ],
             [
-                {"text": "⏭️ Skip", "callback_data": f"ke_skip_{extraction_id}"},
+                {"text": "⏭️ Пропустить", "callback_data": f"ke_skip_{extraction_id}"},
             ],
         ]
     }
@@ -1105,7 +1104,7 @@ async def handle_document_upload(message: TelegramMessage) -> None:
     if not is_admin(message.user_id):
         await send_telegram_message(
             message.chat_id,
-            "Knowledge extraction is only available for admins.",
+            "Извлечение знаний доступно только администраторам.",
         )
         return
 
@@ -1119,13 +1118,13 @@ async def handle_document_upload(message: TelegramMessage) -> None:
     if not (file_name.endswith(".txt") or file_name.endswith(".md")):
         await send_telegram_message(
             message.chat_id,
-            "Please upload a .txt or .md file with transcript.",
+            "Загрузите .txt или .md файл с транскриптом.",
         )
         return
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not bot_token:
-        await send_telegram_message(message.chat_id, "Bot not configured.")
+        await send_telegram_message(message.chat_id, "Бот не настроен.")
         return
 
     try:
@@ -1140,7 +1139,9 @@ async def handle_document_upload(message: TelegramMessage) -> None:
             file_data = file_resp.json()
 
             if not file_data.get("ok"):
-                await send_telegram_message(message.chat_id, "Failed to get file.")
+                await send_telegram_message(
+                    message.chat_id, "Не удалось получить файл."
+                )
                 return
 
             file_path = file_data["result"]["file_path"]
@@ -1154,9 +1155,9 @@ async def handle_document_upload(message: TelegramMessage) -> None:
 
         await send_telegram_message(
             message.chat_id,
-            f"📄 <b>File received:</b> {file_name}\n"
-            f"📏 Size: {len(content)} characters\n\n"
-            f"Starting knowledge extraction...",
+            f"📄 <b>Файл получен:</b> {file_name}\n"
+            f"📏 Размер: {len(content)} символов\n\n"
+            f"Запускаю извлечение знаний...",
         )
 
         # Start ingestion workflow
@@ -1189,7 +1190,7 @@ async def handle_document_upload(message: TelegramMessage) -> None:
         logger.error(f"Failed to process document: {e}")
         await send_telegram_message(
             message.chat_id,
-            f"Failed to process file: {str(e)[:100]}",
+            f"Не удалось обработать файл: {str(e)[:100]}",
         )
 
 
@@ -1234,7 +1235,9 @@ async def handle_callback_query(update: dict) -> None:
 
     elif data.startswith("ke_skip_"):
         # Just show next extraction
-        await send_telegram_message(chat_id, "Skipped. Use /knowledge to see next.")
+        await send_telegram_message(
+            chat_id, "Пропущено. Используйте /knowledge для следующего."
+        )
 
 
 async def handle_extraction_approve(
@@ -1272,7 +1275,7 @@ async def handle_extraction_approve(
                     json={
                         "chat_id": chat_id,
                         "message_id": message_id,
-                        "text": "✅ <b>Approved</b>\n\nApplying knowledge...",
+                        "text": "✅ <b>Одобрено</b>\n\nПрименяю знания...",
                         "parse_mode": "HTML",
                     },
                     timeout=10.0,
@@ -1282,7 +1285,7 @@ async def handle_extraction_approve(
 
     except Exception as e:
         logger.error(f"Failed to approve extraction: {e}")
-        await send_telegram_message(chat_id, f"Failed to approve: {str(e)[:100]}")
+        await send_telegram_message(chat_id, f"Не удалось одобрить: {str(e)[:100]}")
 
 
 async def handle_extraction_reject(
@@ -1327,7 +1330,7 @@ async def handle_extraction_reject(
                     json={
                         "chat_id": chat_id,
                         "message_id": message_id,
-                        "text": "❌ <b>Rejected</b>",
+                        "text": "❌ <b>Отклонено</b>",
                         "parse_mode": "HTML",
                     },
                     timeout=10.0,
@@ -1337,7 +1340,7 @@ async def handle_extraction_reject(
 
     except Exception as e:
         logger.error(f"Failed to reject extraction: {e}")
-        await send_telegram_message(chat_id, f"Failed to reject: {str(e)[:100]}")
+        await send_telegram_message(chat_id, f"Не удалось отклонить: {str(e)[:100]}")
 
 
 async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
@@ -1350,7 +1353,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not supabase_key:
-        await send_telegram_message(message.chat_id, "Service temporarily unavailable.")
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
@@ -1372,7 +1375,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             if not buyers:
                 await send_telegram_message(
                     message.chat_id,
-                    "You need to register first. Send /start to begin.",
+                    "Сначала нужно зарегистрироваться. Отправьте /start.",
                 )
                 return
 
@@ -1394,9 +1397,9 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
 
         await send_telegram_message(
             message.chat_id,
-            f"Video received!\n\n"
+            f"Видео получено!\n\n"
             f"<i>URL: {video_url[:50]}...</i>\n\n"
-            f"Processing will begin shortly. You'll be notified when done.",
+            f"Обработка скоро начнётся. Уведомлю когда будет готово.",
         )
 
         logger.info(f"Started creative registration: {workflow_id}")
@@ -1404,7 +1407,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
     except Exception as e:
         logger.error(f"Failed to register creative: {e}")
         await send_telegram_message(
-            message.chat_id, "Failed to process video. Please try again."
+            message.chat_id, "Не удалось обработать видео. Попробуйте снова."
         )
 
 
@@ -1446,7 +1449,7 @@ async def handle_user_message(message: TelegramMessage) -> None:
     # Unknown message
     await send_telegram_message(
         message.chat_id,
-        "I don't understand that command.\nSend /help to see available commands.",
+        "Не понимаю эту команду.\nОтправьте /help для списка команд.",
     )
 
 
@@ -1493,7 +1496,7 @@ async def process_telegram_update(update: dict) -> None:
             # Unknown command
             await send_telegram_message(
                 message.chat_id,
-                f"Unknown command: {text}\nSend /help for available commands.",
+                f"Неизвестная команда: {text}\nОтправьте /help для списка команд.",
             )
         else:
             # Regular message
@@ -1507,7 +1510,7 @@ async def process_telegram_update(update: dict) -> None:
         # Handle video
         await send_telegram_message(
             message.chat_id,
-            "Please send a video URL instead of uploading directly.\n"
+            "Отправьте ссылку на видео вместо загрузки файла.\n"
             "Example: https://example.com/video.mp4",
         )
 

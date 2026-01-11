@@ -149,15 +149,15 @@ def get_recommendation(severity: str, current_rate: float, baseline_rate: float)
     """Get recommendation based on drift severity and direction."""
     if severity == "high":
         if current_rate < baseline_rate:
-            return "Consider pausing component"
+            return "Рассмотреть паузу компонента"
         else:
-            return "Performance improved significantly"
+            return "Значительное улучшение"
     elif severity == "medium":
         if current_rate < baseline_rate:
-            return "Monitor closely"
+            return "Мониторить внимательно"
         else:
-            return "Positive trend detected"
-    return "No action needed"
+            return "Позитивный тренд"
+    return "Действий не требуется"
 
 
 async def detect_drift(
@@ -284,14 +284,14 @@ def format_drift_telegram(results: list[DriftResult]) -> str:
     """Format drift detection results for Telegram."""
     if not results:
         return (
-            "✅ <b>No Performance Drift Detected</b>\n\n"
-            "All components are performing within expected ranges.\n\n"
-            "<i>Drift detection compares recent (7d) vs baseline (30d) performance.</i>"
+            "✅ <b>Дрифт не обнаружен</b>\n\n"
+            "Все компоненты работают в пределах нормы.\n\n"
+            "<i>Дрифт сравнивает последние 7 дней с базовыми 30 днями.</i>"
         )
 
     emoji_map = {"high": "🔴", "medium": "🟡", "low": "🟢"}
 
-    lines = ["⚠️ <b>Performance Drift Detected</b>\n"]
+    lines = ["⚠️ <b>Обнаружен дрифт</b>\n"]
 
     for result in results[:5]:  # Limit to top 5
         emoji = emoji_map.get(result.severity, "⚪")
@@ -301,21 +301,21 @@ def format_drift_telegram(results: list[DriftResult]) -> str:
             f"\n{emoji} <b>{result.component_type}.{result.component_value}</b>"
         )
         lines.append(
-            f"├── Baseline: {result.baseline_win_rate:.0%} "
+            f"├── Базовый: {result.baseline_win_rate:.0%} "
             f"({result.baseline_samples} samples)"
         )
         lines.append(
-            f"├── Current: {result.current_win_rate:.0%} "
+            f"├── Текущий: {result.current_win_rate:.0%} "
             f"({result.current_samples} samples) {direction}"
         )
-        lines.append(f"├── Drift: {result.drift_score:.0%} ({result.severity})")
-        lines.append(f"├── Stat: {result.p_value_category}")
+        lines.append(f"├── Дрифт: {result.drift_score:.0%} ({result.severity})")
+        lines.append(f"├── Стат: {result.p_value_category}")
         lines.append(f"└── <i>{result.recommendation}</i>")
 
     if len(results) > 5:
-        lines.append(f"\n<i>+{len(results) - 5} more components with drift</i>")
+        lines.append(f"\n<i>+{len(results) - 5} ещё компонентов с дрифтом</i>")
 
-    lines.append("\n\n<code>/drift [type]</code> - filter by component type")
+    lines.append("\n\n<code>/drift [type]</code> - фильтр по типу компонента")
 
     return "\n".join(lines)
 

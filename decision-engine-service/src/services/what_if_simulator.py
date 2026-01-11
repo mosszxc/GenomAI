@@ -528,7 +528,7 @@ def format_simulation_telegram(result: dict) -> str:
         🧪 Simulation Result
 
         Predicted win rate: 38-52%
-        Confidence: medium (based on 12 similar ideas)
+        Confidence: medium (на основе 12 похожих идей)
         Similar past ideas: #A1B2, #C3D4
 
         Risk factors:
@@ -536,7 +536,7 @@ def format_simulation_telegram(result: dict) -> str:
         └── hope may be fatigued in US
     """
     if result.get("error"):
-        return f"❌ <b>Simulation Error</b>\n\n{result['error']}"
+        return f"❌ <b>Ошибка симуляции</b>\n\n{result['error']}"
 
     components = result.get("components", [])
     predicted = result.get("predicted_win_rate")
@@ -548,13 +548,13 @@ def format_simulation_telegram(result: dict) -> str:
     component_stats = result.get("component_stats", {})
     geo = result.get("geo")
 
-    lines = ["🧪 <b>Simulation Result</b>", ""]
+    lines = ["🧪 <b>Результат симуляции</b>", ""]
 
     # Components being simulated
     comp_display = " + ".join(f"<code>{c}</code>" for c in components)
-    lines.append(f"<b>Components:</b> {comp_display}")
+    lines.append(f"<b>Компоненты:</b> {comp_display}")
     if geo:
-        lines.append(f"<b>Geo:</b> {geo}")
+        lines.append(f"<b>Гео:</b> {geo}")
     lines.append("")
 
     # Predicted win rate
@@ -562,29 +562,29 @@ def format_simulation_telegram(result: dict) -> str:
         low = max(0, predicted - confidence_range) if confidence_range else predicted
         high = min(1, predicted + confidence_range) if confidence_range else predicted
 
-        lines.append(f"<b>Predicted win rate:</b> {low:.0%}-{high:.0%}")
+        lines.append(f"<b>Прогноз конверсии:</b> {low:.0%}-{high:.0%}")
 
         # Confidence emoji
         confidence_emoji = {"low": "🔴", "medium": "🟡", "high": "🟢"}.get(
             confidence_level, "⚪"
         )
         lines.append(
-            f"<b>Confidence:</b> {confidence_emoji} {confidence_level} "
-            f"(based on {similar_count} similar ideas)"
+            f"<b>Уверенность:</b> {confidence_emoji} {confidence_level} "
+            f"(на основе {similar_count} похожих идей)"
         )
     else:
-        lines.append("<b>Predicted win rate:</b> <i>Insufficient data</i>")
-        lines.append("<b>Confidence:</b> 🔴 low (need more historical data)")
+        lines.append("<b>Прогноз конверсии:</b> <i>Недостаточно данных</i>")
+        lines.append("<b>Уверенность:</b> 🔴 low (нужно больше исторических данных)")
 
     # Similar ideas
     if top_similar:
         similar_str = ", ".join(f"#{sid}" for sid in top_similar)
-        lines.append(f"<b>Similar past ideas:</b> {similar_str}")
+        lines.append(f"<b>Похожие идеи:</b> {similar_str}")
 
     lines.append("")
 
     # Component breakdown
-    lines.append("<b>Component breakdown:</b>")
+    lines.append("<b>Разбивка по компонентам:</b>")
     for comp, stats in component_stats.items():
         win_rate = stats.get("win_rate")
         sample = stats.get("sample_size", 0)
@@ -610,7 +610,7 @@ def format_simulation_telegram(result: dict) -> str:
     # Risk factors
     if risk_factors:
         lines.append("")
-        lines.append("<b>Risk factors:</b>")
+        lines.append("<b>Факторы риска:</b>")
         for i, risk in enumerate(risk_factors):
             prefix = "└──" if i == len(risk_factors) - 1 else "├──"
             lines.append(f"{prefix} {risk}")

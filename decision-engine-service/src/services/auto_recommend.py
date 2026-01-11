@@ -60,7 +60,7 @@ class ComponentScore:
 
     def calculate_final_score(self):
         """Calculate final score with all adjustments."""
-        # Base score from win rate
+        # Base score from конверсия
         self.final_score = self.base_win_rate
 
         # Apply synergy bonus (additive)
@@ -343,7 +343,7 @@ async def generate_best_bet() -> BestBetRecommendation:
 
     # Step 5: Calculate overall metrics
     if selected_components:
-        # Expected win rate: weighted average of component scores
+        # Expected конверсия: weighted average of component scores
         total_samples = sum(c.sample_size for c in selected_components)
         if total_samples > 0:
             expected_win_rate = (
@@ -371,7 +371,7 @@ async def generate_best_bet() -> BestBetRecommendation:
     if selected_components:
         top_comp = max(selected_components, key=lambda c: c.base_win_rate)
         reasoning.append(
-            f"{top_comp.component_value} has best base win rate "
+            f"{top_comp.component_value} has best base конверсия "
             f"({top_comp.base_win_rate:.0%}, n={top_comp.sample_size})"
         )
 
@@ -407,7 +407,7 @@ def format_best_bet_telegram(recommendation: BestBetRecommendation) -> str:
 
     ┌─────────────────────────────┐
     │ fear + story + internal     │
-    │ Expected: 42% win rate      │
+    │ Ожидаемая: 42% конверсия      │
     │ Confidence: HIGH            │
     └─────────────────────────────┘
 
@@ -419,10 +419,10 @@ def format_best_bet_telegram(recommendation: BestBetRecommendation) -> str:
     """
     if not recommendation.components:
         return (
-            "🎯 <b>Today's Best Bet</b>\n\n"
-            "<i>No recommendations available.</i>\n\n"
-            "Need more test results to generate recommendations.\n"
-            f"Minimum samples: {MIN_SAMPLES_FOR_CONFIDENCE} per component"
+            "🎯 <b>Лучшая ставка дня</b>\n\n"
+            "<i>Рекомендаций нет.</i>\n\n"
+            "Нужно больше тестовых результатов.\n"
+            f"Минимум семплов: {MIN_SAMPLES_FOR_CONFIDENCE} на компонент"
         )
 
     # Build component summary
@@ -440,20 +440,20 @@ def format_best_bet_telegram(recommendation: BestBetRecommendation) -> str:
 
     # Build main card
     lines = [
-        "🎯 <b>Today's Best Bet</b>",
+        "🎯 <b>Лучшая ставка дня</b>",
         "",
-        "<i>Based on current learnings + freshness:</i>",
+        "<i>На основе текущих данных + свежесть:</i>",
         "",
         "┌─────────────────────────────┐",
         f"│ <b>{comp_summary}</b>",
-        f"│ Expected: <b>{recommendation.expected_win_rate:.0%}</b> win rate",
+        f"│ Ожидаемая: <b>{recommendation.expected_win_rate:.0%}</b> конверсия",
         f"│ Confidence: {emoji} <b>{conf}</b>",
         "└─────────────────────────────┘",
         "",
     ]
 
     # Component details
-    lines.append("<b>Components:</b>")
+    lines.append("<b>Компоненты:</b>")
     for i, comp in enumerate(recommendation.components):
         prefix = "└──" if i == len(recommendation.components) - 1 else "├──"
         conf_indicator = {"high": "✓", "medium": "~", "low": "?"}[comp.confidence]
@@ -465,7 +465,7 @@ def format_best_bet_telegram(recommendation: BestBetRecommendation) -> str:
 
     # Reasoning
     if recommendation.reasoning:
-        lines.append("<b>Why:</b>")
+        lines.append("<b>Почему:</b>")
         for reason in recommendation.reasoning[:3]:
             lines.append(f"• {reason}")
         lines.append("")
@@ -473,17 +473,17 @@ def format_best_bet_telegram(recommendation: BestBetRecommendation) -> str:
     # Synergies applied
     if recommendation.synergies_applied:
         synergy_items = recommendation.synergies_applied[:2]
-        lines.append(f"💡 <b>Synergies:</b> {', '.join(synergy_items)}")
+        lines.append(f"💡 <b>Синергии:</b> {', '.join(synergy_items)}")
 
     # Conflicts avoided
     if recommendation.conflicts_avoided:
         conflict_items = recommendation.conflicts_avoided[:2]
-        lines.append(f"⚠️ <b>Avoided:</b> {', '.join(conflict_items)}")
+        lines.append(f"⚠️ <b>Избежали:</b> {', '.join(conflict_items)}")
 
     # Fatigued components
     if recommendation.fatigued_components:
         lines.append(
-            f"😴 <b>Fatigued (skipped):</b> {', '.join(recommendation.fatigued_components[:3])}"
+            f"😴 <b>Усталые (пропущены):</b> {', '.join(recommendation.fatigued_components[:3])}"
         )
 
     return "\n".join(lines)
