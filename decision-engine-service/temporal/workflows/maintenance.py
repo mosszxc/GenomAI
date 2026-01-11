@@ -31,12 +31,15 @@ with workflow.unsafe.imports_passed_through():
         emit_maintenance_event,
         check_staleness,
         release_orphaned_agent_tasks,
+        find_stuck_creatives,
     )
     from temporal.activities.hygiene_cleanup import (
         run_all_cleanup,
         retry_failed_hypotheses,
         cleanup_exhausted_hypotheses,
     )
+    from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
+    from temporal.models.creative import CreativeInput
 
 
 @dataclass
@@ -70,6 +73,12 @@ class MaintenanceInput:
     run_orphan_detection: bool = True
     # Timeout for agent heartbeats in minutes
     agent_heartbeat_timeout_minutes: int = 10
+    # Stuck creatives recovery (Issue #398)
+    run_stuck_recovery: bool = True
+    # Timeout before considering transcription stuck (minutes)
+    stuck_transcription_timeout_minutes: int = 5
+    # Timeout before considering decomposition stuck (minutes)
+    stuck_decomposition_timeout_minutes: int = 30
 
 
 @dataclass
@@ -94,6 +103,9 @@ class MaintenanceResult:
     hypotheses_abandoned: int = 0
     # Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
     orphaned_tasks_released: int = 0
+    # Stuck creatives recovery (Issue #398)
+    stuck_creatives_recovered: int = 0
+    stuck_creatives_failed: int = 0
 
 
 @workflow.defn
@@ -321,7 +333,60 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Orphan detection failed: {e}")
                 result.integrity_issues.append(f"Orphan detection error: {e}")
 
-        # Step 10: Emit maintenance event
+        # Step 10: Recover stuck creatives (Issue #398)
+        if input.run_stuck_recovery:
+            try:
+                stuck_creatives = await workflow.execute_activity(
+                    find_stuck_creatives,
+                    args=[
+                        input.stuck_transcription_timeout_minutes,
+                        input.stuck_decomposition_timeout_minutes,
+                    ],
+                    start_to_close_timeout=timedelta(seconds=120),
+                    retry_policy=retry_policy,
+                )
+
+                if stuck_creatives:
+                    workflow.logger.warning(
+                        f"Found {len(stuck_creatives)} stuck creatives, starting recovery"
+                    )
+
+                    # Start recovery workflows for stuck creatives
+                    for stuck in stuck_creatives:
+                        try:
+                            await workflow.start_child_workflow(
+                                CreativePipelineWorkflow.run,
+                                CreativeInput(
+                                    creative_id=stuck["creative_id"],
+                                    buyer_id=stuck.get("buyer_id"),
+                                    source_type="recovery",
+                                ),
+                                id=f"recovery-{stuck['creative_id'][:8]}-{workflow.now().timestamp():.0f}",
+                                task_queue="creative-pipeline",
+                            )
+                            result.stuck_creatives_recovered += 1
+                            workflow.logger.info(
+                                f"Started recovery for creative {stuck['creative_id'][:8]} "
+                                f"(stuck_reason={stuck['stuck_reason']})"
+                            )
+                        except Exception as e:
+                            result.stuck_creatives_failed += 1
+                            workflow.logger.error(
+                                f"Failed to recover creative {stuck['creative_id'][:8]}: {e}"
+                            )
+
+                    workflow.logger.info(
+                        f"Recovery complete: {result.stuck_creatives_recovered} recovered, "
+                        f"{result.stuck_creatives_failed} failed"
+                    )
+                else:
+                    workflow.logger.info("No stuck creatives to recover")
+
+            except Exception as e:
+                workflow.logger.error(f"Stuck creatives recovery failed: {e}")
+                result.integrity_issues.append(f"Stuck recovery error: {e}")
+
+        # Step 11: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
@@ -338,11 +403,12 @@ class MaintenanceWorkflow:
 
         workflow.logger.info(
             f"Maintenance complete: reset={result.stale_buyers_reset}, "
-            f"expired={result.recommendations_expired}, stuck={result.stuck_transcriptions_failed}, "
+            f"expired={result.recommendations_expired}, stuck_failed={result.stuck_transcriptions_failed}, "
             f"archived={result.failed_creatives_archived}, "
             f"issues={len(result.integrity_issues)}, stale={result.is_stale}, "
             f"hypothesis_retried={result.hypotheses_retried}, "
-            f"orphaned_tasks={result.orphaned_tasks_released}"
+            f"orphaned_tasks={result.orphaned_tasks_released}, "
+            f"stuck_recovered={result.stuck_creatives_recovered}"
         )
 
         return result
