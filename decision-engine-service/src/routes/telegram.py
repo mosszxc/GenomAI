@@ -422,7 +422,11 @@ async def handle_help_command(message: TelegramMessage) -> None:
             "/creatives - Все креативы\n\n"
             "⚙️ <b>СИСТЕМА</b>\n"
             "/status - Статус workflows\n"
-            "/errors - Последние ошибки"
+            "/errors - Последние ошибки\n\n"
+            "📋 <b>MODULAR REVIEW</b>\n"
+            "/pending - Гипотезы на ревью\n"
+            "/approve &lt;id&gt; - Одобрить\n"
+            "/reject &lt;id&gt; - Отклонить"
         )
     else:
         help_message = (
@@ -1424,6 +1428,293 @@ async def handle_errors_command(message: TelegramMessage) -> None:
 
 
 # =============================================================================
+# MODULAR HYPOTHESIS REVIEW COMMANDS
+# =============================================================================
+
+
+async def get_pending_modular_hypotheses() -> list[dict]:
+    """Get modular hypotheses awaiting human review."""
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return []
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Accept-Profile": "genomai",
+    }
+
+    async with httpx.AsyncClient() as client:
+        # Get pending review hypotheses with module info
+        response = await client.get(
+            f"{supabase_url}/rest/v1/hypotheses"
+            f"?generation_mode=eq.modular&review_status=eq.pending"
+            f"&select=id,content,created_at,"
+            f"hook_module:module_bank!hook_module_id(text_content),"
+            f"promise_module:module_bank!promise_module_id(text_content),"
+            f"proof_module:module_bank!proof_module_id(text_content)"
+            f"&order=created_at.desc&limit=10",
+            headers=headers,
+        )
+        return response.json() if response.status_code == 200 else []
+
+
+async def update_hypothesis_review_status(
+    hypothesis_id: str, review_status: str
+) -> bool:
+    """Update hypothesis review status (approved/rejected)."""
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return False
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Accept-Profile": "genomai",
+        "Content-Profile": "genomai",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+    update_data = {
+        "review_status": review_status,
+    }
+
+    # If approved, also update main status to ready for delivery
+    if review_status == "approved":
+        update_data["status"] = "generated"
+
+    # If rejected, mark as rejected
+    if review_status == "rejected":
+        update_data["status"] = "rejected"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{supabase_url}/rest/v1/hypotheses?id=eq.{hypothesis_id}",
+            headers=headers,
+            json=update_data,
+        )
+        return response.status_code in [200, 204]
+
+
+async def handle_pending_command(message: TelegramMessage) -> None:
+    """Handle /pending command - show modular hypotheses awaiting review."""
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content="/pending",
+    )
+
+    try:
+        hypotheses = await get_pending_modular_hypotheses()
+
+        if not hypotheses:
+            await send_telegram_message(
+                message.chat_id,
+                "📋 <b>Modular Review</b>\n\nНет гипотез на ревью.",
+            )
+            return
+
+        lines = [f"📋 <b>Modular Review</b> ({len(hypotheses)})\n"]
+
+        for h in hypotheses:
+            short_id = str(h["id"])[:8]
+            created = h.get("created_at", "")[:10]
+
+            # Get module texts
+            hook_text = ""
+            promise_text = ""
+            proof_text = ""
+
+            if h.get("hook_module"):
+                hook_text = (h["hook_module"].get("text_content") or "")[:50]
+            if h.get("promise_module"):
+                promise_text = (h["promise_module"].get("text_content") or "")[:50]
+            if h.get("proof_module"):
+                proof_text = (h["proof_module"].get("text_content") or "")[:50]
+
+            lines.append(f"<b>#{short_id}</b> ({created})")
+            if hook_text:
+                lines.append(f"  🎣 {hook_text}...")
+            if promise_text:
+                lines.append(f"  💎 {promise_text}...")
+            if proof_text:
+                lines.append(f"  ✅ {proof_text}...")
+            lines.append("")
+
+        lines.append("<i>/approve &lt;id&gt; - одобрить</i>")
+        lines.append("<i>/reject &lt;id&gt; - отклонить</i>")
+
+        await send_telegram_message(message.chat_id, "\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Failed to get pending hypotheses: {e}")
+        await send_telegram_message(
+            message.chat_id, "Не удалось загрузить гипотезы на ревью."
+        )
+
+
+async def handle_approve_command(message: TelegramMessage) -> None:
+    """Handle /approve <id> command - approve modular hypothesis."""
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    text = message.text or ""
+    parts = text.strip().split()
+
+    if len(parts) < 2:
+        await send_telegram_message(
+            message.chat_id,
+            "Использование: /approve &lt;id&gt;\nПример: /approve a1b2c3d4",
+        )
+        return
+
+    hypothesis_id_prefix = parts[1].lower()
+
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Find hypothesis by prefix
+        hypotheses = await get_pending_modular_hypotheses()
+        matching = [
+            h
+            for h in hypotheses
+            if str(h["id"]).lower().startswith(hypothesis_id_prefix)
+        ]
+
+        if not matching:
+            await send_telegram_message(
+                message.chat_id,
+                f"Гипотеза {hypothesis_id_prefix} не найдена среди pending.",
+            )
+            return
+
+        if len(matching) > 1:
+            await send_telegram_message(
+                message.chat_id,
+                f"Найдено {len(matching)} гипотез с префиксом {hypothesis_id_prefix}. "
+                "Укажите более длинный ID.",
+            )
+            return
+
+        hypothesis = matching[0]
+        hypothesis_id = str(hypothesis["id"])
+
+        success = await update_hypothesis_review_status(hypothesis_id, "approved")
+
+        if success:
+            await send_telegram_message(
+                message.chat_id,
+                f"✅ Гипотеза <code>{hypothesis_id[:8]}</code> одобрена.\n"
+                "Статус: ready for delivery.",
+            )
+            logger.info(f"Hypothesis {hypothesis_id} approved by {message.user_id}")
+        else:
+            await send_telegram_message(
+                message.chat_id, "Ошибка при обновлении статуса."
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to approve hypothesis: {e}")
+        await send_telegram_message(message.chat_id, f"Ошибка: {str(e)[:100]}")
+
+
+async def handle_reject_command(message: TelegramMessage) -> None:
+    """Handle /reject <id> command - reject modular hypothesis."""
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    text = message.text or ""
+    parts = text.strip().split()
+
+    if len(parts) < 2:
+        await send_telegram_message(
+            message.chat_id,
+            "Использование: /reject &lt;id&gt;\nПример: /reject a1b2c3d4",
+        )
+        return
+
+    hypothesis_id_prefix = parts[1].lower()
+
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Find hypothesis by prefix
+        hypotheses = await get_pending_modular_hypotheses()
+        matching = [
+            h
+            for h in hypotheses
+            if str(h["id"]).lower().startswith(hypothesis_id_prefix)
+        ]
+
+        if not matching:
+            await send_telegram_message(
+                message.chat_id,
+                f"Гипотеза {hypothesis_id_prefix} не найдена среди pending.",
+            )
+            return
+
+        if len(matching) > 1:
+            await send_telegram_message(
+                message.chat_id,
+                f"Найдено {len(matching)} гипотез с префиксом {hypothesis_id_prefix}. "
+                "Укажите более длинный ID.",
+            )
+            return
+
+        hypothesis = matching[0]
+        hypothesis_id = str(hypothesis["id"])
+
+        success = await update_hypothesis_review_status(hypothesis_id, "rejected")
+
+        if success:
+            await send_telegram_message(
+                message.chat_id,
+                f"❌ Гипотеза <code>{hypothesis_id[:8]}</code> отклонена.",
+            )
+            logger.info(f"Hypothesis {hypothesis_id} rejected by {message.user_id}")
+        else:
+            await send_telegram_message(
+                message.chat_id, "Ошибка при обновлении статуса."
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to reject hypothesis: {e}")
+        await send_telegram_message(message.chat_id, f"Ошибка: {str(e)[:100]}")
+
+
+# =============================================================================
 # ADMIN PUSH NOTIFICATIONS
 # =============================================================================
 
@@ -2125,6 +2416,13 @@ async def process_telegram_update(update: dict) -> None:
             await handle_status_command(message)
         elif text == "/errors":
             await handle_errors_command(message)
+        # Modular hypothesis review commands
+        elif text == "/pending":
+            await handle_pending_command(message)
+        elif text.startswith("/approve"):
+            await handle_approve_command(message)
+        elif text.startswith("/reject"):
+            await handle_reject_command(message)
         elif text.startswith("/"):
             # Unknown command
             await send_telegram_message(
