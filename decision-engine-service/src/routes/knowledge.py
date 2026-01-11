@@ -37,12 +37,14 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
 
 
 def get_headers():
-    """Get Supabase REST API headers."""
+    """Get Supabase REST API headers for genomai schema."""
     return {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
         "Prefer": "return=representation",
+        "Accept-Profile": "genomai",
+        "Content-Profile": "genomai",
     }
 
 
