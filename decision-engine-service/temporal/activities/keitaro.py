@@ -253,7 +253,9 @@ async def get_campaigns_by_source(
     """
     Get all campaigns for a specific source/affiliate from Keitaro.
 
-    Uses report/build with source filter to get campaigns.
+    Fetches campaigns list and filters by:
+    1. Campaign name contains source (e.g., "TU")
+    2. Created within last 30 days (or specified date range)
 
     Args:
         input: Contains source and optional date range
@@ -261,62 +263,60 @@ async def get_campaigns_by_source(
     Returns:
         GetCampaignsBySourceOutput with list of campaigns
     """
+    from datetime import datetime, timedelta
+
     activity.logger.info(f"Fetching campaigns for source: {input.source}")
 
-    url = _get_keitaro_url("/report/build")
+    # Step 1: Get all campaigns from Keitaro
+    url = _get_keitaro_url("/campaigns")
     headers = _get_keitaro_headers()
 
-    # Build date range (Keitaro doesn't support "last_30_days" format)
-    if input.date_from and input.date_to:
-        range_config = {"from": input.date_from, "to": input.date_to, "timezone": "UTC"}
-    else:
-        # Default to last 30 days with explicit dates
-        from datetime import datetime, timedelta
-        today = datetime.utcnow().date()
-        date_from = today - timedelta(days=30)
-        range_config = {
-            "from": date_from.isoformat(),
-            "to": today.isoformat(),
-            "timezone": "UTC",
-        }
-
-    # NOTE: Buyers are identified by sub_id_10, NOT by source
-    # See docs/KEITARO_BUYER_METRICS.md
-    # Use CONTAINS operator for string fields (EQUALS is for numbers only)
-    payload = {
-        "range": range_config,
-        "metrics": ["clicks", "conversions", "revenue", "cost"],
-        "dimensions": ["campaign_id", "campaign"],
-        "filters": [
-            {"name": "sub_id_10", "operator": "CONTAINS", "expression": input.source}
-        ],
-    }
-
     async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
+        response = await client.get(url, headers=headers)
         response.raise_for_status()
-        data = response.json()
+        all_campaigns = response.json()
 
-    rows = data.get("rows", [])
+    # Step 2: Calculate date cutoff (last 30 days by default)
+    if input.date_from:
+        cutoff = datetime.fromisoformat(input.date_from)
+    else:
+        cutoff = datetime.utcnow() - timedelta(days=30)
+
+    # Step 3: Filter campaigns by name and creation date
+    source_upper = input.source.upper()
     campaigns = []
 
-    for row in rows:
-        campaign_id = row.get("campaign_id")
-        if not campaign_id:
+    for c in all_campaigns:
+        name = c.get("name", "")
+        created_at = c.get("created_at", "")
+
+        # Filter by source in name (case-insensitive)
+        if source_upper not in name.upper():
+            continue
+
+        # Filter by creation date
+        try:
+            created_dt = datetime.fromisoformat(created_at.replace("Z", ""))
+            if created_dt < cutoff:
+                continue
+        except (ValueError, TypeError):
             continue
 
         campaigns.append(
             CampaignInfo(
-                campaign_id=str(campaign_id),
-                name=row.get("campaign", f"Campaign {campaign_id}"),
-                clicks=int(row.get("clicks", 0) or 0),
-                conversions=int(row.get("conversions", 0) or 0),
-                revenue=float(row.get("revenue", 0) or 0),
-                cost=float(row.get("cost", 0) or 0),
+                campaign_id=str(c.get("id", "")),
+                name=name,
+                clicks=0,  # Will be populated by metrics if needed
+                conversions=0,
+                revenue=0.0,
+                cost=0.0,
             )
         )
 
-    activity.logger.info(f"Found {len(campaigns)} campaigns for source: {input.source}")
+    activity.logger.info(
+        f"Found {len(campaigns)} campaigns for source '{input.source}' "
+        f"(created after {cutoff.date()})"
+    )
 
     return GetCampaignsBySourceOutput(
         campaigns=campaigns, total=len(campaigns), source=input.source
