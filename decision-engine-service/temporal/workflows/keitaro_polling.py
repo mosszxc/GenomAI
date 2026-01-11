@@ -162,6 +162,26 @@ class KeitaroPollerWorkflow:
                 )
                 metrics_collected += 1
 
+                # Emit RawMetricsObserved event
+                try:
+                    await workflow.execute_activity(
+                        emit_metrics_event,
+                        EmitMetricsEventInput(
+                            event_type="RawMetricsObserved",
+                            entity_type="tracker",
+                            entity_id=workflow.info().workflow_id,
+                            payload={
+                                "tracker_id": metrics.tracker_id,
+                                "date": metrics.date,
+                                "interval": input.interval,
+                            },
+                        ),
+                        start_to_close_timeout=timedelta(seconds=15),
+                        retry_policy=SUPABASE_RETRY_POLICY,
+                    )
+                except Exception:
+                    pass  # Event emission is best-effort
+
                 # Step 4: Create snapshot if enabled
                 if input.create_snapshots:
                     try:
@@ -179,6 +199,24 @@ class KeitaroPollerWorkflow:
                         )
                         if snapshot_result.created:
                             snapshots_created += 1
+                            # Emit DailyMetricsSnapshotCreated event
+                            try:
+                                await workflow.execute_activity(
+                                    emit_metrics_event,
+                                    EmitMetricsEventInput(
+                                        event_type="DailyMetricsSnapshotCreated",
+                                        entity_type="snapshot",
+                                        entity_id=snapshot_result.snapshot_id,
+                                        payload={
+                                            "tracker_id": metrics.tracker_id,
+                                            "date": metrics.date,
+                                        },
+                                    ),
+                                    start_to_close_timeout=timedelta(seconds=15),
+                                    retry_policy=SUPABASE_RETRY_POLICY,
+                                )
+                            except Exception:
+                                pass  # Event emission is best-effort
                     except Exception as e:
                         # Duplicate snapshot is expected - not an error
                         if "duplicate" not in str(e).lower():
