@@ -275,12 +275,13 @@ async def get_campaigns_by_source(
 
     # NOTE: Buyers are identified by sub_id_10, NOT by source
     # See docs/KEITARO_BUYER_METRICS.md
+    # Use CONTAINS operator for string fields (EQUALS is for numbers only)
     payload = {
         "range": range_config,
         "metrics": ["clicks", "conversions", "revenue", "cost"],
         "dimensions": ["campaign_id", "campaign"],
         "filters": [
-            {"name": "sub_id_10", "operator": "EQUALS", "expression": input.source}
+            {"name": "sub_id_10", "operator": "CONTAINS", "expression": input.source}
         ],
     }
 
