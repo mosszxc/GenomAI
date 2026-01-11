@@ -247,6 +247,75 @@ UNIQUE (feature_name, entity_type, entity_id)
 - `max_active_features`: 10 — лимит активных фичей
 - `deprecate_after_days`: 30 — автодепрекация
 
+### Modular Creative System Tables
+
+| Table | Purpose | Mutable | Writer |
+|-------|---------|---------|--------|
+| `module_bank` | Reusable modules (Hook, Promise, Proof) | Yes | module_extraction |
+| `module_compatibility` | Pairwise compatibility scores | Yes | learning_loop |
+
+#### module_bank
+```
+id                    UUID      PK
+module_type           TEXT      CHECK (hook|promise|proof)
+module_key            TEXT      SHA256 hash for deduplication
+content               JSONB     Extracted fields from decomposed payload
+text_content          TEXT      Human-readable text (for hooks)
+source_creative_id    UUID      FK → creatives.id
+source_decomposed_id  UUID      FK → decomposed_creatives.id
+vertical              TEXT
+geo                   TEXT
+avatar_id             UUID      FK → avatars.id
+sample_size           INT       DEFAULT 0
+win_count             INT       DEFAULT 0
+loss_count            INT       DEFAULT 0
+total_spend           NUMERIC   DEFAULT 0
+total_revenue         NUMERIC   DEFAULT 0
+win_rate              NUMERIC   GENERATED (win_count / sample_size)
+avg_roi               NUMERIC   GENERATED ((revenue - spend) / spend)
+status                TEXT      DEFAULT 'emerging' CHECK (active|emerging|fatigued|dead)
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+UNIQUE (module_type, module_key)
+```
+
+**Indexes:**
+- `idx_module_bank_type_win_rate` — prioritized selection WHERE status='active'
+- `idx_module_bank_exploration` — cold start (sample_size < 5)
+- `idx_module_bank_source_creative` — source tracking
+
+#### module_compatibility
+```
+id                    UUID      PK
+module_a_id           UUID      FK → module_bank.id ON DELETE CASCADE
+module_b_id           UUID      FK → module_bank.id ON DELETE CASCADE
+sample_size           INT       DEFAULT 0
+win_count             INT       DEFAULT 0
+compatibility_score   NUMERIC   GENERATED (win_count / sample_size, default 0.5)
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ
+UNIQUE (module_a_id, module_b_id)
+CHECK (module_a_id < module_b_id)  -- Canonical ordering
+```
+
+#### hypotheses (module columns)
+```
+hook_module_id        UUID      FK → module_bank.id
+promise_module_id     UUID      FK → module_bank.id
+proof_module_id       UUID      FK → module_bank.id
+generation_mode       TEXT      DEFAULT 'reformulation' CHECK (reformulation|modular)
+review_status         TEXT      DEFAULT 'auto_approved' CHECK (pending_review|approved|rejected|auto_approved)
+```
+
+**Generation modes:**
+- `reformulation` — generated from idea (как сейчас)
+- `modular` — assembled from module_bank modules
+
+**Review status:**
+- `auto_approved` — reformulation гипотезы (не требуют проверки)
+- `pending_review` — modular гипотезы ждут human review
+- `approved` / `rejected` — после проверки человеком
+
 ### Normalization Tables
 
 | Table | Purpose | Mutable | Writer |
@@ -432,6 +501,13 @@ avatars
 premises
     └── hypotheses.premise_id
     └── premise_learnings.premise_id
+
+module_bank
+    └── module_compatibility.module_a_id
+    └── module_compatibility.module_b_id
+    └── hypotheses.hook_module_id
+    └── hypotheses.promise_module_id
+    └── hypotheses.proof_module_id
 ```
 
 ---
@@ -570,7 +646,14 @@ Centralized task queue for multi-agent coordination.
 
 ## Schema Version
 
-Current: genomai schema v1.4.0 (Release 2026-01-11)
+Current: genomai schema v1.5.0 (Release 2026-01-11)
+
+**Changes in v1.5.0:**
+- `module_bank`: New table for reusable creative modules (Hook, Promise, Proof) (#375)
+- `module_compatibility`: New table for pairwise module compatibility scores
+- `hypotheses`: Added columns `hook_module_id`, `promise_module_id`, `proof_module_id`, `generation_mode`, `review_status`
+- Generated columns: `module_bank.win_rate`, `module_bank.avg_roi`, `module_compatibility.compatibility_score`
+- Indexes: `idx_module_bank_type_win_rate`, `idx_module_bank_exploration`, `idx_hypotheses_pending_review`
 
 **Changes in v1.4.0:**
 - `agent_tasks`: New table for multi-agent coordination (#350)
