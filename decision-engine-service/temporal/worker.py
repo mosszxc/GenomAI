@@ -46,6 +46,7 @@ from temporal.workflows.historical_import import (
 from temporal.workflows.knowledge_ingestion import KnowledgeIngestionWorkflow
 from temporal.workflows.knowledge_application import KnowledgeApplicationWorkflow
 from temporal.workflows.agent_supervisor import AgentSupervisorWorkflow
+from temporal.workflows.modular_hypothesis import ModularHypothesisWorkflow
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
@@ -248,6 +249,7 @@ async def run_worker():
         task_queue=settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE,
         workflows=[
             CreativePipelineWorkflow,
+            ModularHypothesisWorkflow,
         ],
         activities=[
             # Supabase activities
@@ -294,7 +296,9 @@ async def run_worker():
     logger.info(
         f"Starting worker on queue: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
     )
-    logger.info("Registered workflows: CreativePipelineWorkflow")
+    logger.info(
+        "Registered workflows: CreativePipelineWorkflow, ModularHypothesisWorkflow"
+    )
     logger.info("Press Ctrl+C to stop")
 
     # Run worker
@@ -318,7 +322,7 @@ async def run_all_workers():
     creative_worker = Worker(
         client,
         task_queue=settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE,
-        workflows=[CreativePipelineWorkflow],
+        workflows=[CreativePipelineWorkflow, ModularHypothesisWorkflow],
         activities=[
             # Supabase activities
             get_creative,

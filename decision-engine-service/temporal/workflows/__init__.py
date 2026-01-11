@@ -19,6 +19,7 @@ from temporal.workflows.historical_import import (
     HistoricalImportWorkflow,
     CreativeRegistrationWorkflow,
 )
+from temporal.workflows.modular_hypothesis import ModularHypothesisWorkflow
 
 __all__ = [
     "CreativePipelineWorkflow",
@@ -31,4 +32,5 @@ __all__ = [
     "BuyerOnboardingWorkflow",
     "HistoricalImportWorkflow",
     "CreativeRegistrationWorkflow",
+    "ModularHypothesisWorkflow",
 ]
