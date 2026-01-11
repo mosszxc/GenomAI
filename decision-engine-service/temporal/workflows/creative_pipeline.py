@@ -87,6 +87,9 @@ class CreativePipelineWorkflow:
                     get_buyer_chat_id,
                     emit_delivery_event,
                 )
+                from temporal.activities.module_extraction import (
+                    extract_modules_from_decomposition,
+                )
 
             # Default retry policy for most activities
             default_retry = RetryPolicy(
@@ -231,6 +234,23 @@ class CreativePipelineWorkflow:
                     },
                 ],
                 start_to_close_timeout=timedelta(seconds=10),
+            )
+
+            # Step 3.5: Module Extraction (Modular Creative System)
+            # Extracts Hook, Promise, Proof modules from decomposed payload
+            # Modules inherit metrics from source creative (cold start strategy)
+            self._status = "extracting_modules"
+            await workflow.execute_activity(
+                extract_modules_from_decomposition,
+                args=[
+                    input.creative_id,
+                    decomposed["id"],
+                    decomposition_payload,
+                    creative.get("vertical"),  # Optional vertical from creative
+                    creative.get("geo"),  # Optional geo from creative
+                ],
+                start_to_close_timeout=timedelta(seconds=60),
+                retry_policy=default_retry,
             )
 
             # Step 4: Idea Registry
