@@ -166,22 +166,28 @@ fi
 # Create PR if not --no-pr
 if [ "$NO_PR" != "true" ]; then
     echo ""
-    echo "Creating PR..."
-    PR_URL=$(gh pr create --title "Closes #$ISSUE_NUM" --body "Closes #$ISSUE_NUM" --head "$BRANCH_NAME" 2>/dev/null || echo "")
+    echo "Creating PR with auto-merge label..."
+    PR_URL=$(gh pr create --title "Closes #$ISSUE_NUM" --body "Closes #$ISSUE_NUM" --head "$BRANCH_NAME" --label "auto-merge" 2>/dev/null || echo "")
 
     if [ -n "$PR_URL" ]; then
         echo "PR created: $PR_URL"
         echo ""
-        read -p "Merge PR now? [y/N] " -n 1 -r
+        echo "Auto-merge enabled: PR will merge automatically when checks pass."
+        echo ""
+        read -p "Merge PR now (skip auto-merge)? [y/N] " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             # Note: не используем --delete-branch т.к. мы в worktree
             # Ветка удаляется ниже через git worktree remove + git branch -d
             gh pr merge "$BRANCH_NAME" --squash
             echo "PR merged!"
+        else
+            echo "PR will auto-merge when checks pass."
         fi
     else
         echo "PR already exists or couldn't be created"
+        # Add label to existing PR
+        gh pr edit "$BRANCH_NAME" --add-label "auto-merge" 2>/dev/null || true
         gh pr view "$BRANCH_NAME" --web 2>/dev/null || true
     fi
 fi

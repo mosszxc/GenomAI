@@ -176,6 +176,42 @@ Post-Task Loop выполнен ✓
 | API | `curl` endpoint | HTTP 200 |
 | Migration | `execute_sql` SELECT | constraints OK |
 
+## Pre-Merge Testing
+
+### Git Hooks (автоматически)
+```bash
+# Установка (один раз)
+make setup-hooks
+```
+
+| Stage | Время | Проверки |
+|-------|-------|----------|
+| pre-commit | ~20s | lint, format, critical tests (hashing) |
+| pre-push | ~60s | all unit tests |
+
+### Ручной запуск
+```bash
+make test          # Critical tests (~15s)
+make test-unit     # All unit tests (~45s)
+make test-all      # Unit + contracts (~60s)
+make ci            # Full CI simulation
+```
+
+### После деплоя
+```bash
+make e2e-quick     # Health checks (~30s)
+make e2e           # Full E2E flow (~5min)
+```
+
+**Чеклист:** `docs/E2E_SERVER_CHECKLIST.md`
+
+### Bypass hooks (аварийно)
+```bash
+git commit --no-verify -m "hotfix: ..."
+git push --no-verify
+```
+⚠️ Использовать только для критических hotfix!
+
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
 

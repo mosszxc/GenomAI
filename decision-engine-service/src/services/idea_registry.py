@@ -321,8 +321,11 @@ async def register_idea(
 
     # Step 2: Load buyer
     buyer = await load_buyer_by_creative(creative_id)
-    vertical = buyer.get("vertical", "unknown") if buyer else "unknown"
-    geo = buyer.get("geo", "unknown") if buyer else "unknown"
+    # Use geos[]/verticals[] arrays instead of deprecated geo/vertical columns
+    verticals = buyer.get("verticals", []) if buyer else []
+    geos = buyer.get("geos", []) if buyer else []
+    vertical = verticals[0] if verticals else "unknown"
+    geo = geos[0] if geos else "unknown"
 
     # Step 3: Parse payload
     payload = decomposed.get("payload", {})

@@ -42,6 +42,7 @@
 | A009 | Do Post-Task Loop silently, say "done" without showing checklist | Explicitly show checklist BEFORE "готово/done" | user confusion, re-verification |
 | A010 | Wait for user to ask "post task loop?" after test/PR | Proactively start Post-Task Loop immediately after test passes | user has to remind, breaks flow |
 | A011 | Stop after PR without asking about merge | After Post-Task Loop done, ask "Мержить?" or proceed with merge | incomplete task cycle |
+| A012 | ⚠️ Skip real API/Telegram test in Post-Task Loop | **ALWAYS** curl webhook + verify response in DB BEFORE saying "done". Syntax check ≠ test | broken feature deployed |
 
 ## Quick Lookup
 

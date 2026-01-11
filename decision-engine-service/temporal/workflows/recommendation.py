@@ -113,14 +113,11 @@ class DailyRecommendationWorkflow:
             buyer_id = buyer["id"]
             telegram_id = buyer.get("telegram_id")
             buyer_name = buyer.get("name", "Buyer")
-            geo = buyer.get("geo")
-            vertical = buyer.get("vertical")
-
-            # Use first geo/vertical from arrays if available
-            if not geo and buyer.get("geos"):
-                geo = buyer["geos"][0]
-            if not vertical and buyer.get("verticals"):
-                vertical = buyer["verticals"][0]
+            # Use geos[]/verticals[] arrays (deprecated geo/vertical columns removed)
+            geos = buyer.get("geos", [])
+            verticals = buyer.get("verticals", [])
+            geo = geos[0] if geos else None
+            vertical = verticals[0] if verticals else None
 
             try:
                 # Check if already has today's recommendation

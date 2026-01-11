@@ -2,8 +2,8 @@
 
 **STEP 06 — Telegram Output (MVP)**
 
-**Статус:** IMPLEMENTATION PLAYBOOK  
-**Scope:** MVP  
+**Статус:** IMPLEMENTED
+**Scope:** MVP
 **Зависимости:**
 - `05_hypothesis_factory_playbook.md` (Hypotheses сгенерированы)
 
@@ -21,7 +21,8 @@ Telegram — **витрина, не интерфейс управления**.
 
 ### 1.1 Источник
 
-- событие `HypothesisGenerated`
+- После Decision Engine APPROVE
+- Гипотезы сгенерированы в `CreativePipelineWorkflow`
 
 ### 1.2 Контракт входа
 
@@ -29,87 +30,75 @@ Telegram — **витрина, не интерфейс управления**.
 {
   "idea_id": "uuid",
   "decision_id": "uuid",
-  "count": 3
+  "buyer_id": "uuid",
+  "hypotheses": [{"id": "uuid", "content": "string"}]
 }
 ```
 
-## 2. n8n Workflow
+## 2. Реализация (Temporal)
 
-**Workflow name:** `telegram_hypothesis_delivery`
+**Workflow:** `CreativePipelineWorkflow` (Step 7)
+**Файл:** `temporal/workflows/creative_pipeline.py` (строки 290-324)
 
 ### 2.1 Trigger
 
-- **Node:** Event Trigger
-- **Event:** `HypothesisGenerated`
+Автоматически после генерации гипотез (Step 6 в workflow)
 
-### 2.2 Load Hypotheses
+### 2.2 Get Buyer Chat ID
 
-- **Node:** Supabase Select
+**Activity:** `get_buyer_chat_id`
 
-```sql
-SELECT id, content
-FROM hypotheses
-WHERE idea_id = :idea_id
-  AND decision_id = :decision_id
-ORDER BY created_at ASC;
+```python
+chat_id = await workflow.execute_activity(
+    get_buyer_chat_id,
+    input.buyer_id,
+    ...
+)
 ```
 
-📌 **Порядок фиксированный, без сортировки "по качеству".**
+### 2.3 Send Telegram Message
 
-### 2.3 Message Assembly (Deterministic)
+**Activity:** `send_hypothesis_to_telegram`
 
-- **Node:** Function
-
-**Правила:**
-- формат сообщения фиксирован
-- без CTA
-- без объяснений
-- без "почему"
-
-**Пример формата:**
-```
-Hypotheses for Idea #<short_id>
-
-1) <text>
-2) <text>
-3) <text>
+```python
+delivery_result = await workflow.execute_activity(
+    send_hypothesis_to_telegram,
+    hypothesis_id,
+    hypothesis_content,
+    chat_id,
+    idea_id,
+    ...
+)
 ```
 
-📌 **Никакой логики в тексте.**
+### 2.4 Persist Delivery
 
-### 2.4 Send Telegram Message
-
-- **Node:** Telegram Send Message
-- `chat_id` — конфиг
-- `parse_mode` — plain text / markdown
-- `disable_web_page_preview` — true
-
-### 2.5 Persist Delivery
-
-- **Node:** Supabase Insert
-- **Таблица:** `deliveries`
-
-**Поля:**
+Записывается в `genomai.deliveries`:
 - `id` (uuid)
 - `idea_id`
-- `decision_id`
+- `hypothesis_id`
 - `channel = 'telegram'`
 - `status = 'sent'`
 - `sent_at`
 
-### 2.6 Emit Event
+### 2.5 Emit Event
 
-**HypothesisDelivered**
+**Activity:** `emit_delivery_event`
 
-```json
-{
-  "idea_id": "uuid",
-  "decision_id": "uuid",
-  "channel": "telegram"
-}
-```
+Event: `HypothesisDeliverySuccess` или `HypothesisDeliveryFailed`
 
-## 3. Хранилище
+## 3. Activities
+
+**Файл:** `temporal/activities/telegram.py`
+
+| Activity | Назначение |
+|----------|-----------|
+| `send_hypothesis_to_telegram` | Отправка сообщения в Telegram |
+| `get_buyer_chat_id` | Получение chat_id из buyers таблицы |
+| `update_hypothesis_delivery_status` | Обновление статуса доставки |
+| `emit_delivery_event` | Эмиссия события в event_log |
+
+## 4. Хранилище
 
 ### Таблица deliveries
 
@@ -117,7 +106,7 @@ Hypotheses for Idea #<short_id>
 deliveries (
   id           uuid primary key,
   idea_id      uuid not null,
-  decision_id  uuid not null,
+  hypothesis_id uuid,
   channel      text not null,
   status       text not null,
   sent_at      timestamp not null
@@ -130,17 +119,18 @@ deliveries (
 - UPDATE / DELETE запрещены
 - delivery ≠ confirmation
 
-## 4. События
+## 5. События
 
 **Обязательные:**
 
-### HypothesisDelivered
+### HypothesisDeliverySuccess
 
 ```json
 {
   "idea_id": "uuid",
-  "decision_id": "uuid",
-  "channel": "telegram"
+  "hypothesis_id": "uuid",
+  "channel": "telegram",
+  "chat_id": "string"
 }
 ```
 
@@ -149,54 +139,53 @@ deliveries (
 - любые user feedback events
 - любые interaction events
 
-## 5. Definition of Done (DoD)
+## 6. Definition of Done (DoD)
 
 Шаг считается выполненным, если:
 - ✅ сообщение отправляется в Telegram
-- ✅ сообщение содержит все гипотезы
-- ✅ delivery сохраняется
-- ✅ событие `HypothesisDelivered` эмитится
+- ✅ сообщение содержит гипотезу
+- ✅ delivery сохраняется в БД
+- ✅ событие эмитится в event_log
 - ✅ нет интерактива
 
-## 6. Типовые ошибки (PR-блокеры)
+## 7. Типовые ошибки (PR-блокеры)
 
-❌ **кнопки / inline keyboard**  
-❌ **вопросы пользователю**  
-❌ **"оцените гипотезу"**  
-❌ **логика "если длинно — сократить"**  
+❌ **кнопки / inline keyboard**
+❌ **вопросы пользователю**
+❌ **"оцените гипотезу"**
+❌ **логика "если длинно — сократить"**
 ❌ **зависимость от user input**
 
-## 7. Ручные проверки (обязательные)
+## 8. Ручные проверки (обязательные)
 
 ### Check 1 — Happy path
-- HypothesisGenerated → сообщение в Telegram
+- CreativePipeline APPROVE → сообщение в Telegram
 - delivery сохранён
 
 ### Check 2 — Content integrity
-- все гипотезы присутствуют
-- порядок соответствует insertion order
+- гипотеза присутствует
+- buyer получил сообщение
 
 ### Check 3 — No interaction
 - на сообщение нельзя ответить логикой системы
 
-## 8. Выход шага
+## 9. Выход шага
 
 На выходе гарантировано:
 
 **Пользователь получил результат,**
 **но не повлиял на систему.**
 
-## 9. Жёсткие запреты
+## 10. Жёсткие запреты
 
-❌ интерактив  
-❌ feedback  
-❌ управление системой  
+❌ интерактив
+❌ feedback
+❌ управление системой
 ❌ ручные триггеры
 
-## 10. Готовность к следующему шагу
+## 11. Готовность к следующему шагу
 
 Можно переходить к `07_outcome_ingestion_playbook.md`, если:
 - ✅ сообщения стабильно отправляются
 - ✅ формат детерминирован
 - ✅ нет скрытого интерактива
-

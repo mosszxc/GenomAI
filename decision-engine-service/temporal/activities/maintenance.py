@@ -350,22 +350,35 @@ async def check_data_integrity() -> List[str]:
                     issues.append(f"Idea {idea['id'][:8]} has no decision after 24h")
 
         # Check 2: Pending hypotheses for > 1h without delivery
+        # Only check hypotheses with status=pending (exclude failed/delivered)
         cutoff_1h = (datetime.utcnow() - timedelta(hours=1)).isoformat()
 
         response = await client.get(
             f"{rest_url}/hypotheses"
             f"?delivered_at=is.null"
+            f"&status=eq.pending"
             f"&created_at=lt.{cutoff_1h}"
-            "&select=id"
+            "&select=id,buyer_id"
             "&limit=100",
             headers=headers,
         )
 
         if response.status_code == 200:
             undelivered = response.json()
-            if undelivered:
+            # Filter: only hypotheses WITH buyer_id are real issues
+            # (hypotheses without buyer cannot be delivered)
+            real_issues = [h for h in undelivered if h.get("buyer_id")]
+            orphan_hypotheses = [h for h in undelivered if not h.get("buyer_id")]
+
+            if real_issues:
+                ids = [h["id"][:8] for h in real_issues[:5]]
                 issues.append(
-                    f"{len(undelivered)} hypotheses pending delivery for > 1h"
+                    f"{len(real_issues)} hypotheses pending delivery for > 1h: {', '.join(ids)}"
+                )
+            if orphan_hypotheses:
+                ids = [h["id"][:8] for h in orphan_hypotheses[:5]]
+                issues.append(
+                    f"{len(orphan_hypotheses)} orphan hypotheses without buyer_id: {', '.join(ids)}"
                 )
 
     if issues:
@@ -381,6 +394,7 @@ async def emit_maintenance_event(
     buyers_reset: int,
     recommendations_expired: int,
     issues_count: int,
+    issues_details: Optional[List[str]] = None,
 ) -> dict:
     """
     Emit maintenance completed event.
@@ -389,6 +403,7 @@ async def emit_maintenance_event(
         buyers_reset: Number of buyer states reset
         recommendations_expired: Number of recommendations expired
         issues_count: Number of integrity issues found
+        issues_details: List of integrity issue descriptions (optional)
 
     Returns:
         Created event dict
@@ -396,15 +411,20 @@ async def emit_maintenance_event(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
+    payload = {
+        "buyers_reset": buyers_reset,
+        "recommendations_expired": recommendations_expired,
+        "integrity_issues": issues_count,
+    }
+    # Add details if present (for debugging/alerting)
+    if issues_details:
+        payload["integrity_issues_details"] = issues_details
+
     event = {
         "id": str(uuid.uuid4()),
         "event_type": "MaintenanceCompleted",
         "entity_type": "system",
-        "payload": {
-            "buyers_reset": buyers_reset,
-            "recommendations_expired": recommendations_expired,
-            "integrity_issues": issues_count,
-        },
+        "payload": payload,
         "occurred_at": datetime.utcnow().isoformat(),
     }
 
@@ -445,14 +465,19 @@ async def check_staleness(
     try:
         result = await check_staleness_and_act(avatar_id, geo)
 
+        # Safe access to staleness_score with default
+        staleness_score = result.get("metrics", {}).get("staleness_score")
+        if staleness_score is None:
+            staleness_score = 0.0
+
         if result["is_stale"]:
             activity.logger.warning(
-                f"System is STALE! Score: {result['metrics']['staleness_score']:.2f}, "
-                f"recommended action: {result['recommended_action']}"
+                f"System is STALE! Score: {staleness_score:.2f}, "
+                f"recommended action: {result.get('recommended_action')}"
             )
         else:
             activity.logger.info(
-                f"System is healthy. Staleness score: {result['metrics']['staleness_score']:.2f}"
+                f"System is healthy. Staleness score: {staleness_score:.2f}"
             )
 
         return result
