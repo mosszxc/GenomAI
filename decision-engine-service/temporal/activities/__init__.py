@@ -96,6 +96,11 @@ from temporal.activities.module_extraction import (
     get_creative_metrics,
     upsert_module,
 )
+from temporal.activities.module_learning import (
+    update_module_stats,
+    update_compatibility_stats,
+    process_module_learning,
+)
 
 __all__ = [
     # Supabase activities
@@ -177,4 +182,8 @@ __all__ = [
     "extract_modules_from_decomposition",
     "get_creative_metrics",
     "upsert_module",
+    # Module learning activities
+    "update_module_stats",
+    "update_compatibility_stats",
+    "process_module_learning",
 ]
