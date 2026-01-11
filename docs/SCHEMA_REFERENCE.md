@@ -2,7 +2,7 @@
 
 Единый источник истины для схемы БД GenomAI.
 
-**Last updated:** 2025-12-30
+**Last updated:** 2026-01-11
 
 ---
 
@@ -119,6 +119,53 @@ created_at  TIMESTAMP      -- When snapshot was created
 | `premise_learnings` | Learnings по premises | Yes | Learning Loop |
 | `reminder_log` | Лог напоминаний | No (append-only) | reminder_workflow |
 
+### Inspiration System Tables
+
+| Table | Purpose | Mutable | Writer |
+|-------|---------|---------|--------|
+| `staleness_snapshots` | Снимки метрик застоялости | No (append-only) | MaintenanceWorkflow |
+| `external_inspirations` | Внешние креативы из spy tools | Yes (status) | external_inspiration_ingestion |
+
+#### staleness_snapshots
+```
+id                        UUID      PK
+diversity_score           NUMERIC        -- Уникальность компонентов (0-1)
+win_rate_trend            NUMERIC        -- Тренд win_rate (negative = declining)
+fatigue_ratio             NUMERIC        -- Доля идей с высоким fatigue
+days_since_new_component  INT            -- Дней с последнего нового компонента
+exploration_success_rate  NUMERIC        -- Успешность exploration
+staleness_score           NUMERIC        -- Composite score
+is_stale                  BOOLEAN        -- GENERATED: staleness_score > 0.6
+avatar_id                 UUID           -- Контекст (NULL = global)
+geo                       TEXT
+action_taken              TEXT           -- none | cross_transfer | external_injection
+created_at                TIMESTAMP
+```
+
+#### external_inspirations
+```
+id                   UUID      PK
+source_type          TEXT           -- adheart | fb_spy | manual | competitor
+source_url           TEXT
+source_id            TEXT           -- External system ID
+raw_creative_data    JSONB          -- Сырые данные от spy tool
+extracted_components JSONB          -- LLM-извлечённые компоненты
+vertical             TEXT
+geo                  TEXT
+status               TEXT           -- pending | extracted | injected | rejected | expired
+injection_trigger    TEXT           -- Какой staleness signal триггернул
+injected_components  JSONB
+created_at           TIMESTAMP
+```
+
+#### component_learnings (origin columns)
+```
+origin_type        TEXT DEFAULT 'organic'  -- organic | cross_transfer | external_injection | manual
+origin_source_id   UUID                    -- FK → external_inspirations.id
+origin_segment     JSONB                   -- {avatar_id, geo} для cross_transfer
+injected_at        TIMESTAMP
+```
+
 ### Normalization Tables
 
 | Table | Purpose | Mutable | Writer |
@@ -161,14 +208,14 @@ buyers
 ├── id UUID (PK)
 ├── telegram_id TEXT (unique)
 ├── name TEXT
-├── geo TEXT           -- DEPRECATED: use geos[]
 ├── geos TEXT[]        -- Array of canonical geo codes: {MX, DE, US}
-├── vertical TEXT      -- DEPRECATED: use verticals[]
 ├── verticals TEXT[]   -- Array of canonical vertical codes: {POT, WL}
 ├── keitaro_source TEXT
 ├── status TEXT
 └── created_at, updated_at
 ```
+
+**Note:** Deprecated columns `geo` and `vertical` were removed in migration 026.
 
 **Онбординг поддерживает ввод нескольких значений через запятую:**
 - Гео: "DE, MX, US" → `{DE, MX, US}`
@@ -414,7 +461,11 @@ outcome_recorded_at     TIMESTAMPTZ
 
 ## Schema Version
 
-Current: genomai schema v1.2.0 (Release 2025-12-30)
+Current: genomai schema v1.3.0 (Release 2026-01-10)
+
+**Changes in v1.3.0:**
+- `buyers`: Removed deprecated columns `geo` and `vertical` (migration 026)
+- Code now uses `geos[]` and `verticals[]` arrays exclusively
 
 **Changes in v1.2.0:**
 - `creatives`: Added `target_vertical` and `target_geo` columns (#193)

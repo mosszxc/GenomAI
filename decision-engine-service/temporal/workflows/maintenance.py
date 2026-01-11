@@ -8,13 +8,14 @@ Tasks:
 - Reset stale buyer states (awaiting_* for > 6 hours)
 - Clean up expired recommendations
 - Verify data integrity
+- Staleness detection (Inspiration System)
 
 Schedule: Every 6 hours
 """
 
 from datetime import timedelta
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -26,6 +27,7 @@ with workflow.unsafe.imports_passed_through():
         mark_stuck_transcriptions_failed,
         check_data_integrity,
         emit_maintenance_event,
+        check_staleness,
     )
 
 
@@ -41,6 +43,8 @@ class MaintenanceInput:
     stuck_transcription_timeout_minutes: int = 10
     # Run data integrity checks
     run_integrity_checks: bool = True
+    # Run staleness detection (Inspiration System)
+    run_staleness_check: bool = True
 
 
 @dataclass
@@ -52,6 +56,10 @@ class MaintenanceResult:
     stuck_transcriptions_failed: int
     integrity_issues: List[str]
     completed_at: str
+    # Staleness detection results
+    staleness_score: Optional[float] = None
+    is_stale: Optional[bool] = None
+    staleness_action: Optional[str] = None
 
 
 @workflow.defn
@@ -62,8 +70,10 @@ class MaintenanceWorkflow:
     Flow:
     1. Reset stale buyer states (stuck in awaiting_* for > 6 hours)
     2. Expire old recommendations
-    3. Run data integrity checks
-    4. Emit maintenance event
+    3. Mark stuck transcriptions as failed
+    4. Run data integrity checks
+    5. Check system staleness (Inspiration System)
+    6. Emit maintenance event
     """
 
     @workflow.run
@@ -146,7 +156,35 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Integrity check failed: {e}")
                 result.integrity_issues.append(f"Integrity check error: {e}")
 
-        # Step 5: Emit maintenance event
+        # Step 5: Staleness detection (Inspiration System)
+        if input.run_staleness_check:
+            try:
+                staleness_result = await workflow.execute_activity(
+                    check_staleness,
+                    args=[None, None],  # Global check (no avatar/geo filter)
+                    start_to_close_timeout=timedelta(seconds=120),
+                    retry_policy=retry_policy,
+                )
+                result.staleness_score = staleness_result.get("metrics", {}).get(
+                    "staleness_score"
+                )
+                result.is_stale = staleness_result.get("is_stale", False)
+                result.staleness_action = staleness_result.get("recommended_action")
+
+                if result.is_stale:
+                    workflow.logger.warning(
+                        f"System is STALE! Score: {result.staleness_score:.2f}, "
+                        f"action: {result.staleness_action}"
+                    )
+                else:
+                    workflow.logger.info(
+                        f"System healthy. Staleness score: {result.staleness_score:.2f}"
+                    )
+            except Exception as e:
+                workflow.logger.error(f"Staleness check failed: {e}")
+                result.integrity_issues.append(f"Staleness check error: {e}")
+
+        # Step 6: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
@@ -163,7 +201,7 @@ class MaintenanceWorkflow:
         workflow.logger.info(
             f"Maintenance complete: reset={result.stale_buyers_reset}, "
             f"expired={result.recommendations_expired}, stuck={result.stuck_transcriptions_failed}, "
-            f"issues={len(result.integrity_issues)}"
+            f"issues={len(result.integrity_issues)}, stale={result.is_stale}"
         )
 
         return result
