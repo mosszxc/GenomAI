@@ -78,7 +78,7 @@ async def get_active_buyers() -> List[dict]:
     Get all active buyers for recommendation generation.
 
     Returns:
-        List of active buyers with their telegram_id, geo, vertical
+        List of active buyers with their telegram_id, geos, verticals
     """
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
@@ -89,7 +89,7 @@ async def get_active_buyers() -> List[dict]:
         response = await client.get(
             f"{rest_url}/buyers"
             "?status=eq.active"
-            "&select=id,telegram_id,name,geo,vertical,geos,verticals",
+            "&select=id,telegram_id,name,geos,verticals",
             headers=headers,
         )
         response.raise_for_status()
