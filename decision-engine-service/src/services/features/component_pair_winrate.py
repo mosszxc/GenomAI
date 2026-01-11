@@ -10,7 +10,6 @@ Issue: #304
 import os
 from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime, timezone
 import httpx
 
 from src.utils.errors import SupabaseError
@@ -53,6 +52,7 @@ HAVING COUNT(*) >= 10;
 @dataclass
 class PairStats:
     """Statistics for a component pair"""
+
     pair_key: str
     sample_size: int
     pair_winrate: float
@@ -118,12 +118,14 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
         hook = payload.get("hook_mechanism")
         angle = payload.get("angle_type")
         if hook and angle:
-            valid_decomposed.append({
-                "id": dc["id"],
-                "idea_id": dc["idea_id"],
-                "hook": hook,
-                "angle": angle,
-            })
+            valid_decomposed.append(
+                {
+                    "id": dc["id"],
+                    "idea_id": dc["idea_id"],
+                    "hook": hook,
+                    "angle": angle,
+                }
+            )
 
     if not valid_decomposed:
         return {}
@@ -133,14 +135,12 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
 
     all_decisions = []
     for i in range(0, len(idea_ids), 50):
-        batch_ids = idea_ids[i:i + 50]
+        batch_ids = idea_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{rest_url}/decisions"
-                f"?idea_id=in.({ids_param})"
-                f"&select=id,idea_id",
+                f"{rest_url}/decisions?idea_id=in.({ids_param})&select=id,idea_id",
                 headers=headers,
             )
             response.raise_for_status()
@@ -156,7 +156,7 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
     # Get outcome_aggregates with CPA
     all_outcomes = []
     for i in range(0, len(decision_ids), 50):
-        batch_ids = decision_ids[i:i + 50]
+        batch_ids = decision_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
         async with httpx.AsyncClient() as client:
@@ -183,8 +183,7 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
         decision_to_cpa[dec_id].append(cpa)
 
     decision_to_avg_cpa = {
-        dec_id: sum(cpas) / len(cpas)
-        for dec_id, cpas in decision_to_cpa.items()
+        dec_id: sum(cpas) / len(cpas) for dec_id, cpas in decision_to_cpa.items()
     }
 
     # Aggregate by pair
@@ -325,5 +324,5 @@ async def register_feature() -> dict:
         name=FEATURE_NAME,
         sql_definition=SQL_DEFINITION,
         description="Winrate for hook_mechanism x angle_type pairs. "
-                   "Hypothesis: some component combinations work synergistically.",
+        "Hypothesis: some component combinations work synergistically.",
     )
