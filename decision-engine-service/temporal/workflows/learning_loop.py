@@ -31,6 +31,16 @@ with workflow.unsafe.imports_passed_through():
         process_single_outcome,
         emit_learning_event,
     )
+    from temporal.activities.feature_monitoring import (
+        UpdateCorrelationsInput,
+        UpdateCorrelationsOutput,
+        DetectDriftInput,
+        DetectDriftOutput,
+        EmitFeatureEventInput,
+        update_feature_correlations,
+        detect_feature_drift,
+        emit_feature_event,
+    )
 
 
 @dataclass
@@ -132,6 +142,9 @@ class LearningLoopWorkflow:
                 )
             except Exception:
                 pass  # Event emission is best-effort
+
+            # Feature correlation monitoring (after processing outcomes)
+            await self._run_feature_monitoring()
 
             return LearningLoopResult(
                 processed_count=result.processed_count,
@@ -238,6 +251,9 @@ class LearningLoopWorkflow:
             f"{processed_count} processed, {len(new_deaths)} deaths"
         )
 
+        # Feature correlation monitoring (after processing outcomes)
+        await self._run_feature_monitoring()
+
         return LearningLoopResult(
             processed_count=processed_count,
             updated_ideas=updated_ideas,
@@ -247,3 +263,100 @@ class LearningLoopWorkflow:
             fatigue_updates=processed_count,  # Each outcome updates fatigue
             errors=errors,
         )
+
+    async def _run_feature_monitoring(self) -> None:
+        """
+        Run feature correlation monitoring after learning processing.
+
+        1. Update correlations for all shadow/active features
+        2. Auto-deprecate low correlation shadow features
+        3. Detect drift for active features
+        """
+        workflow.logger.info("Running feature correlation monitoring")
+
+        # Step 1: Update correlations and auto-deprecate
+        try:
+            corr_result: UpdateCorrelationsOutput = await workflow.execute_activity(
+                update_feature_correlations,
+                UpdateCorrelationsInput(),
+                start_to_close_timeout=timedelta(minutes=5),
+                retry_policy=LEARNING_RETRY_POLICY,
+            )
+
+            workflow.logger.info(
+                f"Feature correlations updated: {corr_result.updated_count} features, "
+                f"{len(corr_result.deprecated_features)} auto-deprecated"
+            )
+
+            # Emit correlation update event
+            if corr_result.updated_count > 0:
+                await workflow.execute_activity(
+                    emit_feature_event,
+                    EmitFeatureEventInput(
+                        event_type="feature.correlations.updated",
+                        payload={
+                            "updated_count": corr_result.updated_count,
+                            "deprecated_features": corr_result.deprecated_features,
+                            "features": [
+                                {
+                                    "name": r.feature_name,
+                                    "correlation": r.correlation,
+                                    "sample_size": r.sample_size,
+                                }
+                                for r in corr_result.results
+                                if r.correlation is not None
+                            ],
+                        },
+                    ),
+                    start_to_close_timeout=timedelta(seconds=15),
+                    retry_policy=LEARNING_RETRY_POLICY,
+                )
+
+            # Emit deprecation events
+            for feature_name in corr_result.deprecated_features:
+                await workflow.execute_activity(
+                    emit_feature_event,
+                    EmitFeatureEventInput(
+                        event_type="feature.auto_deprecated",
+                        payload={"feature_name": feature_name},
+                    ),
+                    start_to_close_timeout=timedelta(seconds=15),
+                    retry_policy=LEARNING_RETRY_POLICY,
+                )
+
+        except Exception as e:
+            workflow.logger.error(f"Feature correlation update failed: {e}")
+
+        # Step 2: Detect drift for active features
+        try:
+            drift_result: DetectDriftOutput = await workflow.execute_activity(
+                detect_feature_drift,
+                DetectDriftInput(),
+                start_to_close_timeout=timedelta(minutes=2),
+                retry_policy=LEARNING_RETRY_POLICY,
+            )
+
+            if drift_result.drift_detected:
+                workflow.logger.warning(
+                    f"Feature drift detected: {len(drift_result.drift_detected)} features"
+                )
+
+                # Emit drift events
+                for drift in drift_result.drift_detected:
+                    await workflow.execute_activity(
+                        emit_feature_event,
+                        EmitFeatureEventInput(
+                            event_type="feature.drift_detected",
+                            payload={
+                                "feature_name": drift.feature_name,
+                                "historical_correlation": drift.historical_correlation,
+                                "recent_correlation": drift.recent_correlation,
+                                "drift": drift.drift,
+                            },
+                        ),
+                        start_to_close_timeout=timedelta(seconds=15),
+                        retry_policy=LEARNING_RETRY_POLICY,
+                    )
+
+        except Exception as e:
+            workflow.logger.error(f"Feature drift detection failed: {e}")

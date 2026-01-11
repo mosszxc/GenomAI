@@ -342,3 +342,223 @@ def _extract_delete_count(response: httpx.Response) -> int:
         pass
 
     return 0
+
+
+# Maximum retry attempts for failed hypotheses
+MAX_HYPOTHESIS_RETRIES = 3
+
+# Minimum hours between retries
+RETRY_COOLDOWN_HOURS = 1
+
+
+@activity.defn
+async def retry_failed_hypotheses(
+    max_retries: int = MAX_HYPOTHESIS_RETRIES,
+) -> Dict[str, int]:
+    """
+    Retry delivery of failed hypotheses.
+
+    Finds hypotheses with status='failed' and retry_count < max_retries,
+    attempts to resend via Telegram, and updates status.
+
+    Issue: #313 - Failed hypothesis retry mechanism
+
+    Args:
+        max_retries: Maximum retry attempts per hypothesis
+
+    Returns:
+        Dict with retry stats (retried, succeeded, failed, skipped)
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+    write_headers = _get_headers(supabase_key, for_write=True)
+
+    stats = {"retried": 0, "succeeded": 0, "failed": 0, "skipped": 0}
+
+    # Get failed hypotheses eligible for retry
+    cooldown = datetime.utcnow() - timedelta(hours=RETRY_COOLDOWN_HOURS)
+    cooldown_iso = cooldown.isoformat()
+
+    activity.logger.info(
+        f"Looking for failed hypotheses to retry (max_retries={max_retries})"
+    )
+
+    async with httpx.AsyncClient() as client:
+        # Find failed hypotheses that haven't exceeded retry limit
+        # and either never retried or last retry was before cooldown
+        response = await client.get(
+            f"{rest_url}/hypotheses"
+            f"?status=eq.failed"
+            f"&retry_count=lt.{max_retries}"
+            f"&or=(last_retry_at.is.null,last_retry_at.lt.{cooldown_iso})"
+            f"&select=id,idea_id,content,buyer_id,retry_count"
+            f"&limit=10",  # Process max 10 per run
+            headers=headers,
+        )
+
+        if response.status_code != 200:
+            activity.logger.warning(
+                f"Error fetching failed hypotheses: {response.text}"
+            )
+            return stats
+
+        failed_hypotheses = response.json()
+
+        if not failed_hypotheses:
+            activity.logger.info("No failed hypotheses eligible for retry")
+            return stats
+
+        activity.logger.info(f"Found {len(failed_hypotheses)} hypotheses to retry")
+
+        # Get Telegram bot token
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if not bot_token:
+            activity.logger.error("TELEGRAM_BOT_TOKEN not configured, skipping retries")
+            stats["skipped"] = len(failed_hypotheses)
+            return stats
+
+        for hypothesis in failed_hypotheses:
+            hypothesis_id = hypothesis["id"]
+            buyer_id = hypothesis.get("buyer_id")
+            content = hypothesis.get("content", "")
+
+            if not buyer_id or not content:
+                activity.logger.warning(
+                    f"Hypothesis {hypothesis_id} missing buyer_id or content"
+                )
+                stats["skipped"] += 1
+                continue
+
+            # Get buyer's chat_id
+            buyer_response = await client.get(
+                f"{rest_url}/buyers?id=eq.{buyer_id}&select=telegram_id",
+                headers=headers,
+            )
+
+            if buyer_response.status_code != 200:
+                activity.logger.warning(f"Error fetching buyer {buyer_id}")
+                stats["skipped"] += 1
+                continue
+
+            buyers = buyer_response.json()
+            if not buyers or not buyers[0].get("telegram_id"):
+                activity.logger.warning(f"Buyer {buyer_id} has no telegram_id")
+                stats["skipped"] += 1
+                continue
+
+            chat_id = buyers[0]["telegram_id"]
+            stats["retried"] += 1
+
+            # Attempt delivery
+            try:
+                telegram_response = await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": f"<b>Hypothesis (Retry)</b>\n\n{content}",
+                        "parse_mode": "HTML",
+                    },
+                    timeout=30.0,
+                )
+
+                tg_data = telegram_response.json()
+
+                if tg_data.get("ok"):
+                    # Success - update hypothesis
+                    await client.patch(
+                        f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
+                        headers=write_headers,
+                        json={
+                            "status": "delivered",
+                            "retry_count": hypothesis["retry_count"] + 1,
+                            "last_retry_at": datetime.utcnow().isoformat(),
+                            "last_error": None,
+                        },
+                    )
+                    stats["succeeded"] += 1
+                    activity.logger.info(
+                        f"Retry succeeded for hypothesis {hypothesis_id}"
+                    )
+                else:
+                    # Telegram error
+                    error_msg = tg_data.get("description", "Unknown Telegram error")
+                    await client.patch(
+                        f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
+                        headers=write_headers,
+                        json={
+                            "retry_count": hypothesis["retry_count"] + 1,
+                            "last_retry_at": datetime.utcnow().isoformat(),
+                            "last_error": error_msg,
+                        },
+                    )
+                    stats["failed"] += 1
+                    activity.logger.warning(
+                        f"Retry failed for {hypothesis_id}: {error_msg}"
+                    )
+
+            except Exception as e:
+                # Network error
+                await client.patch(
+                    f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
+                    headers=write_headers,
+                    json={
+                        "retry_count": hypothesis["retry_count"] + 1,
+                        "last_retry_at": datetime.utcnow().isoformat(),
+                        "last_error": str(e),
+                    },
+                )
+                stats["failed"] += 1
+                activity.logger.warning(f"Retry error for {hypothesis_id}: {e}")
+
+    total = stats["succeeded"] + stats["failed"] + stats["skipped"]
+    activity.logger.info(
+        f"Hypothesis retry complete: {stats['succeeded']} succeeded, "
+        f"{stats['failed']} failed, {stats['skipped']} skipped (total: {total})"
+    )
+
+    return stats
+
+
+@activity.defn
+async def cleanup_exhausted_hypotheses(retention_days: int = 7) -> int:
+    """
+    Mark hypotheses that exhausted retries as 'abandoned'.
+
+    These hypotheses failed delivery 3+ times and are past retention.
+
+    Args:
+        retention_days: Days after which exhausted hypotheses are marked abandoned
+
+    Returns:
+        Number of hypotheses marked as abandoned
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff_iso = cutoff.isoformat()
+
+    activity.logger.info(
+        f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned"
+    )
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{rest_url}/hypotheses"
+            f"?status=eq.failed"
+            f"&retry_count=gte.{MAX_HYPOTHESIS_RETRIES}"
+            f"&created_at=lt.{cutoff_iso}",
+            headers=headers,
+            json={"status": "abandoned"},
+        )
+
+        if response.status_code not in (200, 204):
+            activity.logger.warning(
+                f"Error marking hypotheses abandoned: {response.text}"
+            )
+            return 0
+
+        count = _extract_delete_count(response)
+        if count > 0:
+            activity.logger.info(f"Marked {count} exhausted hypotheses as abandoned")
+        return count

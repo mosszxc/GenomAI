@@ -148,6 +148,18 @@ class CreativePipelineWorkflow:
 7. Data cleanup (Hygiene Agent)
 8. Emit maintenance event
 
+**Event payload (`MaintenanceCompleted`):**
+```json
+{
+  "buyers_reset": 0,
+  "recommendations_expired": 0,
+  "integrity_issues": 0,
+  "integrity_issues_details": ["issue description 1", "..."]
+}
+```
+
+**Replaces:** `H1uuOanSy627H4kg` Pipeline Health Monitor
+
 ### HealthCheckWorkflow
 
 **Queue:** `metrics`

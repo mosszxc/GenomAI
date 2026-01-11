@@ -144,8 +144,19 @@ from temporal.activities.maintenance import (
     check_staleness,
 )
 
+# Import activities - Feature Monitoring
+from temporal.activities.feature_monitoring import (
+    update_feature_correlations,
+    detect_feature_drift,
+    emit_feature_event,
+)
+
 # Import activities - Hygiene (cleanup & health)
-from temporal.activities.hygiene_cleanup import run_all_cleanup
+from temporal.activities.hygiene_cleanup import (
+    run_all_cleanup,
+    retry_failed_hypotheses,
+    cleanup_exhausted_hypotheses,
+)
 from temporal.activities.hygiene_health import (
     check_supabase_connection,
     get_table_sizes,
@@ -330,8 +341,14 @@ async def run_all_workers():
             check_data_integrity,
             emit_maintenance_event,
             check_staleness,
+            # Feature monitoring activities
+            update_feature_correlations,
+            detect_feature_drift,
+            emit_feature_event,
             # Hygiene activities (cleanup & health)
             run_all_cleanup,
+            retry_failed_hypotheses,
+            cleanup_exhausted_hypotheses,
             check_supabase_connection,
             get_table_sizes,
             get_pending_counts,

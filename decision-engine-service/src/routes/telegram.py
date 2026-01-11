@@ -411,6 +411,8 @@ async def handle_help_command(message: TelegramMessage) -> None:
         "/genome fear --by avatar - Segment by avatar\n"
         "/genome fear --by week - Segment by week\n"
         "/confidence - Win rate confidence intervals\n"
+        "/correlations - Discover component synergies (admin)\n"
+        "/recommend - Today's best bet combination (admin)\n"
         "/simulate fear + hope + ugc - What-If simulator (admin)\n"
         "/trends - Win rate trends chart (admin)\n"
         "/drift - Performance drift detection (admin)\n"
@@ -837,6 +839,129 @@ async def handle_drift_command(message: TelegramMessage) -> None:
         await send_telegram_message(
             message.chat_id,
             f"Failed to detect drift: {str(e)[:100]}",
+        )
+
+
+async def handle_correlations_command(message: TelegramMessage) -> None:
+    """
+    Handle /correlations command - discover component synergies and conflicts.
+
+    Usage:
+        /correlations - Show discovered correlations
+    """
+    from src.services.correlation_discovery import (
+        discover_correlations,
+        format_correlations_telegram,
+    )
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "This command is only available for admins."
+        )
+        return
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=message.text or "/correlations",
+    )
+
+    try:
+        # Discover correlations
+        correlations = await discover_correlations(limit=20)
+
+        # Format for Telegram
+        result_text = format_correlations_telegram(correlations)
+
+        await send_telegram_message(message.chat_id, result_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=result_text,
+            context={
+                "correlation_count": len(correlations),
+                "positive": len(
+                    [c for c in correlations if c.correlation_type == "positive"]
+                ),
+                "negative": len(
+                    [c for c in correlations if c.correlation_type == "negative"]
+                ),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to discover correlations: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Failed to discover correlations: {str(e)[:100]}",
+        )
+
+
+async def handle_recommend_command(message: TelegramMessage) -> None:
+    """
+    Handle /recommend command - show today's best component combination.
+
+    Usage:
+        /recommend - Show best bet recommendation
+
+    Shows optimal component combination based on:
+    - Current win rates from learnings
+    - Discovered correlations (synergies/conflicts)
+    - Component freshness (fatigue proxy)
+    """
+    from src.services.auto_recommend import (
+        generate_best_bet,
+        format_best_bet_telegram,
+    )
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "This command is only available for admins."
+        )
+        return
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=message.text or "/recommend",
+    )
+
+    try:
+        # Generate best bet recommendation
+        recommendation = await generate_best_bet()
+
+        # Format for Telegram
+        result_text = format_best_bet_telegram(recommendation)
+
+        await send_telegram_message(message.chat_id, result_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=result_text,
+            context={
+                "component_count": len(recommendation.components),
+                "expected_win_rate": recommendation.expected_win_rate,
+                "confidence": recommendation.overall_confidence,
+                "synergies_count": len(recommendation.synergies_applied),
+                "conflicts_avoided": len(recommendation.conflicts_avoided),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate recommendation: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Failed to generate recommendation: {str(e)[:100]}",
         )
 
 
@@ -1358,6 +1483,10 @@ async def process_telegram_update(update: dict) -> None:
             await handle_trends_command(message)
         elif text.startswith("/drift"):
             await handle_drift_command(message)
+        elif text.startswith("/correlations"):
+            await handle_correlations_command(message)
+        elif text.startswith("/recommend"):
+            await handle_recommend_command(message)
         elif text.startswith("/simulate"):
             await handle_simulate_command(message)
         elif text.startswith("/"):

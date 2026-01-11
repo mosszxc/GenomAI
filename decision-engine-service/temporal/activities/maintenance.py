@@ -467,14 +467,19 @@ async def check_staleness(
     try:
         result = await check_staleness_and_act(avatar_id, geo)
 
+        # Safe access to staleness_score with default
+        staleness_score = result.get("metrics", {}).get("staleness_score")
+        if staleness_score is None:
+            staleness_score = 0.0
+
         if result["is_stale"]:
             activity.logger.warning(
-                f"System is STALE! Score: {result['metrics']['staleness_score']:.2f}, "
-                f"recommended action: {result['recommended_action']}"
+                f"System is STALE! Score: {staleness_score:.2f}, "
+                f"recommended action: {result.get('recommended_action')}"
             )
         else:
             activity.logger.info(
-                f"System is healthy. Staleness score: {result['metrics']['staleness_score']:.2f}"
+                f"System is healthy. Staleness score: {staleness_score:.2f}"
             )
 
         return result
