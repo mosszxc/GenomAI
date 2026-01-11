@@ -32,6 +32,9 @@ echo "Issue: #$ISSUE_NUM - $ISSUE_TITLE"
 echo "Branch: $BRANCH_NAME"
 echo "Worktree: $WORKTREE_PATH"
 
+# Set terminal title
+printf '\033]0;Issue #%s\007' "$ISSUE_NUM"
+
 # Ensure worktrees directory exists
 mkdir -p "$WORKTREES_DIR"
 
