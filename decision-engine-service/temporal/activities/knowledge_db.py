@@ -15,7 +15,6 @@ from temporalio.exceptions import ApplicationError
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-SCHEMA = "genomai"
 
 
 def get_headers():
@@ -56,7 +55,7 @@ async def save_knowledge_source(
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_sources",
+            f"{SUPABASE_URL}/rest/v1/knowledge_sources",
             headers=get_headers(),
             json=data,
         )
@@ -104,7 +103,7 @@ async def save_pending_extractions(
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions",
+            f"{SUPABASE_URL}/rest/v1/knowledge_extractions",
             headers=get_headers(),
             json=records,
         )
@@ -128,7 +127,7 @@ async def mark_source_processed(source_id: str) -> bool:
 
     async with httpx.AsyncClient() as client:
         response = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_sources?id=eq.{source_id}",
+            f"{SUPABASE_URL}/rest/v1/knowledge_sources?id=eq.{source_id}",
             headers=get_headers(),
             json={
                 "processed": True,
@@ -152,7 +151,7 @@ async def get_pending_extractions(limit: int = 10) -> List[dict]:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions"
+            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
             f"?status=eq.pending&order=created_at.asc&limit={limit}",
             headers=get_headers(),
         )
@@ -173,7 +172,7 @@ async def get_extraction(extraction_id: str) -> dict:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions"
+            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
             f"?id=eq.{extraction_id}",
             headers=get_headers(),
         )
@@ -217,7 +216,7 @@ async def update_extraction_status(
 
     async with httpx.AsyncClient() as client:
         response = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions"
+            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
             f"?id=eq.{extraction_id}",
             headers=get_headers(),
             json=update_data,
@@ -255,7 +254,7 @@ async def apply_premise_knowledge(extraction: dict) -> dict:
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.premises",
+            f"{SUPABASE_URL}/rest/v1/premises",
             headers=get_headers(),
             json=premise_data,
         )
@@ -307,7 +306,7 @@ async def apply_process_rule(extraction: dict) -> dict:
         headers["Prefer"] = "resolution=merge-duplicates,return=representation"
 
         response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.config",
+            f"{SUPABASE_URL}/rest/v1/config",
             headers=headers,
             json=config_data,
         )
@@ -362,7 +361,7 @@ async def apply_component_weight(extraction: dict) -> dict:
         headers["Prefer"] = "resolution=merge-duplicates,return=representation"
 
         response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.component_learnings",
+            f"{SUPABASE_URL}/rest/v1/component_learnings",
             headers=headers,
             json=learning_data,
         )

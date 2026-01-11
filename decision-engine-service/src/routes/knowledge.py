@@ -14,7 +14,6 @@ router = APIRouter()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-SCHEMA = "genomai"
 
 
 async def verify_api_key(authorization: Optional[str] = Header(None)):
@@ -167,7 +166,7 @@ async def list_extractions(
 
     try:
         url = (
-            f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions"
+            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
             f"?status=eq.{status}&order=created_at.desc&limit={limit}"
         )
 
@@ -207,7 +206,7 @@ async def get_extraction(extraction_id: str, _: bool = Depends(verify_api_key)):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions"
+                f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
                 f"?id=eq.{extraction_id}",
                 headers=get_headers(),
             )
@@ -299,7 +298,7 @@ async def reject_extraction(
 
         async with httpx.AsyncClient() as client:
             response = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions"
+                f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
                 f"?id=eq.{extraction_id}",
                 headers=get_headers(),
                 json=update_data,
@@ -334,7 +333,7 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
         async with httpx.AsyncClient() as client:
             # Get source
             source_response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_sources"
+                f"{SUPABASE_URL}/rest/v1/knowledge_sources"
                 f"?id=eq.{source_id}",
                 headers=get_headers(),
             )
@@ -353,7 +352,7 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
 
             # Get extractions for this source
             extractions_response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/{SCHEMA}.knowledge_extractions"
+                f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
                 f"?source_id=eq.{source_id}&order=created_at.asc",
                 headers=get_headers(),
             )
