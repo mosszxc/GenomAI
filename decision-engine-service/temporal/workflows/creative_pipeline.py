@@ -393,8 +393,6 @@ class CreativePipelineWorkflow:
         hypothesis_id: Optional[str] = None,
     ) -> PipelineResult:
         """Build pipeline result."""
-        from datetime import datetime
-
         return PipelineResult(
             creative_id=self._creative_id or "",
             idea_id=self._idea_id,
@@ -403,7 +401,7 @@ class CreativePipelineWorkflow:
             decision_type=self._decision,
             hypothesis_id=hypothesis_id,
             hypothesis_count=self._hypothesis_count,
-            completed_at=datetime.utcnow(),
+            completed_at=workflow.now(),  # Use workflow.now() for determinism
             error=self._error,
         )
 
