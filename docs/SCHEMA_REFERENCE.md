@@ -184,6 +184,48 @@ origin_segment     JSONB                   -- {avatar_id, geo} для cross_tran
 injected_at        TIMESTAMP
 ```
 
+### Feature Engineering Tables
+
+| Table | Purpose | Mutable | Writer |
+|-------|---------|---------|--------|
+| `feature_experiments` | Реестр экспериментальных ML фичей | Yes (status) | feature_registry |
+| `derived_feature_values` | Вычисленные значения фичей | Yes (upsert) | feature_computation |
+
+#### feature_experiments
+```
+id                     UUID      PK
+name                   TEXT      UNIQUE NOT NULL
+description            TEXT
+sql_definition         TEXT      NOT NULL
+status                 TEXT      DEFAULT 'shadow' CHECK (shadow|active|deprecated)
+created_at             TIMESTAMP
+activated_at           TIMESTAMP -- When promoted to active
+deprecated_at          TIMESTAMP
+deprecation_reason     TEXT
+sample_size            INT       DEFAULT 0
+correlation_cpa        NUMERIC   -- Correlation with CPA
+correlation_updated_at TIMESTAMP
+depends_on             TEXT[]    -- Feature dependencies
+used_in                TEXT[]    -- Where feature is used
+```
+
+#### derived_feature_values
+```
+id           UUID      PK
+feature_name TEXT      FK → feature_experiments.name ON DELETE CASCADE
+entity_type  TEXT      CHECK (idea|outcome|creative)
+entity_id    UUID
+value        NUMERIC
+computed_at  TIMESTAMP
+UNIQUE (feature_name, entity_type, entity_id)
+```
+
+**Governance Rules:**
+- `min_sample_size`: 100 — минимум для promotion
+- `min_abs_correlation`: 0.08 — минимальная корреляция с CPA
+- `max_active_features`: 10 — лимит активных фичей
+- `deprecate_after_days`: 30 — автодепрекация
+
 ### Normalization Tables
 
 | Table | Purpose | Mutable | Writer |
