@@ -46,7 +46,7 @@ with workflow.unsafe.imports_passed_through():
 
 
 # Maximum campaigns per workflow execution (before continue-as-new)
-MAX_CAMPAIGNS_PER_EXECUTION = 50
+MAX_CAMPAIGNS_PER_EXECUTION = 500
 
 
 @workflow.defn
