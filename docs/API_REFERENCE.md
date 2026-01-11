@@ -412,6 +412,39 @@ Aggregates outcome metrics from a daily snapshot and triggers Learning Loop.
 
 ## Historical Import
 
+### Start Historical Import
+
+```
+POST /api/historical/start-import
+```
+
+Starts the HistoricalImportWorkflow to fetch campaigns from Keitaro and queue them for processing.
+
+**Request:**
+```json
+{
+  "buyer_id": "uuid",
+  "keitaro_source": "tu",
+  "date_from": "2025-12-01",
+  "date_to": "2025-12-31"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "workflow_id": "historical-import-{buyer_id}",
+  "message": "Historical import started for source 'tu'"
+}
+```
+
+**Notes:**
+- `date_from` and `date_to` are optional (defaults to last 30 days by creation date)
+- Fetches campaigns from Keitaro where campaign name contains `keitaro_source`
+- Creates entries in `historical_import_queue` with status `pending_video`
+- Each campaign can only be queued once (upsert on campaign_id)
+
 ### Submit Video for Historical Import
 
 ```
