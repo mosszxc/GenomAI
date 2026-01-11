@@ -21,6 +21,7 @@ from src.utils.time_decay import time_decay, days_since
 from src.utils.environment import apply_environment_weight
 from src.services.component_learning import process_component_learnings
 from src.services.premise_learning import process_premise_learning
+from src.services.features.component_pair_winrate import compute_and_store_for_idea
 
 
 SCHEMA = "genomai"
@@ -525,6 +526,13 @@ async def process_single_outcome(outcome: dict) -> dict:
         except Exception as e:
             premise_result = {"error": str(e)}
 
+    # Compute component pair winrate feature (issue #304)
+    pair_winrate_result = None
+    try:
+        pair_winrate_result = await compute_and_store_for_idea(idea_id)
+    except Exception as e:
+        pair_winrate_result = {"error": str(e)}
+
     return {
         "idea_id": idea_id,
         "outcome_id": outcome_id,
@@ -536,6 +544,7 @@ async def process_single_outcome(outcome: dict) -> dict:
         "death_state": death_state,
         "component_learning": component_result,
         "premise_learning": premise_result,
+        "pair_winrate": pair_winrate_result,  # Issue #304
     }
 
 
