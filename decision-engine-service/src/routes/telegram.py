@@ -377,13 +377,391 @@ async def handle_help_command(message: TelegramMessage) -> None:
         "<b>GenomAI Bot Commands</b>\n\n"
         "/start - Start registration\n"
         "/stats - View your statistics\n"
+        "/knowledge - View pending knowledge extractions\n"
         "/help - Show this help\n\n"
         "<b>To register a creative:</b>\n"
         "Just send a video URL and we'll process it for you.\n\n"
+        "<b>To extract knowledge:</b>\n"
+        "Upload a .txt or .md file with training transcript.\n\n"
         "<i>Example: https://example.com/video.mp4</i>"
     )
 
     await send_telegram_message(message.chat_id, help_message)
+
+
+# Admin telegram IDs (for knowledge extraction)
+ADMIN_TELEGRAM_IDS = ["291678304"]
+
+
+def is_admin(telegram_id: str) -> bool:
+    """Check if user is admin."""
+    return telegram_id in ADMIN_TELEGRAM_IDS
+
+
+async def handle_knowledge_command(message: TelegramMessage) -> None:
+    """Handle /knowledge command - show pending extractions."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "This command is only available for admins."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Service temporarily unavailable.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get pending extractions
+            response = await client.get(
+                f"{supabase_url}/rest/v1/knowledge_extractions"
+                f"?status=eq.pending&order=created_at.asc&limit=5",
+                headers=headers,
+            )
+            extractions = response.json()
+
+            if not extractions:
+                await send_telegram_message(
+                    message.chat_id,
+                    "No pending knowledge extractions.\n\n"
+                    "Upload a .txt or .md transcript file to extract knowledge.",
+                )
+                return
+
+            # Send first pending extraction for review
+            ext = extractions[0]
+            await send_extraction_review_card(message.chat_id, ext)
+
+            if len(extractions) > 1:
+                await send_telegram_message(
+                    message.chat_id,
+                    f"<i>+{len(extractions) - 1} more pending</i>",
+                )
+
+    except Exception as e:
+        logger.error(f"Failed to get knowledge extractions: {e}")
+        await send_telegram_message(message.chat_id, "Failed to load extractions.")
+
+
+async def send_extraction_review_card(chat_id: str, extraction: dict) -> None:
+    """Send extraction review card with inline buttons."""
+    import httpx
+
+    emoji_map = {
+        "premise": "📖",
+        "creative_attribute": "🏷️",
+        "process_rule": "📋",
+        "component_weight": "⚖️",
+    }
+
+    knowledge_type = extraction.get("knowledge_type", "unknown")
+    emoji = emoji_map.get(knowledge_type, "📦")
+    confidence = extraction.get("confidence_score")
+    confidence_str = f"{confidence:.0%}" if confidence else "N/A"
+
+    # Format payload preview
+    payload = extraction.get("payload", {})
+    payload_preview = str(payload)[:300]
+    if len(str(payload)) > 300:
+        payload_preview += "..."
+
+    # Format supporting quote
+    quotes = extraction.get("supporting_quotes", [])
+    quote_str = f'"{quotes[0][:150]}..."' if quotes else "No quotes"
+
+    card = (
+        f"{emoji} <b>Knowledge Extraction</b>\n\n"
+        f"<b>Type:</b> {knowledge_type}\n"
+        f"<b>Name:</b> {extraction.get('name')}\n"
+        f"<b>Confidence:</b> {confidence_str}\n\n"
+        f"<b>Description:</b>\n{extraction.get('description', 'N/A')[:200]}\n\n"
+        f"<b>Quote:</b>\n<i>{quote_str}</i>\n\n"
+        f"<b>Payload:</b>\n<code>{payload_preview}</code>"
+    )
+
+    extraction_id = extraction.get("id")
+
+    # Send with inline keyboard
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        return
+
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Approve", "callback_data": f"ke_approve_{extraction_id}"},
+                {"text": "❌ Reject", "callback_data": f"ke_reject_{extraction_id}"},
+            ],
+            [
+                {"text": "⏭️ Skip", "callback_data": f"ke_skip_{extraction_id}"},
+            ],
+        ]
+    }
+
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": card,
+                "parse_mode": "HTML",
+                "reply_markup": keyboard,
+            },
+            timeout=30.0,
+        )
+
+
+async def handle_document_upload(message: TelegramMessage) -> None:
+    """Handle document upload - start knowledge extraction for .txt/.md files."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id,
+            "Knowledge extraction is only available for admins.",
+        )
+        return
+
+    document = message.document
+    if not document:
+        return
+
+    file_name = document.get("file_name", "")
+
+    # Check file extension
+    if not (file_name.endswith(".txt") or file_name.endswith(".md")):
+        await send_telegram_message(
+            message.chat_id,
+            "Please upload a .txt or .md file with transcript.",
+        )
+        return
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        await send_telegram_message(message.chat_id, "Bot not configured.")
+        return
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Get file info
+            file_id = document.get("file_id")
+            file_resp = await client.get(
+                f"https://api.telegram.org/bot{bot_token}/getFile",
+                params={"file_id": file_id},
+                timeout=30.0,
+            )
+            file_data = file_resp.json()
+
+            if not file_data.get("ok"):
+                await send_telegram_message(message.chat_id, "Failed to get file.")
+                return
+
+            file_path = file_data["result"]["file_path"]
+
+            # Download file content
+            content_resp = await client.get(
+                f"https://api.telegram.org/file/bot{bot_token}/{file_path}",
+                timeout=60.0,
+            )
+            content = content_resp.text
+
+        await send_telegram_message(
+            message.chat_id,
+            f"📄 <b>File received:</b> {file_name}\n"
+            f"📏 Size: {len(content)} characters\n\n"
+            f"Starting knowledge extraction...",
+        )
+
+        # Start ingestion workflow
+        from temporal.models.knowledge import KnowledgeSourceInput
+
+        temporal_client = await get_temporal_client()
+
+        input_data = KnowledgeSourceInput(
+            title=file_name,
+            content=content,
+            source_type="file",
+            url=None,
+            created_by=message.user_id,
+        )
+
+        import uuid
+        workflow_id = f"knowledge-ingest-{uuid.uuid4().hex[:8]}"
+
+        await temporal_client.start_workflow(
+            "KnowledgeIngestionWorkflow",
+            input_data,
+            id=workflow_id,
+            task_queue="knowledge",
+        )
+
+        logger.info(f"Started knowledge ingestion: {workflow_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to process document: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Failed to process file: {str(e)[:100]}",
+        )
+
+
+async def handle_callback_query(update: dict) -> None:
+    """Handle callback query from inline buttons."""
+    import httpx
+
+    callback_query = update.get("callback_query")
+    if not callback_query:
+        return
+
+    callback_id = callback_query.get("id")
+    data = callback_query.get("data", "")
+    user_id = str(callback_query.get("from", {}).get("id", ""))
+    chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
+    message_id = callback_query.get("message", {}).get("message_id")
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        return
+
+    # Answer callback to remove loading state
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+            json={"callback_query_id": callback_id},
+            timeout=10.0,
+        )
+
+    # Check admin permission
+    if not is_admin(user_id):
+        return
+
+    # Parse callback data
+    if data.startswith("ke_approve_"):
+        extraction_id = data.replace("ke_approve_", "")
+        await handle_extraction_approve(chat_id, message_id, extraction_id, user_id)
+
+    elif data.startswith("ke_reject_"):
+        extraction_id = data.replace("ke_reject_", "")
+        await handle_extraction_reject(chat_id, message_id, extraction_id, user_id)
+
+    elif data.startswith("ke_skip_"):
+        # Just show next extraction
+        await send_telegram_message(chat_id, "Skipped. Use /knowledge to see next.")
+
+
+async def handle_extraction_approve(
+    chat_id: str, message_id: int, extraction_id: str, user_id: str
+) -> None:
+    """Handle extraction approval."""
+    import httpx
+
+    try:
+        # Start application workflow
+        from temporal.models.knowledge import ApplyKnowledgeInput
+
+        temporal_client = await get_temporal_client()
+
+        input_data = ApplyKnowledgeInput(
+            extraction_id=extraction_id,
+            reviewed_by=user_id,
+        )
+
+        workflow_id = f"knowledge-apply-{extraction_id[:8]}"
+
+        await temporal_client.start_workflow(
+            "KnowledgeApplicationWorkflow",
+            input_data,
+            id=workflow_id,
+            task_queue="knowledge",
+        )
+
+        # Update message
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if bot_token:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/editMessageText",
+                    json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": "✅ <b>Approved</b>\n\nApplying knowledge...",
+                        "parse_mode": "HTML",
+                    },
+                    timeout=10.0,
+                )
+
+        logger.info(f"Started knowledge application: {workflow_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to approve extraction: {e}")
+        await send_telegram_message(chat_id, f"Failed to approve: {str(e)[:100]}")
+
+
+async def handle_extraction_reject(
+    chat_id: str, message_id: int, extraction_id: str, user_id: str
+) -> None:
+    """Handle extraction rejection."""
+    import httpx
+    from datetime import datetime
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Profile": "genomai",
+            "Prefer": "return=minimal",
+        }
+
+        async with httpx.AsyncClient() as client:
+            await client.patch(
+                f"{supabase_url}/rest/v1/knowledge_extractions"
+                f"?id=eq.{extraction_id}",
+                headers=headers,
+                json={
+                    "status": "rejected",
+                    "reviewed_by": user_id,
+                    "reviewed_at": datetime.utcnow().isoformat(),
+                },
+                timeout=10.0,
+            )
+
+        # Update message
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if bot_token:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/editMessageText",
+                    json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": "❌ <b>Rejected</b>",
+                        "parse_mode": "HTML",
+                    },
+                    timeout=10.0,
+                )
+
+        logger.info(f"Rejected extraction: {extraction_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to reject extraction: {e}")
+        await send_telegram_message(chat_id, f"Failed to reject: {str(e)[:100]}")
 
 
 async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
@@ -498,6 +876,11 @@ async def handle_user_message(message: TelegramMessage) -> None:
 
 async def process_telegram_update(update: dict) -> None:
     """Process incoming Telegram update."""
+    # Handle callback queries (inline button presses)
+    if "callback_query" in update:
+        await handle_callback_query(update)
+        return
+
     message = parse_update(update)
     if not message:
         return
@@ -514,6 +897,8 @@ async def process_telegram_update(update: dict) -> None:
             await handle_stats_command(message)
         elif text == "/help":
             await handle_help_command(message)
+        elif text == "/knowledge":
+            await handle_knowledge_command(message)
         elif text.startswith("/"):
             # Unknown command
             await send_telegram_message(
@@ -524,8 +909,12 @@ async def process_telegram_update(update: dict) -> None:
             # Regular message
             await handle_user_message(message)
 
-    elif message.video or message.document:
-        # Handle video/document (future: extract URL and process)
+    elif message.document:
+        # Handle document upload (for knowledge extraction)
+        await handle_document_upload(message)
+
+    elif message.video:
+        # Handle video
         await send_telegram_message(
             message.chat_id,
             "Please send a video URL instead of uploading directly.\n"

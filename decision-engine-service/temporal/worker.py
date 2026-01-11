@@ -42,6 +42,8 @@ from temporal.workflows.historical_import import (
     CreativeRegistrationWorkflow,
     HistoricalVideoHandlerWorkflow,
 )
+from temporal.workflows.knowledge_ingestion import KnowledgeIngestionWorkflow
+from temporal.workflows.knowledge_application import KnowledgeApplicationWorkflow
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
@@ -137,6 +139,24 @@ from temporal.activities.maintenance import (
     mark_stuck_transcriptions_failed,
     check_data_integrity,
     emit_maintenance_event,
+)
+
+# Import activities - Knowledge Extraction
+from temporal.activities.knowledge_extraction import (
+    extract_knowledge_from_transcript,
+    validate_extraction,
+)
+from temporal.activities.knowledge_db import (
+    save_knowledge_source,
+    save_pending_extractions,
+    mark_source_processed,
+    get_pending_extractions,
+    get_extraction,
+    update_extraction_status,
+    apply_premise_knowledge,
+    apply_process_rule,
+    apply_component_weight,
+    apply_creative_attribute,
 )
 
 
@@ -329,18 +349,49 @@ async def run_all_workers():
         ],
     )
 
+    # Knowledge Worker (Knowledge Extraction & Application)
+    knowledge_worker = Worker(
+        client,
+        task_queue=settings.temporal.TASK_QUEUE_KNOWLEDGE,
+        workflows=[
+            KnowledgeIngestionWorkflow,
+            KnowledgeApplicationWorkflow,
+        ],
+        activities=[
+            # Knowledge extraction (LLM)
+            extract_knowledge_from_transcript,
+            validate_extraction,
+            # Knowledge DB operations
+            save_knowledge_source,
+            save_pending_extractions,
+            mark_source_processed,
+            get_pending_extractions,
+            get_extraction,
+            update_extraction_status,
+            # Knowledge application
+            apply_premise_knowledge,
+            apply_process_rule,
+            apply_component_weight,
+            apply_creative_attribute,
+            # Telegram (for notifications)
+            send_telegram_message,
+        ],
+    )
+
     logger.info("Workers configured:")
     logger.info(
         f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
     )
     logger.info(f"  - Metrics & Learning: {settings.temporal.TASK_QUEUE_METRICS}")
     logger.info(f"  - Telegram & Buyer: {settings.temporal.TASK_QUEUE_TELEGRAM}")
+    logger.info(f"  - Knowledge Extraction: {settings.temporal.TASK_QUEUE_KNOWLEDGE}")
 
     # Run all workers concurrently
     await asyncio.gather(
         creative_worker.run(),
         metrics_worker.run(),
         telegram_worker.run(),
+        knowledge_worker.run(),
     )
 
 

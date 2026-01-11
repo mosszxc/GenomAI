@@ -582,6 +582,102 @@ Manually trigger a schedule to run immediately.
 
 ---
 
+## Knowledge Extraction
+
+### Upload Source
+
+```
+POST /api/knowledge/sources
+Authorization: Bearer {API_KEY}
+```
+
+Upload transcript for knowledge extraction.
+
+**Request:**
+```json
+{
+  "title": "Stefan Georgi - Hook Mastery",
+  "content": "Full transcript text...",
+  "source_type": "file",
+  "url": null,
+  "created_by": "291678304"
+}
+```
+
+**Response:**
+```json
+{
+  "workflow_id": "knowledge-ingest-abc123",
+  "status": "processing"
+}
+```
+
+### List Extractions
+
+```
+GET /api/knowledge/extractions?status=pending&limit=20
+Authorization: Bearer {API_KEY}
+```
+
+**Response:**
+```json
+{
+  "extractions": [...],
+  "count": 5,
+  "status_filter": "pending"
+}
+```
+
+### Approve Extraction
+
+```
+POST /api/knowledge/extractions/{id}/approve
+Authorization: Bearer {API_KEY}
+```
+
+Starts KnowledgeApplicationWorkflow to apply the knowledge.
+
+**Request:**
+```json
+{
+  "reviewed_by": "291678304"
+}
+```
+
+**Response:**
+```json
+{
+  "extraction_id": "uuid",
+  "workflow_id": "knowledge-apply-abc123",
+  "status": "applying"
+}
+```
+
+### Reject Extraction
+
+```
+POST /api/knowledge/extractions/{id}/reject
+Authorization: Bearer {API_KEY}
+```
+
+**Request:**
+```json
+{
+  "reviewed_by": "291678304",
+  "reason": "Not actionable"
+}
+```
+
+**Response:**
+```json
+{
+  "extraction_id": "uuid",
+  "status": "rejected"
+}
+```
+
+---
+
 ## Error Responses
 
 All endpoints return errors in this format:

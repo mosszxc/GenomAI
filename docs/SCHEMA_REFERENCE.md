@@ -119,6 +119,23 @@ created_at  TIMESTAMP      -- When snapshot was created
 | `premise_learnings` | Learnings по premises | Yes | Learning Loop |
 | `reminder_log` | Лог напоминаний | No (append-only) | reminder_workflow |
 
+### Knowledge Extraction Tables
+
+| Table | Purpose | Mutable | Writer |
+|-------|---------|---------|--------|
+| `knowledge_sources` | Исходные транскрипты (YouTube курсы и т.п.) | Yes (processed) | KnowledgeIngestionWorkflow |
+| `knowledge_extractions` | Извлечённые знания (pending review) | Yes (status) | KnowledgeIngestionWorkflow, KnowledgeApplicationWorkflow |
+
+**Колонки knowledge_sources:**
+- `id` (UUID PK), `source_type` (youtube/file/manual), `title`, `url`, `transcript_text`
+- `processed`, `processed_at`, `created_at`, `created_by`
+
+**Колонки knowledge_extractions:**
+- `id` (UUID PK), `source_id` (FK), `knowledge_type` (premise/creative_attribute/process_rule/component_weight)
+- `name`, `description`, `payload` (JSONB), `confidence_score`, `supporting_quotes`
+- `status` (pending/approved/rejected/applied), `reviewed_by`, `reviewed_at`
+- `applied_at`, `applied_to`, `created_at`
+
 ### Inspiration System Tables
 
 | Table | Purpose | Mutable | Writer |
