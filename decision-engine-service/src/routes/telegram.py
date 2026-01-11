@@ -407,6 +407,9 @@ async def handle_help_command(message: TelegramMessage) -> None:
         "/start - Start registration\n"
         "/stats - View your statistics\n"
         "/genome - Component performance heatmap\n"
+        "/genome fear --by geo - Segment by geography\n"
+        "/genome fear --by avatar - Segment by avatar\n"
+        "/genome fear --by week - Segment by week\n"
         "/trends - Win rate trends chart (admin)\n"
         "/knowledge - View pending knowledge extractions\n"
         "/help - Show this help\n\n"
@@ -422,22 +425,39 @@ async def handle_help_command(message: TelegramMessage) -> None:
 
 async def handle_genome_command(message: TelegramMessage) -> None:
     """
-    Handle /genome command - show component performance heatmap.
+    Handle /genome command - show component performance heatmap or segmented analysis.
 
     Usage:
         /genome - Show emotion_primary heatmap (default)
-        /genome angle_type - Show specific component type
+        /genome angle_type - Show specific component type heatmap
+        /genome fear --by geo - Segment analysis by geography
+        /genome hope --by avatar - Segment analysis by avatar
+        /genome curiosity --by week - Segment analysis by week
     """
     from src.services.genome_heatmap import (
         get_heatmap_data,
         format_heatmap_telegram,
         get_available_component_types,
+        get_segmented_analysis,
+        format_segmented_telegram,
     )
 
-    # Parse component type from command
+    # Parse command arguments
     text = message.text or ""
     parts = text.split()
-    component_type = parts[1] if len(parts) > 1 else "emotion_primary"
+
+    # Check for --by flag
+    segment_by = None
+    component_value = None
+    component_type = "emotion_primary"
+
+    if "--by" in parts:
+        by_index = parts.index("--by")
+        if by_index + 1 < len(parts):
+            segment_by = parts[by_index + 1].lower()
+            # Everything before --by is the component value
+            if by_index > 1:
+                component_value = parts[1]
 
     # Log incoming command
     await log_buyer_interaction(
@@ -448,6 +468,54 @@ async def handle_genome_command(message: TelegramMessage) -> None:
     )
 
     try:
+        # Segmented analysis mode
+        if segment_by:
+            valid_segments = ["geo", "avatar", "week"]
+            if segment_by not in valid_segments:
+                await send_telegram_message(
+                    message.chat_id,
+                    f"Invalid segment type: <code>{segment_by}</code>\n\n"
+                    f"Valid options: <code>geo</code>, <code>avatar</code>, <code>week</code>\n\n"
+                    f"Usage: /genome fear --by geo",
+                )
+                return
+
+            if not component_value:
+                await send_telegram_message(
+                    message.chat_id,
+                    "Please specify a component value.\n\n"
+                    "Usage: /genome fear --by geo\n"
+                    "       /genome hope --by avatar\n"
+                    "       /genome curiosity --by week",
+                )
+                return
+
+            # Get segmented analysis
+            data = await get_segmented_analysis(
+                component_value=component_value,
+                segment_by=segment_by,
+                component_type=component_type,
+            )
+            result_text = format_segmented_telegram(data)
+
+            await send_telegram_message(message.chat_id, result_text)
+
+            # Log outgoing response
+            await log_buyer_interaction(
+                telegram_id=message.user_id,
+                direction="out",
+                message_type="system",
+                content=result_text,
+                context={
+                    "component_value": component_value,
+                    "segment_by": segment_by,
+                },
+            )
+            return
+
+        # Heatmap mode (default)
+        component_type = parts[1] if len(parts) > 1 else "emotion_primary"
+
         # Get available types for validation
         available_types = await get_available_component_types()
 
@@ -458,7 +526,9 @@ async def handle_genome_command(message: TelegramMessage) -> None:
                 message.chat_id,
                 f"Unknown component type: <code>{component_type}</code>\n\n"
                 f"Available types:\n<code>{types_list}</code>\n\n"
-                f"Usage: /genome [component_type]",
+                f"Usage:\n"
+                f"  /genome [component_type] - heatmap\n"
+                f"  /genome fear --by geo - segment analysis",
             )
             return
 
