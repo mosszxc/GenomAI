@@ -91,6 +91,11 @@ from temporal.activities.feature_monitoring import (
     detect_feature_drift,
     emit_feature_event,
 )
+from temporal.activities.module_extraction import (
+    extract_modules_from_decomposition,
+    get_creative_metrics,
+    upsert_module,
+)
 
 __all__ = [
     # Supabase activities
@@ -168,4 +173,8 @@ __all__ = [
     "update_feature_correlations",
     "detect_feature_drift",
     "emit_feature_event",
+    # Module extraction activities
+    "extract_modules_from_decomposition",
+    "get_creative_metrics",
+    "upsert_module",
 ]
