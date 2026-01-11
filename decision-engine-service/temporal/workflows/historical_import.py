@@ -362,6 +362,7 @@ class HistoricalVideoHandlerWorkflow:
             maximum_attempts=3,
         )
 
+        queue_record = None  # Initialize before try block for except handler
         try:
             # Step 1: Find queue record by campaign_id
             workflow.logger.info(
@@ -370,8 +371,7 @@ class HistoricalVideoHandlerWorkflow:
 
             queue_record = await workflow.execute_activity(
                 get_import_by_campaign_id,
-                input.campaign_id,
-                input.buyer_id,
+                args=(input.campaign_id, input.buyer_id),
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -417,21 +417,21 @@ class HistoricalVideoHandlerWorkflow:
 
             await workflow.execute_activity(
                 update_import_status,
-                queue_record.id,
-                "processing",
-                None,
+                args=(queue_record.id, "processing", None),
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
 
             creative = await workflow.execute_activity(
                 create_historical_creative,
-                input.video_url,
-                input.campaign_id,  # tracker_id = campaign_id
-                input.buyer_id,
-                queue_record.metrics,
-                target_geo,
-                target_vertical,
+                args=(
+                    input.video_url,
+                    input.campaign_id,  # tracker_id = campaign_id
+                    input.buyer_id,
+                    queue_record.metrics,
+                    target_geo,
+                    target_vertical,
+                ),
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -442,14 +442,16 @@ class HistoricalVideoHandlerWorkflow:
             # Step 5: Emit event
             await workflow.execute_activity(
                 emit_event,
-                "HistoricalCreativeRegistered",
-                {
-                    "creative_id": self._creative_id,
-                    "campaign_id": input.campaign_id,
-                    "buyer_id": input.buyer_id,
-                    "video_url": input.video_url,
-                    "metrics": queue_record.metrics,
-                },
+                args=(
+                    "HistoricalCreativeRegistered",
+                    {
+                        "creative_id": self._creative_id,
+                        "campaign_id": input.campaign_id,
+                        "buyer_id": input.buyer_id,
+                        "video_url": input.video_url,
+                        "metrics": queue_record.metrics,
+                    },
+                ),
                 start_to_close_timeout=timedelta(seconds=10),
                 retry_policy=default_retry,
             )
@@ -471,9 +473,7 @@ class HistoricalVideoHandlerWorkflow:
 
             await workflow.execute_activity(
                 update_import_status,
-                queue_record.id,
-                "completed",
-                None,
+                args=(queue_record.id, "completed", None),
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -503,9 +503,7 @@ class HistoricalVideoHandlerWorkflow:
                 try:
                     await workflow.execute_activity(
                         update_import_status,
-                        queue_record.id,
-                        "failed",
-                        str(e),
+                        args=(queue_record.id, "failed", str(e)),
                         start_to_close_timeout=timedelta(seconds=30),
                         retry_policy=default_retry,
                     )
