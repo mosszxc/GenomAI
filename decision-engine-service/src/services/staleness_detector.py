@@ -414,12 +414,32 @@ async def calculate_staleness_metrics(
     Returns:
         StalenessMetrics with all metrics and composite score
     """
-    # Calculate individual metrics
-    diversity = await calculate_diversity_score(avatar_id, geo)
-    win_rate_trend = await calculate_win_rate_trend(avatar_id, geo)
-    fatigue = await calculate_fatigue_ratio(avatar_id, geo)
-    days_stale = await calculate_days_since_new_component(avatar_id, geo)
-    exploration = await calculate_exploration_success_rate(avatar_id, geo)
+    # Calculate individual metrics with error handling
+    # Each metric defaults to neutral value on error
+    try:
+        diversity = await calculate_diversity_score(avatar_id, geo)
+    except Exception:
+        diversity = 0.5  # Neutral
+
+    try:
+        win_rate_trend = await calculate_win_rate_trend(avatar_id, geo)
+    except Exception:
+        win_rate_trend = 0.0  # Neutral
+
+    try:
+        fatigue = await calculate_fatigue_ratio(avatar_id, geo)
+    except Exception:
+        fatigue = 0.0  # No fatigue assumed
+
+    try:
+        days_stale = await calculate_days_since_new_component(avatar_id, geo)
+    except Exception:
+        days_stale = DAYS_STALE_THRESHOLD  # Neutral
+
+    try:
+        exploration = await calculate_exploration_success_rate(avatar_id, geo)
+    except Exception:
+        exploration = 0.5  # Neutral
 
     # Create metrics object
     metrics = StalenessMetrics(
