@@ -350,42 +350,43 @@ async def get_modules_for_creative(
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # Get decision for this creative (most recent APPROVE)
-            decision_url = (
-                f"{settings.supabase.url}/rest/v1/decisions"
+            # Get idea_id from decomposed_creatives
+            # Flow: creative_id → decomposed_creatives → idea_id
+            decomposed_url = (
+                f"{settings.supabase.url}/rest/v1/decomposed_creatives"
                 f"?creative_id=eq.{input.creative_id}"
-                f"&verdict=eq.APPROVE"
-                f"&select=hypothesis_id"
-                f"&order=created_at.desc"
+                f"&select=idea_id"
                 f"&limit=1"
             )
-            response = await client.get(decision_url, headers=headers)
+            response = await client.get(decomposed_url, headers=headers)
             response.raise_for_status()
-            decisions = response.json()
+            decomposed = response.json()
 
-            if not decisions or not decisions[0].get("hypothesis_id"):
+            if not decomposed or not decomposed[0].get("idea_id"):
                 activity.logger.info(
-                    f"No approved decision with hypothesis for creative: {input.creative_id}"
+                    f"No decomposed creative with idea for creative: {input.creative_id}"
                 )
                 return GetModulesForCreativeOutput(
                     creative_id=input.creative_id,
                     module_ids=[],
                 )
 
-            hypothesis_id = decisions[0]["hypothesis_id"]
+            idea_id = decomposed[0]["idea_id"]
 
-            # Get hypothesis with module IDs
+            # Get hypothesis with module IDs via idea_id
             hypothesis_url = (
                 f"{settings.supabase.url}/rest/v1/hypotheses"
-                f"?id=eq.{hypothesis_id}"
+                f"?idea_id=eq.{idea_id}"
                 f"&select=hook_module_id,promise_module_id,proof_module_id,generation_mode"
+                f"&order=created_at.desc"
+                f"&limit=1"
             )
             response = await client.get(hypothesis_url, headers=headers)
             response.raise_for_status()
             hypotheses = response.json()
 
             if not hypotheses:
-                activity.logger.info(f"Hypothesis not found: {hypothesis_id}")
+                activity.logger.info(f"No hypothesis found for idea: {idea_id}")
                 return GetModulesForCreativeOutput(
                     creative_id=input.creative_id,
                     module_ids=[],
