@@ -76,6 +76,9 @@ from temporal.activities.hypothesis_generation import (
     generate_hypotheses,
     save_hypotheses,
 )
+from temporal.activities.premise_selection import (
+    select_premise,
+)
 from temporal.activities.module_extraction import (
     extract_modules_from_decomposition,
     get_creative_metrics,
@@ -266,6 +269,8 @@ async def run_worker():
             # Hypothesis Generation
             generate_hypotheses,
             save_hypotheses,
+            # Premise Selection
+            select_premise,
             # Module Extraction (Modular Creative System)
             extract_modules_from_decomposition,
             get_creative_metrics,
@@ -281,10 +286,6 @@ async def run_worker():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
-            # Module Extraction (Modular Creative System)
-            extract_modules_from_decomposition,
-            get_creative_metrics,
-            upsert_module,
         ],
     )
 
@@ -338,6 +339,8 @@ async def run_all_workers():
             # Hypothesis Generation
             generate_hypotheses,
             save_hypotheses,
+            # Premise Selection
+            select_premise,
             # Module Extraction (Modular Creative System)
             extract_modules_from_decomposition,
             get_creative_metrics,
@@ -353,10 +356,6 @@ async def run_all_workers():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
-            # Module Extraction (Modular Creative System)
-            extract_modules_from_decomposition,
-            get_creative_metrics,
-            upsert_module,
         ],
     )
 
