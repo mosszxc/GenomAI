@@ -17,6 +17,7 @@ External APIs:
 - TELEGRAM_BOT_TOKEN
 - KEITARO_API_KEY
 - KEITARO_BASE_URL
+- GITHUB_TOKEN
 """
 
 import os
@@ -70,6 +71,7 @@ class ExternalAPISettings:
     telegram_bot_token: Optional[str]
     keitaro_api_key: Optional[str]
     keitaro_base_url: Optional[str]
+    github_token: Optional[str]
 
 
 @dataclass
@@ -112,6 +114,7 @@ def load_settings() -> Settings:
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
             keitaro_api_key=os.getenv("KEITARO_API_KEY"),
             keitaro_base_url=os.getenv("KEITARO_BASE_URL"),
+            github_token=os.getenv("GITHUB_TOKEN"),
         ),
         # Feature flags (default off during migration)
         use_temporal_creative_pipeline=os.getenv(
