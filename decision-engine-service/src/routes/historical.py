@@ -204,7 +204,7 @@ async def get_pending_imports(buyer_id: str):
             response = await client.get(
                 f"{supabase_url}/rest/v1/historical_import_queue"
                 f"?buyer_id=eq.{buyer_id}"
-                f"&status=in.(pending,pending_video,ready)"
+                f"&status=in.(pending_video,ready,processing)"
                 f"&order=created_at.asc"
                 f"&limit=50",
                 headers=headers,

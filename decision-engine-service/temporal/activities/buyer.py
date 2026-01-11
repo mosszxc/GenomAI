@@ -353,7 +353,7 @@ async def queue_historical_import(input: QueueHistoricalImportInput) -> str:
         "video_url": input.video_url,
         "keitaro_source": input.keitaro_source,
         "metrics": input.metrics,
-        "status": "pending",
+        "status": "pending_video",
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
     }
@@ -405,6 +405,39 @@ async def get_pending_imports(buyer_id: str, limit: int = 10) -> List[dict]:
         data = response.json()
 
         activity.logger.info(f"Found {len(data)} pending imports")
+        return data
+
+
+@activity.defn
+async def get_pending_video_campaigns(buyer_id: str) -> List[dict]:
+    """
+    Get campaigns waiting for video (status=pending_video) for onboarding.
+
+    Args:
+        buyer_id: Buyer UUID
+
+    Returns:
+        List of campaign records with metrics: [{id, campaign_id, metrics: {name, clicks, ...}}]
+    """
+    activity.logger.info(f"Getting pending video campaigns for buyer: {buyer_id}")
+
+    headers = _get_supabase_headers()
+    base_url = _get_supabase_url()
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{base_url}/historical_import_queue"
+            f"?buyer_id=eq.{buyer_id}"
+            f"&status=eq.pending_video"
+            f"&order=created_at.asc"
+            f"&select=id,campaign_id,metrics,status",
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        activity.logger.info(f"Found {len(data)} campaigns waiting for video")
         return data
 
 
