@@ -37,7 +37,7 @@
 | A004 | Close issue without fresh test | Post-Task Loop checklist first | 20k→0 waste |
 | A005 | Edit qa-notes/KNOWN_ISSUES 5+ times | One update per issue | 500k→20k |
 | A006 | Say "done" + PR link without Post-Task Loop | qa-notes → knowledge → summary → THEN "done" | context loss |
-| A007 | Work directly in main without worktree | `./scripts/task-start.sh {N}` → worktree → `task-done.sh` | PR review skip, risky deploys |
+| A007 | ⛔ **CRITICAL:** Commit to main without worktree | **BLOCKING:** `./scripts/task-start.sh {N}` BEFORE any code. No exceptions. Issue exists = worktree required | PR skip, no review, risky deploy, rollback pain |
 | A008 | Mark Post-Task Loop completed before checking all 4 items | TEST → qa-notes → docs check → summary → THEN completed | missed docs updates |
 | A009 | Do Post-Task Loop silently, say "done" without showing checklist | Explicitly show checklist BEFORE "готово/done" | user confusion, re-verification |
 | A010 | Wait for user to ask "post task loop?" after test/PR | Proactively start Post-Task Loop immediately after test passes | user has to remind, breaks flow |
