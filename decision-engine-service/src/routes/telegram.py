@@ -401,17 +401,40 @@ async def handle_stats_command(message: TelegramMessage) -> None:
 
 
 async def handle_help_command(message: TelegramMessage) -> None:
-    """Handle /help command."""
-    help_message = (
-        "<b>Команды GenomAI</b>\n\n"
-        "/start - Начать регистрацию\n"
-        "/stats - Посмотреть статистику\n"
-        "/feedback - Оставить отзыв\n"
-        "/help - Показать справку\n\n"
-        "<b>Регистрация креатива:</b>\n"
-        "Просто отправьте ссылку на видео.\n\n"
-        "<i>Example: https://example.com/video.mp4</i>"
-    )
+    """Handle /help command - different output for admin vs buyer."""
+    if is_admin(message.user_id):
+        help_message = (
+            "<b>ADMIN PANEL</b>\n\n"
+            "📊 <b>АНАЛИТИКА</b>\n"
+            "/genome - Матрица компонентов\n"
+            "/confidence - Доверительные интервалы\n"
+            "/correlations - Синергии компонентов\n"
+            "/trends - Графики трендов\n"
+            "/drift - Обнаружение дрифта\n\n"
+            "🤖 <b>ИНСТРУМЕНТЫ</b>\n"
+            "/simulate X + Y + Z - What-If симулятор\n"
+            "/recommend - Лучшая комбинация дня\n"
+            "/knowledge - Извлечение знаний\n\n"
+            "👥 <b>МОНИТОРИНГ</b>\n"
+            "/buyers - Список баеров\n"
+            "/activity - Последние действия\n"
+            "/decisions - Решения Decision Engine\n"
+            "/creatives - Все креативы\n\n"
+            "⚙️ <b>СИСТЕМА</b>\n"
+            "/status - Статус workflows\n"
+            "/errors - Последние ошибки"
+        )
+    else:
+        help_message = (
+            "<b>Команды GenomAI</b>\n\n"
+            "/start - Начать регистрацию\n"
+            "/stats - Посмотреть статистику\n"
+            "/feedback - Оставить отзыв\n"
+            "/help - Показать справку\n\n"
+            "<b>Регистрация креатива:</b>\n"
+            "Просто отправьте ссылку на видео.\n\n"
+            "<i>Example: https://example.com/video.mp4</i>"
+        )
 
     await send_telegram_message(message.chat_id, help_message)
 
@@ -950,6 +973,524 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
             message.chat_id,
             f"Не удалось сгенерировать рекомендацию: {str(e)[:100]}",
         )
+
+
+# =============================================================================
+# ADMIN MONITORING COMMANDS
+# =============================================================================
+
+
+async def handle_buyers_command(message: TelegramMessage) -> None:
+    """Handle /buyers command - list all buyers with stats."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get all buyers
+            buyers_resp = await client.get(
+                f"{supabase_url}/rest/v1/buyers"
+                f"?select=id,name,telegram_username,geos,verticals,status,created_at"
+                f"&order=created_at.desc&limit=10",
+                headers=headers,
+            )
+            buyers = buyers_resp.json()
+
+            if not buyers:
+                await send_telegram_message(message.chat_id, "Баеров пока нет.")
+                return
+
+            # Get creative counts for each buyer
+            buyer_ids = [b["id"] for b in buyers]
+            creatives_resp = await client.get(
+                f"{supabase_url}/rest/v1/creatives"
+                f"?buyer_id=in.({','.join(buyer_ids)})"
+                f"&select=buyer_id,test_result",
+                headers=headers,
+            )
+            creatives = creatives_resp.json()
+
+            # Aggregate stats per buyer
+            buyer_stats = {}
+            for c in creatives:
+                bid = c["buyer_id"]
+                if bid not in buyer_stats:
+                    buyer_stats[bid] = {"total": 0, "wins": 0, "losses": 0}
+                buyer_stats[bid]["total"] += 1
+                if c.get("test_result") == "win":
+                    buyer_stats[bid]["wins"] += 1
+                elif c.get("test_result") == "loss":
+                    buyer_stats[bid]["losses"] += 1
+
+        # Format response
+        lines = [f"👥 <b>Баеры ({len(buyers)})</b>\n"]
+
+        for i, b in enumerate(buyers, 1):
+            name = b.get("name") or "Без имени"
+            username = (
+                f"@{b['telegram_username']}" if b.get("telegram_username") else ""
+            )
+            geos = ", ".join(b.get("geos") or []) or "—"
+            verticals = ", ".join(b.get("verticals") or []) or "—"
+
+            stats = buyer_stats.get(b["id"], {"total": 0, "wins": 0, "losses": 0})
+            total = stats["total"]
+            wins = stats["wins"]
+            concluded = wins + stats["losses"]
+            win_rate = f"{wins / concluded * 100:.0f}%" if concluded > 0 else "—"
+
+            lines.append(
+                f"{i}. <b>{name}</b> {username}\n"
+                f"   Geo: {geos} | Verticals: {verticals}\n"
+                f"   Креативов: {total} | Win rate: {win_rate}\n"
+            )
+
+        await send_telegram_message(message.chat_id, "\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Failed to get buyers: {e}")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить баеров.")
+
+
+async def handle_activity_command(message: TelegramMessage) -> None:
+    """Handle /activity command - show recent buyer interactions."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get recent interactions
+            response = await client.get(
+                f"{supabase_url}/rest/v1/buyer_interactions"
+                f"?select=telegram_id,direction,message_type,content,created_at"
+                f"&order=created_at.desc&limit=15",
+                headers=headers,
+            )
+            interactions = response.json()
+
+            if not interactions:
+                await send_telegram_message(message.chat_id, "Активности пока нет.")
+                return
+
+            # Get buyer names for telegram_ids
+            telegram_ids = list(set(i["telegram_id"] for i in interactions))
+            buyers_resp = await client.get(
+                f"{supabase_url}/rest/v1/buyers"
+                f"?telegram_id=in.({','.join(telegram_ids)})"
+                f"&select=telegram_id,telegram_username,name",
+                headers=headers,
+            )
+            buyers = {b["telegram_id"]: b for b in buyers_resp.json()}
+
+        # Format response
+        lines = ["📋 <b>Активность (последние 15)</b>\n"]
+
+        for i in interactions:
+            tid = i["telegram_id"]
+            buyer = buyers.get(tid, {})
+            username = (
+                f"@{buyer.get('telegram_username')}"
+                if buyer.get("telegram_username")
+                else tid
+            )
+
+            direction = "→" if i["direction"] == "in" else "←"
+            content = (i.get("content") or "")[:50]
+            if len(i.get("content") or "") > 50:
+                content += "..."
+
+            # Parse timestamp
+            created_at = i.get("created_at", "")
+            time_str = created_at[11:16] if len(created_at) > 16 else ""
+
+            lines.append(f"{time_str} {username} {direction} {content}")
+
+        await send_telegram_message(message.chat_id, "\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Failed to get activity: {e}")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить активность.")
+
+
+async def handle_decisions_command(message: TelegramMessage) -> None:
+    """Handle /decisions command - show Decision Engine stats."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get decisions from last 24 hours
+            response = await client.get(
+                f"{supabase_url}/rest/v1/decisions"
+                f"?select=id,decision,created_at"
+                f"&created_at=gte.{datetime.utcnow().replace(hour=0, minute=0, second=0).isoformat()}"
+                f"&order=created_at.desc&limit=50",
+                headers=headers,
+            )
+            decisions = response.json()
+
+        # Count by decision type
+        counts = {"approve": 0, "reject": 0, "defer": 0}
+        for d in decisions:
+            decision = d.get("decision", "").lower()
+            if decision in counts:
+                counts[decision] += 1
+
+        total = sum(counts.values())
+
+        # Format response
+        lines = [
+            "⚖️ <b>Решения DE (24ч)</b>\n",
+            f"✅ APPROVE: {counts['approve']}",
+            f"❌ REJECT: {counts['reject']}",
+            f"⏸️ DEFER: {counts['defer']}",
+            f"\nВсего: {total}",
+        ]
+
+        if decisions:
+            lines.append("\n<b>Последние:</b>")
+            for d in decisions[:5]:
+                decision = d.get("decision", "").upper()
+                created_at = d.get("created_at", "")
+                time_str = created_at[11:16] if len(created_at) > 16 else ""
+                emoji = {"APPROVE": "✅", "REJECT": "❌", "DEFER": "⏸️"}.get(
+                    decision, "❓"
+                )
+                lines.append(f"• {time_str} {emoji} {decision}")
+
+        await send_telegram_message(message.chat_id, "\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Failed to get decisions: {e}")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить решения.")
+
+
+async def handle_creatives_command(message: TelegramMessage) -> None:
+    """Handle /creatives command - list all creatives."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get recent creatives with buyer info
+            response = await client.get(
+                f"{supabase_url}/rest/v1/creatives"
+                f"?select=id,buyer_id,status,tracking_status,test_result,created_at,"
+                f"buyers(name,telegram_username)"
+                f"&order=created_at.desc&limit=10",
+                headers=headers,
+            )
+            creatives = response.json()
+
+            if not creatives:
+                await send_telegram_message(message.chat_id, "Креативов пока нет.")
+                return
+
+        # Format response
+        lines = [f"🎬 <b>Креативы ({len(creatives)})</b>\n"]
+
+        for c in creatives:
+            buyer = c.get("buyers") or {}
+            buyer_name = buyer.get("name") or buyer.get("telegram_username") or "?"
+
+            status = c.get("status") or "?"
+            tracking = c.get("tracking_status") or "?"
+            result = c.get("test_result")
+
+            result_emoji = ""
+            if result == "win":
+                result_emoji = " ✅"
+            elif result == "loss":
+                result_emoji = " ❌"
+
+            created_at = c.get("created_at", "")
+            date_str = created_at[:10] if len(created_at) >= 10 else ""
+
+            lines.append(
+                f"• {date_str} | {buyer_name}\n"
+                f"  Status: {status} | Tracking: {tracking}{result_emoji}"
+            )
+
+        await send_telegram_message(message.chat_id, "\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Failed to get creatives: {e}")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить креативы.")
+
+
+async def handle_status_command(message: TelegramMessage) -> None:
+    """Handle /status command - show system status."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get counts from various tables
+            buyers_resp = await client.get(
+                f"{supabase_url}/rest/v1/buyers?select=id",
+                headers={**headers, "Prefer": "count=exact"},
+            )
+            buyers_count = buyers_resp.headers.get("content-range", "0").split("/")[-1]
+
+            creatives_resp = await client.get(
+                f"{supabase_url}/rest/v1/creatives?select=id",
+                headers={**headers, "Prefer": "count=exact"},
+            )
+            creatives_count = creatives_resp.headers.get("content-range", "0").split(
+                "/"
+            )[-1]
+
+            decisions_resp = await client.get(
+                f"{supabase_url}/rest/v1/decisions?select=id",
+                headers={**headers, "Prefer": "count=exact"},
+            )
+            decisions_count = decisions_resp.headers.get("content-range", "0").split(
+                "/"
+            )[-1]
+
+            # Get pending hypotheses
+            hypotheses_resp = await client.get(
+                f"{supabase_url}/rest/v1/hypotheses?status=is.null&select=id",
+                headers={**headers, "Prefer": "count=exact"},
+            )
+            pending_hypotheses = hypotheses_resp.headers.get(
+                "content-range", "0"
+            ).split("/")[-1]
+
+        # Format response
+        status_message = (
+            "⚙️ <b>Статус системы</b>\n\n"
+            f"👥 Баеров: {buyers_count}\n"
+            f"🎬 Креативов: {creatives_count}\n"
+            f"⚖️ Решений DE: {decisions_count}\n"
+            f"📨 Гипотез в очереди: {pending_hypotheses}\n\n"
+            f"<i>Обновлено: {datetime.utcnow().strftime('%H:%M:%S')} UTC</i>"
+        )
+
+        await send_telegram_message(message.chat_id, status_message)
+
+    except Exception as e:
+        logger.error(f"Failed to get status: {e}")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить статус.")
+
+
+async def handle_errors_command(message: TelegramMessage) -> None:
+    """Handle /errors command - show recent errors."""
+    import httpx
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(
+            message.chat_id, "Эта команда доступна только администраторам."
+        )
+        return
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get failed hypotheses (with retry errors)
+            response = await client.get(
+                f"{supabase_url}/rest/v1/hypotheses"
+                f"?status=eq.failed&select=id,last_error,retry_count,last_retry_at"
+                f"&order=last_retry_at.desc&limit=10",
+                headers=headers,
+            )
+            failed = response.json()
+
+        if not failed:
+            await send_telegram_message(
+                message.chat_id,
+                "❌ <b>Ошибки</b>\n\nОшибок не найдено! Всё работает.",
+            )
+            return
+
+        # Format response
+        lines = [f"❌ <b>Ошибки ({len(failed)})</b>\n"]
+
+        for f in failed:
+            error = (f.get("last_error") or "Unknown error")[:80]
+            retry_count = f.get("retry_count") or 0
+            last_retry = f.get("last_retry_at", "")
+            time_str = last_retry[11:16] if len(last_retry) > 16 else "?"
+
+            lines.append(f"• {time_str} (retry: {retry_count})\n  {error}")
+
+        await send_telegram_message(message.chat_id, "\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Failed to get errors: {e}")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить ошибки.")
+
+
+# =============================================================================
+# ADMIN PUSH NOTIFICATIONS
+# =============================================================================
+
+
+async def notify_admin(event_type: str, data: dict) -> None:
+    """
+    Send push notification to all admins.
+
+    Event types:
+    - new_buyer: New buyer registered
+    - creative_win: Creative got WIN result
+    - creative_loss: Creative got LOSS result
+    - error: Error in command or workflow
+    - workflow_stuck: Workflow running too long
+    """
+    message = format_admin_notification(event_type, data)
+    if not message:
+        return
+
+    for admin_id in ADMIN_TELEGRAM_IDS:
+        try:
+            await send_telegram_message(admin_id, message)
+        except Exception as e:
+            logger.error(f"Failed to notify admin {admin_id}: {e}")
+
+
+def format_admin_notification(event_type: str, data: dict) -> str:
+    """Format admin notification message."""
+    if event_type == "new_buyer":
+        name = data.get("name") or "Без имени"
+        username = f"@{data['username']}" if data.get("username") else ""
+        return f"👤 <b>Новый баер:</b> {name} {username}"
+
+    elif event_type == "creative_win":
+        username = (
+            f"@{data['username']}"
+            if data.get("username")
+            else data.get("buyer_name", "?")
+        )
+        roi = data.get("roi")
+        roi_str = f" (ROI {roi:+.0f}%)" if roi is not None else ""
+        return f"🎉 <b>WIN:</b> креатив от {username}{roi_str}"
+
+    elif event_type == "creative_loss":
+        username = (
+            f"@{data['username']}"
+            if data.get("username")
+            else data.get("buyer_name", "?")
+        )
+        return f"📉 <b>LOSS:</b> креатив от {username}"
+
+    elif event_type == "error":
+        command = data.get("command", "?")
+        username = (
+            f"@{data['username']}"
+            if data.get("username")
+            else data.get("telegram_id", "?")
+        )
+        error = data.get("error", "Unknown error")[:100]
+        return f"❌ <b>Ошибка {command}</b> для {username}:\n{error}"
+
+    elif event_type == "workflow_stuck":
+        workflow_id = data.get("workflow_id", "?")
+        minutes = data.get("minutes", "?")
+        return f"⚠️ <b>Workflow завис:</b> {workflow_id} ({minutes} мин)"
+
+    return ""
 
 
 # Admin telegram IDs (for knowledge extraction)
@@ -1571,6 +2112,19 @@ async def process_telegram_update(update: dict) -> None:
             await handle_simulate_command(message)
         elif text.startswith("/feedback"):
             await handle_feedback_command(message)
+        # Admin monitoring commands
+        elif text == "/buyers":
+            await handle_buyers_command(message)
+        elif text == "/activity":
+            await handle_activity_command(message)
+        elif text == "/decisions":
+            await handle_decisions_command(message)
+        elif text == "/creatives":
+            await handle_creatives_command(message)
+        elif text == "/status":
+            await handle_status_command(message)
+        elif text == "/errors":
+            await handle_errors_command(message)
         elif text.startswith("/"):
             # Unknown command
             await send_telegram_message(
