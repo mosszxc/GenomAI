@@ -43,13 +43,27 @@ This is a design limitation, now mitigated by the retry mechanism.
 ### Pre-fix State
 ```sql
 SELECT id, status, retry_count FROM genomai.hypotheses WHERE status='pending';
--- 3 rows, all retry_count=0
+-- 3 rows, all retry_count=0, last_retry_at=null
 ```
 
-### Post-fix Verification
-- Deploy: live (dep-d5hs7m49c44c73dot340)
-- Buyer has telegram_id: 999999999
-- Hypotheses will be picked up by next MaintenanceWorkflow run (every 6h)
+### Post-fix Production Test
+```bash
+curl -X POST "https://genomai.onrender.com/api/schedules/maintenance/trigger" \
+  -H "X-API-Key: $API_KEY"
+# {"success":true,"message":"Schedule 'maintenance' triggered successfully"}
+```
+
+### Results After MaintenanceWorkflow
+| Field | Before | After |
+|-------|--------|-------|
+| retry_count | 0 | 1 |
+| last_retry_at | null | 2026-01-11 15:47:54 |
+| last_error | null | "Bad Request: chat not found" |
+
+**Verdict:** PASSED
+- `retry_failed_hypotheses` picked up stuck pending hypotheses ✓
+- `get_buyer_chat_id` correctly fetched `telegram_id` column ✓
+- Telegram API was called (error is expected for test buyer with fake chat_id 999999999) ✓
 
 ## Test Command
 ```bash
