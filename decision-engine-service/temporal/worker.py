@@ -45,6 +45,7 @@ from temporal.workflows.historical_import import (
 )
 from temporal.workflows.knowledge_ingestion import KnowledgeIngestionWorkflow
 from temporal.workflows.knowledge_application import KnowledgeApplicationWorkflow
+from temporal.workflows.agent_supervisor import AgentSupervisorWorkflow
 
 # Import activities - Supabase
 from temporal.activities.supabase import (
@@ -181,6 +182,17 @@ from temporal.activities.knowledge_db import (
     apply_process_rule,
     apply_component_weight,
     apply_creative_attribute,
+)
+
+# Import activities - Agent Supervisor (Multi-Agent Phase 3, Issue #351)
+from temporal.activities.agent_supervisor import (
+    get_pending_github_issues,
+    get_pending_tasks_from_queue,
+    get_available_agents,
+    add_task_to_queue,
+    assign_task_to_agent,
+    release_orphaned_agents,
+    get_supervisor_stats,
 )
 
 
@@ -418,6 +430,27 @@ async def run_all_workers():
         ],
     )
 
+    # Agent Supervisor Worker (Multi-Agent Phase 3, Issue #351)
+    agent_supervisor_worker = Worker(
+        client,
+        task_queue=settings.temporal.TASK_QUEUE_AGENT_SUPERVISOR,
+        workflows=[
+            AgentSupervisorWorkflow,
+        ],
+        activities=[
+            # GitHub polling
+            get_pending_github_issues,
+            # Task queue operations
+            get_pending_tasks_from_queue,
+            add_task_to_queue,
+            # Agent operations
+            get_available_agents,
+            assign_task_to_agent,
+            release_orphaned_agents,
+            get_supervisor_stats,
+        ],
+    )
+
     logger.info("Workers configured:")
     logger.info(
         f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
@@ -425,6 +458,9 @@ async def run_all_workers():
     logger.info(f"  - Metrics & Learning: {settings.temporal.TASK_QUEUE_METRICS}")
     logger.info(f"  - Telegram & Buyer: {settings.temporal.TASK_QUEUE_TELEGRAM}")
     logger.info(f"  - Knowledge Extraction: {settings.temporal.TASK_QUEUE_KNOWLEDGE}")
+    logger.info(
+        f"  - Agent Supervisor: {settings.temporal.TASK_QUEUE_AGENT_SUPERVISOR}"
+    )
 
     # Run all workers concurrently
     await asyncio.gather(
@@ -432,6 +468,7 @@ async def run_all_workers():
         metrics_worker.run(),
         telegram_worker.run(),
         knowledge_worker.run(),
+        agent_supervisor_worker.run(),
     )
 
 
