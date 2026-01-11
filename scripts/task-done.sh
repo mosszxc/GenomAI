@@ -245,11 +245,12 @@ fi
 # Return to main project
 cd "$PROJECT_ROOT"
 
-# Cleanup current worktree
+# Mark worktree as merged (for TTL-based cleanup)
 echo ""
-echo "Cleaning up worktree..."
-git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
-git branch -d "$BRANCH_NAME" 2>/dev/null || true
+echo "Marking worktree as merged (will be cleaned up after 7 days)..."
+date -u +"%Y-%m-%dT%H:%M:%SZ" > "$WORKTREE_PATH/.merged-at"
+echo "  Worktree preserved: $WORKTREE_PATH"
+echo "  Run ./scripts/cleanup-worktrees.sh to clean up old worktrees"
 
 # === MULTI-AGENT COORDINATION: Release lock ===
 LOCK_FILE="$LOCKS_DIR/issue-${ISSUE_NUM}.lock"
@@ -257,11 +258,6 @@ if [ -f "$LOCK_FILE" ]; then
     rm -f "$LOCK_FILE"
     echo "🔓 Lock released for issue #$ISSUE_NUM"
 fi
-
-# Run full cleanup to catch any other merged worktrees
-echo ""
-echo "Running cleanup for other merged worktrees..."
-"$PROJECT_ROOT/scripts/cleanup-worktrees.sh" 2>/dev/null || true
 
 echo ""
 echo "=== Done ==="
