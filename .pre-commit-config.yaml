@@ -1,23 +1,39 @@
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
   - repo: local
     hooks:
+      # === PRE-COMMIT (~20s) ===
+
       - id: ruff-check
         name: ruff lint
         entry: ruff check decision-engine-service/ --fix
         language: system
         pass_filenames: false
         types: [python]
+        stages: [pre-commit]
 
       - id: ruff-format
-        name: ruff format
+        name: ruff format check
         entry: ruff format decision-engine-service/ --check
         language: system
         pass_filenames: false
         types: [python]
+        stages: [pre-commit]
 
-      - id: fast-tests
-        name: fast unit tests
-        entry: bash -c "cd decision-engine-service && pytest tests/unit/ -q --tb=no -x -m 'not slow' 2>/dev/null || true"
+      - id: critical-tests
+        name: critical tests (hashing parity)
+        entry: bash -c "cd decision-engine-service && python3 -m pytest tests/unit/test_hashing.py -q --tb=no -x --timeout=30"
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-commit]
+
+      # === PRE-PUSH (~60s) ===
+
+      - id: all-unit-tests
+        name: all unit tests
+        entry: bash -c "cd decision-engine-service && python3 -m pytest tests/unit/ -q --tb=short -m 'not slow' --timeout=60"
         language: system
         pass_filenames: false
         types: [python]

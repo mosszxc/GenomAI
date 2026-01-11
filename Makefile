@@ -1,0 +1,142 @@
+# Makefile for GenomAI
+# Usage: make <target>
+
+.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check
+
+# Default target
+help:
+	@echo "GenomAI Test Commands"
+	@echo "====================="
+	@echo ""
+	@echo "Setup:"
+	@echo "  make install        - Install dependencies"
+	@echo "  make setup-hooks    - Install git hooks"
+	@echo ""
+	@echo "Linting:"
+	@echo "  make lint           - Run ruff check with auto-fix"
+	@echo "  make format         - Run ruff format"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test           - Run critical tests only (~15s)"
+	@echo "  make test-unit      - Run all unit tests (~45s)"
+	@echo "  make test-slow      - Run slow unit tests"
+	@echo "  make test-all       - Run unit + contract validation (~60s)"
+	@echo "  make test-integration - Run integration tests (requires env)"
+	@echo ""
+	@echo "E2E (server):"
+	@echo "  make e2e-quick      - Health checks only (~30s)"
+	@echo "  make e2e            - Full E2E flow (~5min)"
+	@echo ""
+	@echo "CI Simulation:"
+	@echo "  make ci             - Simulate full CI pipeline locally"
+	@echo "  make pre-commit-check - Run pre-commit hooks manually"
+	@echo "  make pre-push-check   - Run pre-push hooks manually"
+
+# ============ Setup ============
+
+install:
+	cd decision-engine-service && pip install -r requirements.txt
+	pip install pytest pytest-asyncio pytest-timeout pre-commit ruff
+
+setup-hooks:
+	pre-commit install
+	pre-commit install --hook-type pre-push
+	@echo ""
+	@echo "Git hooks installed successfully!"
+	@echo "pre-commit: lint + format + critical tests"
+	@echo "pre-push: all unit tests"
+
+# ============ Linting ============
+
+lint:
+	ruff check decision-engine-service/ --fix
+
+format:
+	ruff format decision-engine-service/
+
+format-check:
+	ruff format decision-engine-service/ --check
+
+# ============ Unit Tests ============
+
+# Critical tests only - same as pre-commit
+test:
+	cd decision-engine-service && python3 -m pytest tests/unit/test_hashing.py tests/unit/test_schema_validator.py -q --tb=short --timeout=30
+
+# All unit tests (not slow) - same as pre-push
+test-unit:
+	cd decision-engine-service && python3 -m pytest tests/unit/ -v --tb=short -m "not slow" --timeout=60
+
+# Slow unit tests
+test-slow:
+	cd decision-engine-service && python3 -m pytest tests/unit/ -v --tb=short -m "slow" --timeout=120
+
+# All tests (unit + contracts)
+test-all: test-unit
+	@if [ -f scripts/validate_contracts.py ]; then \
+		python3 scripts/validate_contracts.py --verbose; \
+	else \
+		echo "Contract validation skipped (scripts/validate_contracts.py not found)"; \
+	fi
+
+# ============ Integration Tests ============
+
+# Requires: SUPABASE_SERVICE_ROLE_KEY, API_KEY
+test-integration:
+	@if [ -z "$$SUPABASE_SERVICE_ROLE_KEY" ]; then \
+		echo "ERROR: SUPABASE_SERVICE_ROLE_KEY not set"; \
+		echo "Set environment variables or use: source .env.test"; \
+		exit 1; \
+	fi
+	python3 -m pytest tests/integration/ -v --tb=short -m "integration and not slow"
+
+# ============ E2E Tests (Server) ============
+
+# Quick health checks
+e2e-quick:
+	@echo "=== E2E Quick Health Check ==="
+	@echo ""
+	@echo "1. Decision Engine health..."
+	@curl -s -o /dev/null -w "   Status: %{http_code}\n" https://genomai.onrender.com/health || echo "   FAILED"
+	@echo ""
+	@echo "2. Checking for stuck pipelines..."
+	@echo "   (Run: SELECT status, count(*) FROM genomai.creatives GROUP BY status)"
+	@echo ""
+	@echo "=== Quick check complete ==="
+	@echo "For full E2E: make e2e"
+
+# Full E2E (see docs/E2E_SERVER_CHECKLIST.md)
+e2e:
+	@echo "=== Full E2E Test ==="
+	@echo ""
+	@echo "Follow the checklist: docs/E2E_SERVER_CHECKLIST.md"
+	@echo ""
+	@echo "Quick summary:"
+	@echo "1. Health check: curl https://genomai.onrender.com/health"
+	@echo "2. Trigger test creative via Telegram or webhook"
+	@echo "3. Verify pipeline: creative -> transcript -> decomposition -> decision"
+	@echo "4. Check DB for results"
+	@echo ""
+	@if [ -f scripts/run_e2e_test.sh ]; then \
+		./scripts/run_e2e_test.sh; \
+	else \
+		echo "Automated E2E script not found. Follow manual checklist."; \
+	fi
+
+# ============ CI Simulation ============
+
+# Simulate full CI locally
+ci: lint format-check test-unit
+	@if [ -f scripts/validate_contracts.py ]; then \
+		python3 scripts/validate_contracts.py --verbose; \
+	fi
+	@echo ""
+	@echo "=== CI simulation complete. All checks passed. ==="
+
+# Pre-commit simulation
+pre-commit-check:
+	pre-commit run --all-files
+
+# Pre-push simulation
+pre-push-check:
+	pre-commit run --all-files --hook-stage pre-push
