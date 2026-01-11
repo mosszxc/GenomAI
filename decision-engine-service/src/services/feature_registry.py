@@ -30,6 +30,7 @@ FEATURE_RULES = {
 @dataclass
 class FeatureResult:
     """Result of feature operations"""
+
     success: bool
     feature_name: str
     message: str
@@ -46,16 +47,19 @@ class FeatureResult:
 
 class FeatureRegistryError(Exception):
     """Error in feature registry operations"""
+
     pass
 
 
 class FeatureNotFoundError(FeatureRegistryError):
     """Feature not found"""
+
     pass
 
 
 class FeaturePromotionError(FeatureRegistryError):
     """Cannot promote feature"""
+
     pass
 
 
@@ -89,7 +93,7 @@ async def add_feature(
     name: str,
     sql_definition: str,
     description: Optional[str] = None,
-    depends_on: Optional[list[str]] = None
+    depends_on: Optional[list[str]] = None,
 ) -> dict:
     """
     Add a new experimental feature in shadow status.
@@ -209,16 +213,28 @@ async def can_promote(name: str) -> tuple[bool, str]:
 
     sample_size = feature.get("sample_size", 0)
     if sample_size < FEATURE_RULES["min_sample_size"]:
-        return False, f"Need {FEATURE_RULES['min_sample_size']}+ samples, have {sample_size}"
+        return (
+            False,
+            f"Need {FEATURE_RULES['min_sample_size']}+ samples, have {sample_size}",
+        )
 
     correlation = feature.get("correlation_cpa")
-    if correlation is None or abs(float(correlation)) < FEATURE_RULES["min_abs_correlation"]:
+    if (
+        correlation is None
+        or abs(float(correlation)) < FEATURE_RULES["min_abs_correlation"]
+    ):
         corr_str = f"{correlation:.4f}" if correlation else "None"
-        return False, f"Correlation {corr_str} too low (need >= {FEATURE_RULES['min_abs_correlation']})"
+        return (
+            False,
+            f"Correlation {corr_str} too low (need >= {FEATURE_RULES['min_abs_correlation']})",
+        )
 
     active_count = await count_features(status="active")
     if active_count >= FEATURE_RULES["max_active_features"]:
-        return False, f"Already {active_count} active features (max {FEATURE_RULES['max_active_features']})"
+        return (
+            False,
+            f"Already {active_count} active features (max {FEATURE_RULES['max_active_features']})",
+        )
 
     return True, "OK"
 
@@ -319,9 +335,7 @@ async def deprecate_feature(name: str, reason: str) -> FeatureResult:
 
 
 async def update_feature_metrics(
-    name: str,
-    sample_size: int,
-    correlation_cpa: float
+    name: str, sample_size: int, correlation_cpa: float
 ) -> FeatureResult:
     """
     Update feature validation metrics.
@@ -396,9 +410,7 @@ async def compute_feature_values(name: str, entity_type: str) -> int:
 
 
 async def get_feature_value(
-    feature_name: str,
-    entity_type: str,
-    entity_id: str
+    feature_name: str, entity_type: str, entity_id: str
 ) -> Optional[float]:
     """
     Get computed feature value for an entity.
@@ -431,10 +443,7 @@ async def get_feature_value(
 
 
 async def store_feature_value(
-    feature_name: str,
-    entity_type: str,
-    entity_id: str,
-    value: float
+    feature_name: str, entity_type: str, entity_id: str, value: float
 ) -> dict:
     """
     Store computed feature value for an entity.

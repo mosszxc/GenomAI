@@ -218,20 +218,12 @@ def format_confidence_telegram(data: list[ComponentConfidence]) -> str:
 
         # Component header with variance flag
         variance_flag = " HIGH VARIANCE" if comp.high_variance else ""
-        lines.append(
-            f"<b>{comp.component_value}</b>{variance_flag}"
-        )
+        lines.append(f"<b>{comp.component_value}</b>{variance_flag}")
 
         # Win rate line with CI
-        lines.append(
-            f"  {win_pct:.0f}% \u00b1{ci_pct:.0f}% (95% CI)"
-        )
-        lines.append(
-            f"  \u251c\u2500 Range: {ci_lower_pct:.0f}% - {ci_upper_pct:.0f}%"
-        )
-        lines.append(
-            f"  \u251c\u2500 Sample size: {comp.sample_size}"
-        )
+        lines.append(f"  {win_pct:.0f}% \u00b1{ci_pct:.0f}% (95% CI)")
+        lines.append(f"  \u251c\u2500 Range: {ci_lower_pct:.0f}% - {ci_upper_pct:.0f}%")
+        lines.append(f"  \u251c\u2500 Sample size: {comp.sample_size}")
 
         # Required samples if high variance
         if comp.required_samples:
@@ -247,11 +239,13 @@ def format_confidence_telegram(data: list[ComponentConfidence]) -> str:
         lines.append("")
 
     # Legend
-    lines.extend([
-        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-        "<i>HIGH VARIANCE = CI > \u00b110%</i>",
-        "<i>More samples = narrower CI</i>",
-    ])
+    lines.extend(
+        [
+            "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+            "<i>HIGH VARIANCE = CI > \u00b110%</i>",
+            "<i>More samples = narrower CI</i>",
+        ]
+    )
 
     return "\n".join(lines)
 

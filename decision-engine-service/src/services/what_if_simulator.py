@@ -16,9 +16,9 @@ SCHEMA = "genomai"
 
 # Confidence thresholds based on sample size
 CONFIDENCE_THRESHOLDS = {
-    "low": 10,      # <10 samples
-    "medium": 30,   # 10-30 samples
-    "high": 100,    # >30 samples
+    "low": 10,  # <10 samples
+    "medium": 30,  # 10-30 samples
+    "high": 100,  # >30 samples
 }
 
 # Minimum samples to make a prediction
@@ -148,7 +148,9 @@ async def find_similar_ideas(
             return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
 
         # Get creatives with test results
-        creative_ids = list(set(d["creative_id"] for d in decomposed if d.get("creative_id")))
+        creative_ids = list(
+            set(d["creative_id"] for d in decomposed if d.get("creative_id"))
+        )
         if not creative_ids:
             return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
 
@@ -205,13 +207,15 @@ async def find_similar_ideas(
         test_result = creative_results.get(creative_id)
         idea_id = dc.get("idea_id")
 
-        similar_ideas.append({
-            "idea_id": idea_id,
-            "creative_id": creative_id,
-            "test_result": test_result,
-            "similarity": similarity,
-            "matching_components": list(intersection),
-        })
+        similar_ideas.append(
+            {
+                "idea_id": idea_id,
+                "creative_id": creative_id,
+                "test_result": test_result,
+                "similarity": similarity,
+                "matching_components": list(intersection),
+            }
+        )
 
         if similarity == 1.0:
             exact_matches += 1
@@ -330,7 +334,9 @@ def calculate_predicted_win_rate(
                 weighted_wins += similarity
 
     ideas_win_rate = None
-    ideas_sample = len([i for i in similar_ideas if i.get("test_result") in ("win", "loss")])
+    ideas_sample = len(
+        [i for i in similar_ideas if i.get("test_result") in ("win", "loss")]
+    )
 
     if total_weight > 0:
         ideas_win_rate = weighted_wins / total_weight
@@ -411,7 +417,9 @@ def identify_risk_factors(
 
         # Low win rate
         if win_rate is not None and win_rate < 0.15:
-            risks.append(f"<code>{comp}</code> has low historical win rate ({win_rate:.0%})")
+            risks.append(
+                f"<code>{comp}</code> has low historical win rate ({win_rate:.0%})"
+            )
 
     # Check for potentially conflicting components (example heuristic)
     if len(components) > 4:
@@ -511,7 +519,6 @@ def format_simulation_telegram(result: dict) -> str:
     predicted = result.get("predicted_win_rate")
     confidence_range = result.get("confidence_range")
     confidence_level = result.get("confidence_level", "unknown")
-    sample_size = result.get("sample_size", 0)
     similar_count = result.get("similar_ideas_count", 0)
     top_similar = result.get("top_similar_ids", [])
     risk_factors = result.get("risk_factors", [])
@@ -544,9 +551,7 @@ def format_simulation_telegram(result: dict) -> str:
         )
     else:
         lines.append("<b>Predicted win rate:</b> <i>Insufficient data</i>")
-        lines.append(
-            f"<b>Confidence:</b> 🔴 low (need more historical data)"
-        )
+        lines.append("<b>Confidence:</b> 🔴 low (need more historical data)")
 
     # Similar ideas
     if top_similar:
@@ -575,7 +580,9 @@ def format_simulation_telegram(result: dict) -> str:
             emoji = "⬜"
 
         type_short = comp_type[:10] if comp_type else ""
-        lines.append(f"  {emoji} <code>{comp}</code> ({type_short}): {rate_str} (n={sample})")
+        lines.append(
+            f"  {emoji} <code>{comp}</code> ({type_short}): {rate_str} (n={sample})"
+        )
 
     # Risk factors
     if risk_factors:

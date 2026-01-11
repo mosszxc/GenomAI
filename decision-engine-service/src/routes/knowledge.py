@@ -91,7 +91,9 @@ class RejectRequest(BaseModel):
 
 
 @router.post("/sources", response_model=UploadSourceResponse)
-async def upload_source(request: UploadSourceRequest, _: bool = Depends(verify_api_key)):
+async def upload_source(
+    request: UploadSourceRequest, _: bool = Depends(verify_api_key)
+):
     """
     POST /api/knowledge/sources
 
@@ -141,7 +143,9 @@ async def upload_source(request: UploadSourceRequest, _: bool = Depends(verify_a
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start workflow: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start workflow: {str(e)}"
+        )
 
 
 @router.get("/extractions")
@@ -208,8 +212,7 @@ async def get_extraction(extraction_id: str, _: bool = Depends(verify_api_key)):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
-                f"?id=eq.{extraction_id}",
+                f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
                 headers=get_headers(),
             )
 
@@ -267,7 +270,9 @@ async def approve_extraction(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start workflow: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start workflow: {str(e)}"
+        )
 
 
 @router.post("/extractions/{extraction_id}/reject")
@@ -300,8 +305,7 @@ async def reject_extraction(
 
         async with httpx.AsyncClient() as client:
             response = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
-                f"?id=eq.{extraction_id}",
+                f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
                 headers=get_headers(),
                 json=update_data,
             )
@@ -335,8 +339,7 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
         async with httpx.AsyncClient() as client:
             # Get source
             source_response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/knowledge_sources"
-                f"?id=eq.{source_id}",
+                f"{SUPABASE_URL}/rest/v1/knowledge_sources?id=eq.{source_id}",
                 headers=get_headers(),
             )
 

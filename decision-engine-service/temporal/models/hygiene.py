@@ -11,14 +11,16 @@ from enum import Enum
 
 class AlertSeverity(str, Enum):
     """Alert severity levels."""
+
     CRITICAL = "critical"  # Immediate send (connection fail, score < 0.5)
-    WARNING = "warning"    # Batch at next run (orphans, backlog)
-    INFO = "info"          # Daily digest (stats, trends)
+    WARNING = "warning"  # Batch at next run (orphans, backlog)
+    INFO = "info"  # Daily digest (stats, trends)
 
 
 @dataclass
 class CleanupStats:
     """Stats from cleanup operations."""
+
     import_queue_deleted: int = 0
     knowledge_deleted: int = 0
     raw_metrics_deleted: int = 0
@@ -47,6 +49,7 @@ class CleanupStats:
 @dataclass
 class IntegrityIssue:
     """Single integrity issue found during checks."""
+
     severity: str  # critical, warning, info
     table: str
     issue_type: str  # orphan, duplicate, stuck
@@ -66,6 +69,7 @@ class IntegrityIssue:
 @dataclass
 class HealthMetrics:
     """Health check metrics."""
+
     supabase_connected: bool = True
     supabase_latency_ms: Optional[float] = None
     temporal_connected: bool = True
@@ -105,9 +109,11 @@ class HealthMetrics:
 # Health Check Workflow Models
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class HealthCheckInput:
     """Input for HealthCheckWorkflow."""
+
     check_supabase: bool = True
     check_temporal: bool = True
     check_table_sizes: bool = True
@@ -115,12 +121,13 @@ class HealthCheckInput:
     alert_on_warning: bool = True
     alert_on_critical: bool = True
     critical_threshold: float = 0.5  # Below this = CRITICAL alert
-    warning_threshold: float = 0.8   # Below this = WARNING alert
+    warning_threshold: float = 0.8  # Below this = WARNING alert
 
 
 @dataclass
 class HealthCheckResult:
     """Result of HealthCheckWorkflow."""
+
     health_score: float = 1.0
     supabase_ok: bool = True
     temporal_ok: bool = True
@@ -135,9 +142,11 @@ class HealthCheckResult:
 # Extended Maintenance Models (cleanup additions)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class CleanupInput:
     """Input for cleanup operations."""
+
     run_cleanup: bool = True
     import_queue_retention_days: int = 7
     knowledge_retention_days: int = 30
@@ -148,6 +157,7 @@ class CleanupInput:
 @dataclass
 class HygieneReport:
     """Complete hygiene report for storage."""
+
     report_type: str  # 'maintenance' or 'health_check'
     health_score: Optional[float] = None
     supabase_connected: Optional[bool] = None

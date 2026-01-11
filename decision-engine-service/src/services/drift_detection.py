@@ -8,7 +8,6 @@ Issue: #294
 """
 
 import os
-import math
 from typing import Optional
 from dataclasses import dataclass
 import httpx
@@ -146,9 +145,7 @@ def get_p_value_category(chi2: float) -> str:
     return "not_significant"
 
 
-def get_recommendation(
-    severity: str, current_rate: float, baseline_rate: float
-) -> str:
+def get_recommendation(severity: str, current_rate: float, baseline_rate: float) -> str:
     """Get recommendation based on drift severity and direction."""
     if severity == "high":
         if current_rate < baseline_rate:
@@ -339,5 +336,7 @@ async def get_available_component_types() -> list[str]:
         response.raise_for_status()
         data = response.json()
 
-    types = list(set(row["component_type"] for row in data if row.get("component_type")))
+    types = list(
+        set(row["component_type"] for row in data if row.get("component_type"))
+    )
     return sorted(types)

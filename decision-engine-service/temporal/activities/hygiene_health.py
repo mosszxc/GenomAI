@@ -16,7 +16,7 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -42,7 +42,10 @@ MONITORED_TABLES = [
 
 # Tables/columns to check for pending items
 PENDING_CHECKS = {
-    "historical_import_queue": {"column": "status", "values": ["pending", "pending_video"]},
+    "historical_import_queue": {
+        "column": "status",
+        "values": ["pending", "pending_video"],
+    },
     "knowledge_extractions": {"column": "status", "values": ["pending"]},
     "creatives": {"column": "status", "values": ["registered"]},
     "hypotheses": {"column": "status", "values": ["generated"]},
@@ -100,7 +103,11 @@ async def check_supabase_connection() -> Dict:
                 return {"connected": True, "latency_ms": latency_ms}
             else:
                 activity.logger.warning(f"Supabase returned {response.status_code}")
-                return {"connected": False, "latency_ms": latency_ms, "error": response.text}
+                return {
+                    "connected": False,
+                    "latency_ms": latency_ms,
+                    "error": response.text,
+                }
 
     except Exception as e:
         latency_ms = (time.time() - start) * 1000
@@ -249,7 +256,9 @@ async def send_admin_alert(
             data = response.json()
 
             if data.get("ok"):
-                activity.logger.info(f"Alert sent: message_id={data['result']['message_id']}")
+                activity.logger.info(
+                    f"Alert sent: message_id={data['result']['message_id']}"
+                )
                 return True
             else:
                 activity.logger.error(f"Telegram error: {data.get('description')}")
@@ -296,6 +305,7 @@ async def save_hygiene_report(report: Dict) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Alert Formatters
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def format_health_alert(
     health_score: float,

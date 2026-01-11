@@ -46,3 +46,22 @@ make e2e-quick  # Health check: 200
 2. git push → pre-push (all unit tests)
 3. deploy → make e2e-quick / make e2e
 ```
+
+## Additional Changes (2026-01-11)
+
+### 5. `scripts/task-done.sh`
+- Добавлен блок PRE-MERGE CHECKS с `make ci` перед push
+- Блокирует PR при failed checks
+
+### 6. `.github/workflows/ci.yml` (новый)
+- CI workflow: lint → format-check → test → contracts
+- Запускается на push в main и PR
+
+### 7. Makefile / pre-commit-config.yaml
+- Исправлен путь к ruff: `ruff` → `python3 -m ruff`
+- Добавлена проверка наличия pytest
+
+### Verification
+```bash
+make ci  # All checks passed
+```

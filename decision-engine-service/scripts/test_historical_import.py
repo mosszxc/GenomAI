@@ -31,7 +31,7 @@ async def main(buyer_id: str, keitaro_source: str):
         keitaro_source=keitaro_source,
     )
 
-    print(f"Starting HistoricalImportWorkflow...")
+    print("Starting HistoricalImportWorkflow...")
     print(f"  Workflow ID: {workflow_id}")
     print(f"  Buyer ID: {buyer_id}")
     print(f"  Keitaro Source: {keitaro_source}")
@@ -44,11 +44,11 @@ async def main(buyer_id: str, keitaro_source: str):
     )
 
     print(f"\nWorkflow started: {handle.id}")
-    print(f"Waiting for result...")
+    print("Waiting for result...")
 
     result = await handle.result()
 
-    print(f"\n--- Result ---")
+    print("\n--- Result ---")
     if hasattr(result, "__dict__"):
         for k, v in asdict(result).items():
             print(f"  {k}: {v}")
@@ -58,7 +58,9 @@ async def main(buyer_id: str, keitaro_source: str):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python -m scripts.test_historical_import <buyer_id> <keitaro_source>")
+        print(
+            "Usage: python -m scripts.test_historical_import <buyer_id> <keitaro_source>"
+        )
         sys.exit(1)
 
     buyer_id = sys.argv[1]

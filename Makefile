@@ -49,13 +49,13 @@ setup-hooks:
 # ============ Linting ============
 
 lint:
-	ruff check decision-engine-service/ --fix
+	python3 -m ruff check decision-engine-service/ --fix
 
 format:
-	ruff format decision-engine-service/
+	python3 -m ruff format decision-engine-service/
 
 format-check:
-	ruff format decision-engine-service/ --check
+	python3 -m ruff format decision-engine-service/ --check
 
 # ============ Unit Tests ============
 
@@ -65,6 +65,7 @@ test:
 
 # All unit tests (not slow) - same as pre-push
 test-unit:
+	@python3 -c "import pytest" 2>/dev/null || (echo "ERROR: pytest not installed. Run: make install" && exit 1)
 	cd decision-engine-service && python3 -m pytest tests/unit/ -v --tb=short -m "not slow" --timeout=60
 
 # Slow unit tests

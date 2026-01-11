@@ -92,7 +92,7 @@ def chunk_transcript(text: str, max_chars: int = 12000) -> list[str]:
         return [text]
 
     chunks = []
-    paragraphs = text.split('\n\n')
+    paragraphs = text.split("\n\n")
     current_chunk = ""
 
     for para in paragraphs:
@@ -170,14 +170,17 @@ async def extract_knowledge_from_transcript(
     all_extractions = []
 
     for i, chunk in enumerate(chunks):
-        activity.logger.info(f"Processing chunk {i+1}/{len(chunks)}")
+        activity.logger.info(f"Processing chunk {i + 1}/{len(chunks)}")
 
         try:
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": KNOWLEDGE_EXTRACTION_PROMPT},
-                    {"role": "user", "content": f"Title: {title or 'Training Video'}\n\nTranscript:\n{chunk}"},
+                    {
+                        "role": "user",
+                        "content": f"Title: {title or 'Training Video'}\n\nTranscript:\n{chunk}",
+                    },
                 ],
                 temperature=0.3,  # Low temperature for consistent extraction
                 max_tokens=4000,
@@ -186,7 +189,7 @@ async def extract_knowledge_from_transcript(
 
             content = response.choices[0].message.content
             if not content:
-                activity.logger.warning(f"Empty response for chunk {i+1}")
+                activity.logger.warning(f"Empty response for chunk {i + 1}")
                 continue
 
             # Parse JSON
@@ -194,13 +197,15 @@ async def extract_knowledge_from_transcript(
                 result = json.loads(content)
                 extractions = result.get("extractions", [])
                 all_extractions.extend(extractions)
-                activity.logger.info(f"Chunk {i+1}: extracted {len(extractions)} items")
+                activity.logger.info(
+                    f"Chunk {i + 1}: extracted {len(extractions)} items"
+                )
             except json.JSONDecodeError as e:
-                activity.logger.error(f"Invalid JSON in chunk {i+1}: {e}")
+                activity.logger.error(f"Invalid JSON in chunk {i + 1}: {e}")
                 continue
 
         except openai.APIError as e:
-            activity.logger.error(f"OpenAI API error in chunk {i+1}: {e}")
+            activity.logger.error(f"OpenAI API error in chunk {i + 1}: {e}")
             continue
 
     # Deduplicate across chunks

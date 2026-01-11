@@ -155,7 +155,9 @@ async def cleanup_orphan_raw_metrics() -> int:
             activity.logger.warning("Could not fetch valid tracker_ids")
             return 0
 
-        valid_trackers = {r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")}
+        valid_trackers = {
+            r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")
+        }
 
         # Get all metrics tracker_ids
         metrics_response = await client.get(
@@ -167,7 +169,9 @@ async def cleanup_orphan_raw_metrics() -> int:
             activity.logger.warning("Could not fetch metrics tracker_ids")
             return 0
 
-        metrics_trackers = {r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")}
+        metrics_trackers = {
+            r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")
+        }
 
         # Find orphans
         orphan_trackers = metrics_trackers - valid_trackers
@@ -211,9 +215,7 @@ async def cleanup_idle_buyer_states(retention_days: int = 30) -> int:
 
     async with httpx.AsyncClient() as client:
         response = await client.delete(
-            f"{rest_url}/buyer_states"
-            f"?state=eq.idle"
-            f"&updated_at=lt.{cutoff_iso}",
+            f"{rest_url}/buyer_states?state=eq.idle&updated_at=lt.{cutoff_iso}",
             headers=headers,
         )
 
@@ -251,8 +253,7 @@ async def archive_staleness_snapshots(retention_days: int = 90) -> int:
 
     async with httpx.AsyncClient() as client:
         response = await client.delete(
-            f"{rest_url}/staleness_snapshots"
-            f"?created_at=lt.{cutoff_iso}",
+            f"{rest_url}/staleness_snapshots?created_at=lt.{cutoff_iso}",
             headers=headers,
         )
 

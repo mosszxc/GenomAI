@@ -186,7 +186,9 @@ async def calculate_win_rate_trend(
         return 0.0  # No data = neutral
 
     # Split into 7d and 30d
-    date_7d_dt = datetime.fromisoformat(date_7d.replace("Z", "+00:00").replace("+00:00", ""))
+    date_7d_dt = datetime.fromisoformat(
+        date_7d.replace("Z", "+00:00").replace("+00:00", "")
+    )
 
     wins_7d = 0
     total_7d = 0
@@ -209,7 +211,9 @@ async def calculate_win_rate_trend(
 
         # Check if in 7d window
         try:
-            row_date = datetime.fromisoformat(created_at.replace("Z", "+00:00").replace("+00:00", ""))
+            row_date = datetime.fromisoformat(
+                created_at.replace("Z", "+00:00").replace("+00:00", "")
+            )
             if row_date >= date_7d_dt:
                 total_7d += 1
                 if is_win:
@@ -314,7 +318,9 @@ async def calculate_days_since_new_component(
         return DAYS_STALE_THRESHOLD * 2
 
     try:
-        last_dt = datetime.fromisoformat(last_created.replace("Z", "+00:00").replace("+00:00", ""))
+        last_dt = datetime.fromisoformat(
+            last_created.replace("Z", "+00:00").replace("+00:00", "")
+        )
         now = datetime.utcnow()
         delta = now - last_dt.replace(tzinfo=None)
         return delta.days
@@ -381,7 +387,9 @@ def compute_staleness_score(metrics: StalenessMetrics) -> float:
     fatigue_staleness = metrics.fatigue_ratio
 
     # Normalize days to 0..1 (cap at 2x threshold)
-    days_staleness = min(1.0, metrics.days_since_new_component / (DAYS_STALE_THRESHOLD * 2))
+    days_staleness = min(
+        1.0, metrics.days_since_new_component / (DAYS_STALE_THRESHOLD * 2)
+    )
 
     # Invert exploration success (high success = low staleness)
     exploration_staleness = 1.0 - metrics.exploration_success_rate
@@ -558,7 +566,8 @@ async def check_staleness_and_act(
 
     # Save snapshot
     snapshot = await save_staleness_snapshot(
-        metrics, action_taken="none"  # Action will be updated after actual injection
+        metrics,
+        action_taken="none",  # Action will be updated after actual injection
     )
     result["snapshot_id"] = snapshot.get("id")
 
