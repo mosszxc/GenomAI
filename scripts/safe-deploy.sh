@@ -1,9 +1,13 @@
 #!/bin/bash
 # Safe deploy: check for in-progress deploys before pushing
-# Usage: ./scripts/safe-deploy.sh [--force]
+# Usage: ./scripts/safe-deploy.sh [--force] [--check-only]
+#
+# Flags:
+#   --force      Skip deploy check (risky with parallel agents)
+#   --check-only Only check deploy status, don't push (for task-done.sh integration)
 #
 # Requires: RENDER_API_KEY environment variable
-# Service ID: srv-ctpat9ij1k6c73a6r530 (genomai)
+# Service ID: srv-d54vf524d50c739kc2m0 (genomai)
 
 set -e
 
@@ -12,10 +16,19 @@ MAX_WAIT_SECONDS=600  # 10 minutes max wait
 POLL_INTERVAL=30      # Check every 30 seconds
 
 FORCE=""
-if [ "$1" = "--force" ]; then
-    FORCE="true"
-    echo "⚠️  Force mode: skipping deploy check"
-fi
+CHECK_ONLY=""
+
+for arg in "$@"; do
+    case $arg in
+        --force)
+            FORCE="true"
+            echo "⚠️  Force mode: skipping deploy check"
+            ;;
+        --check-only)
+            CHECK_ONLY="true"
+            ;;
+    esac
+done
 
 # Check for API key
 if [ -z "$RENDER_API_KEY" ]; then
@@ -69,9 +82,19 @@ wait_for_deploy() {
 
 # Main flow
 if [ "$FORCE" != "true" ]; then
-    echo "=== Safe Deploy ==="
-    echo "Checking for active deploys..."
+    if [ "$CHECK_ONLY" = "true" ]; then
+        echo "Checking for active deploys..."
+    else
+        echo "=== Safe Deploy ==="
+        echo "Checking for active deploys..."
+    fi
     wait_for_deploy
+fi
+
+# Exit early if --check-only
+if [ "$CHECK_ONLY" = "true" ]; then
+    echo "✓ Deploy check passed"
+    exit 0
 fi
 
 # Push to origin

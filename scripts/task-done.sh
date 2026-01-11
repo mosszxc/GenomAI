@@ -177,6 +177,19 @@ if [ "$NO_PR" != "true" ]; then
         read -p "Merge PR now (skip auto-merge)? [y/N] " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Check for active deploy before merge (multi-agent coordination)
+            if [ -n "$RENDER_API_KEY" ]; then
+                echo "Checking for active deploy..."
+                if ! "$PROJECT_ROOT/scripts/safe-deploy.sh" --check-only; then
+                    echo "⚠️  Waiting for deploy to complete..."
+                    sleep 180
+                    "$PROJECT_ROOT/scripts/safe-deploy.sh" --check-only || true
+                fi
+            else
+                echo "⚠️  RENDER_API_KEY not set. Skipping deploy check."
+                echo "   Tip: export RENDER_API_KEY for multi-agent coordination"
+            fi
+
             # Note: не используем --delete-branch т.к. мы в worktree
             # Ветка удаляется ниже через git worktree remove + git branch -d
             gh pr merge "$BRANCH_NAME" --squash
