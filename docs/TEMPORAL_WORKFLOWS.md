@@ -20,6 +20,7 @@ GenomAI использует Temporal для оркестрации бизнес
 │  │  • learning-loop (1 hour)                           │   │
 │  │  • daily-recommendations (09:00 UTC)                │   │
 │  │  • maintenance (6 hours)                            │   │
+│  │  • agent-supervisor (5 min)                         │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                           │                                  │
 │                           ▼                                  │
@@ -28,6 +29,7 @@ GenomAI использует Temporal для оркестрации бизнес
 │  │  • creative-pipeline                                 │   │
 │  │  • metrics                                           │   │
 │  │  • telegram                                          │   │
+│  │  • agent-supervisor                                  │   │
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                            │
@@ -58,6 +60,13 @@ GenomAI использует Temporal для оркестрации бизнес
 │  │             CreativeRegistration,                    │   │
 │  │             HistoricalVideoHandler                   │   │
 │  │  Activities: buyer, keitaro, supabase               │   │
+│  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │            Agent Supervisor Worker                   │   │
+│  │  Queue: agent-supervisor                             │   │
+│  │  Workflows: AgentSupervisorWorkflow                  │   │
+│  │  Activities: github polling, task assignment,       │   │
+│  │              agent management, orphan detection      │   │
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -217,6 +226,37 @@ Quick registration of creative from video URL.
 - `video_url`: Video URL to process
 - `buyer_id`: Buyer UUID
 
+### AgentSupervisorWorkflow
+
+**Queue:** `agent-supervisor`
+**Schedule:** Every 5 minutes
+
+Multi-agent task distribution supervisor:
+1. Poll GitHub for pending issues (optional)
+2. Add new issues to task queue
+3. Get available agents from registry
+4. Assign tasks using smart assignment (specialization matching)
+5. Release orphaned agents (no heartbeat for 10+ min)
+
+**Input:**
+- `poll_github`: Whether to poll GitHub (default: true)
+- `github_labels`: Labels to filter (default: ["enhancement"])
+- `github_limit`: Max issues to fetch (default: 10)
+- `process_queue`: Whether to process queue (default: true)
+- `max_assignments`: Max tasks to assign per run (default: 5)
+- `run_orphan_detection`: Check for orphaned agents (default: true)
+- `orphan_timeout_minutes`: Heartbeat timeout (default: 10)
+
+**Smart Assignment Logic:**
+1. Find agents with matching specialization first
+2. If no match, use any available agent
+3. Priority by most recent heartbeat
+4. Atomic claim using `FOR UPDATE SKIP LOCKED`
+
+**Related Tables:**
+- `genomai.agents` - Agent registry
+- `genomai.agent_tasks` - Task queue (Phase 2)
+
 ## Activities
 
 ### Supabase Activities
@@ -313,6 +353,17 @@ Quick registration of creative from video URL.
 | `get_import_by_campaign_id` | Get import by campaign ID |
 | `update_import_with_video` | Update import with video URL |
 
+### Agent Supervisor Activities
+| Activity | Description |
+|----------|-------------|
+| `get_pending_github_issues` | Poll GitHub for open issues |
+| `get_pending_tasks_from_queue` | Get pending tasks from queue |
+| `get_available_agents` | Get available agents (online, not busy) |
+| `add_task_to_queue` | Add task to agent queue |
+| `assign_task_to_agent` | Smart assignment with specialization matching |
+| `release_orphaned_agents` | Mark orphaned agents as offline |
+| `get_supervisor_stats` | Get agent/task counts |
+
 ## Schedules
 
 | Schedule ID | Workflow | Interval | Description |
@@ -323,6 +374,7 @@ Quick registration of creative from video URL.
 | `daily-recommendations` | DailyRecommendationWorkflow | 09:00 UTC | Generate daily recommendations |
 | `maintenance` | MaintenanceWorkflow | 6 hours | Cleanup and integrity checks |
 | `health-check` | HealthCheckWorkflow | 3 hours | Health monitoring + alerts |
+| `agent-supervisor` | AgentSupervisorWorkflow | 5 min | Multi-agent task distribution |
 
 ### Schedule Management
 
