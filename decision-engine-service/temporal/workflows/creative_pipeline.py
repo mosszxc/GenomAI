@@ -312,6 +312,7 @@ class CreativePipelineWorkflow:
                     decision_result.decision_id,
                     hypothesis_result["prompt_version"],
                     decomposition_payload,  # Pass variables for denormalization
+                    input.buyer_id,  # Propagate buyer_id for delivery routing
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )

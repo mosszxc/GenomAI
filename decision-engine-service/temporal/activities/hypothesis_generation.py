@@ -205,6 +205,7 @@ async def save_hypotheses(
     decision_id: str,
     prompt_version: str,
     variables: Optional[dict] = None,
+    buyer_id: Optional[str] = None,
 ) -> List[dict]:
     """
     Save generated hypotheses to Supabase.
@@ -215,6 +216,7 @@ async def save_hypotheses(
         decision_id: Decision UUID
         prompt_version: Version of prompt used
         variables: Decomposed payload variables for denormalization
+        buyer_id: Buyer UUID for delivery routing
 
     Returns:
         List of created hypothesis records
@@ -250,6 +252,7 @@ async def save_hypotheses(
                 "content": content,
                 "created_at": now,
                 "variables": variables,
+                "buyer_id": buyer_id,
             }
 
             response = await client.post(

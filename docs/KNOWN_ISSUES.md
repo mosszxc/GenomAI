@@ -713,7 +713,7 @@ WHERE dc.idea_id = :idea_id
 
 **Rule:** При создании downstream записей (hypothesis, recommendation) всегда проверять что buyer_id propagates из source (creative).
 
-**Related:** Issue #226 (fix pending)
+**Related:** Issue #226 (fix pending) → **Fixed in Issue #346**: buyer_id now propagates from workflow input to hypotheses.
 
 ---
 
