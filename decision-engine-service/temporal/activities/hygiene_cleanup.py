@@ -356,12 +356,13 @@ async def retry_failed_hypotheses(
     max_retries: int = MAX_HYPOTHESIS_RETRIES,
 ) -> Dict[str, int]:
     """
-    Retry delivery of failed hypotheses.
+    Retry delivery of failed or stuck pending hypotheses.
 
-    Finds hypotheses with status='failed' and retry_count < max_retries,
-    attempts to resend via Telegram, and updates status.
+    Finds hypotheses with status='failed' or 'pending' (stuck > 5 min) and
+    retry_count < max_retries, attempts to resend via Telegram, and updates status.
 
     Issue: #313 - Failed hypothesis retry mechanism
+    Issue: #399 - Stuck pending hypotheses delivery
 
     Args:
         max_retries: Maximum retry attempts per hypothesis
@@ -379,19 +380,24 @@ async def retry_failed_hypotheses(
     cooldown = datetime.utcnow() - timedelta(hours=RETRY_COOLDOWN_HOURS)
     cooldown_iso = cooldown.isoformat()
 
+    # For pending hypotheses, consider stuck after 5 minutes
+    stuck_cutoff = datetime.utcnow() - timedelta(minutes=5)
+    stuck_cutoff_iso = stuck_cutoff.isoformat()
+
     activity.logger.info(
-        f"Looking for failed hypotheses to retry (max_retries={max_retries})"
+        f"Looking for failed/stuck hypotheses to retry (max_retries={max_retries})"
     )
 
     async with httpx.AsyncClient() as client:
         # Find failed hypotheses that haven't exceeded retry limit
         # and either never retried or last retry was before cooldown
+        # Also include pending hypotheses that are stuck (> 5 min old)
         response = await client.get(
             f"{rest_url}/hypotheses"
-            f"?status=eq.failed"
+            f"?or=(status.eq.failed,and(status.eq.pending,created_at.lt.{stuck_cutoff_iso}))"
             f"&retry_count=lt.{max_retries}"
             f"&or=(last_retry_at.is.null,last_retry_at.lt.{cooldown_iso})"
-            f"&select=id,idea_id,content,buyer_id,retry_count"
+            f"&select=id,idea_id,content,buyer_id,retry_count,status"
             f"&limit=10",  # Process max 10 per run
             headers=headers,
         )

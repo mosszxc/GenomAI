@@ -142,7 +142,7 @@ async def get_buyer_chat_id(buyer_id: str) -> Optional[str]:
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{rest_url}/buyers?id=eq.{buyer_id}&select=telegram_chat_id",
+            f"{rest_url}/buyers?id=eq.{buyer_id}&select=telegram_id",
             headers=headers,
         )
         response.raise_for_status()
@@ -151,7 +151,7 @@ async def get_buyer_chat_id(buyer_id: str) -> Optional[str]:
         if not data:
             return None
 
-        return data[0].get("telegram_chat_id")
+        return data[0].get("telegram_id")
 
 
 @activity.defn
