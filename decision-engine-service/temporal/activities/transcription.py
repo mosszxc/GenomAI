@@ -4,6 +4,10 @@ Transcription Activity
 Temporal activity for AssemblyAI transcription with heartbeats for long-running operations.
 AssemblyAI transcription typically takes 2-10 minutes, so heartbeats are essential
 for crash recovery and cancellation support.
+
+Supports two transcription paths:
+1. Direct AssemblyAI: For public URLs (non-Google Drive)
+2. n8n Webhook: For Google Drive URLs (requires OAuth in n8n)
 """
 
 import os
@@ -15,6 +19,45 @@ from temporalio.exceptions import ApplicationError
 
 # Polling interval for transcription status (seconds)
 POLL_INTERVAL = 30
+
+# n8n webhook for Google Drive transcription
+N8N_WEBHOOK_URL = os.getenv(
+    "N8N_TRANSCRIBE_WEBHOOK",
+    "https://kazamaqwe.app.n8n.cloud/webhook/7c271222-3707-4797-aaf1-6d39b8155e9a",
+)
+
+# Maximum wait time before timeout (seconds) - 15 minutes
+MAX_WAIT_TIME = 900
+
+
+def is_google_drive_url(url: str) -> bool:
+    """Check if URL is a Google Drive URL."""
+    return "drive.google.com" in url or "docs.google.com" in url
+
+
+def extract_gdrive_file_id(url: str) -> Optional[str]:
+    """
+    Extract Google Drive file ID from various URL formats.
+
+    Supports:
+    - https://drive.google.com/file/d/{FILE_ID}/view...
+    - https://drive.google.com/uc?export=download&id={FILE_ID}
+    - https://drive.google.com/open?id={FILE_ID}
+
+    Returns:
+        File ID or None if not a Google Drive URL
+    """
+    # Pattern 1: /file/d/{ID}/
+    match = re.search(r"/file/d/([a-zA-Z0-9_-]+)", url)
+    if match:
+        return match.group(1)
+
+    # Pattern 2: id={ID} in query string
+    match = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", url)
+    if match:
+        return match.group(1)
+
+    return None
 
 
 def convert_to_direct_url(url: str) -> str:
@@ -50,14 +93,174 @@ def convert_to_direct_url(url: str) -> str:
     return url
 
 
-# Maximum wait time before timeout (seconds) - 15 minutes
-MAX_WAIT_TIME = 900
+async def transcribe_via_n8n(
+    file_id: str,
+    creative_id: str,
+) -> dict:
+    """
+    Transcribe Google Drive file via n8n webhook.
+
+    n8n workflow handles:
+    1. Download file from Google Drive (with OAuth)
+    2. Upload to AssemblyAI
+    3. Start transcription
+    4. Poll for result
+    5. Update genomai.transcripts table
+
+    Args:
+        file_id: Google Drive file ID
+        creative_id: Creative UUID for transcript linking
+
+    Returns:
+        dict with transcript_id, text, status
+    """
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise ApplicationError(
+            "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured"
+        )
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+        "Content-Profile": "genomai",
+        "Accept-Profile": "genomai",
+        "Prefer": "return=representation",
+    }
+
+    # Step 1: Create transcript record in DB
+    activity.logger.info(f"Creating transcript record for creative {creative_id}")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Insert transcript record
+        insert_resp = await client.post(
+            f"{supabase_url}/rest/v1/transcripts",
+            headers=headers,
+            json={
+                "creative_id": creative_id,
+                "TranscribeStatus": "queued",
+                "Status": "processing",
+            },
+        )
+
+        if insert_resp.status_code not in (200, 201):
+            raise ApplicationError(f"Failed to create transcript: {insert_resp.text}")
+
+        # Get the created record ID
+        created = insert_resp.json()
+        transcript_db_id = (
+            created[0]["id"] if isinstance(created, list) else created.get("id")
+        )
+
+        if not transcript_db_id:
+            # Fetch the latest transcript for this creative
+            get_resp = await client.get(
+                f"{supabase_url}/rest/v1/transcripts",
+                headers=headers,
+                params={
+                    "creative_id": f"eq.{creative_id}",
+                    "order": "created_at.desc",
+                    "limit": "1",
+                },
+            )
+            if get_resp.status_code == 200:
+                records = get_resp.json()
+                if records:
+                    transcript_db_id = records[0]["id"]
+
+        activity.logger.info(f"Created transcript record id={transcript_db_id}")
+
+    # Step 2: Call n8n webhook
+    activity.logger.info(f"Calling n8n webhook for file_id={file_id}")
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        n8n_resp = await client.post(
+            N8N_WEBHOOK_URL,
+            json={
+                "AudioID": file_id,
+                "id": str(transcript_db_id),
+            },
+        )
+
+        if n8n_resp.status_code not in (200, 201, 202):
+            activity.logger.warning(
+                f"n8n webhook returned {n8n_resp.status_code}: {n8n_resp.text}"
+            )
+            # Continue anyway - n8n might process async
+
+    # Step 3: Poll transcripts table for result
+    activity.logger.info(f"Polling transcript {transcript_db_id} for completion")
+
+    elapsed = 0
+
+    while elapsed < MAX_WAIT_TIME:
+        # Check cancellation
+        if activity.is_cancelled():
+            raise ApplicationError("Transcription cancelled", type="CANCELLED")
+
+        # Send heartbeat
+        activity.heartbeat(
+            {
+                "transcript_db_id": transcript_db_id,
+                "elapsed_seconds": elapsed,
+                "method": "n8n",
+            }
+        )
+
+        # Check transcript status
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            check_resp = await client.get(
+                f"{supabase_url}/rest/v1/transcripts",
+                headers=headers,
+                params={
+                    "id": f"eq.{transcript_db_id}",
+                    "select": "id,transcript_text,TranscribeStatus,assemblyai_transcript_id",
+                },
+            )
+
+            if check_resp.status_code == 200:
+                records = check_resp.json()
+                if records:
+                    record = records[0]
+                    status = record.get("TranscribeStatus", "")
+
+                    if status == "finish":
+                        activity.logger.info("Transcription completed via n8n")
+                        return {
+                            "transcript_id": record.get(
+                                "assemblyai_transcript_id", str(transcript_db_id)
+                            ),
+                            "text": record.get("transcript_text", ""),
+                            "status": "completed",
+                            "words": len(record.get("transcript_text", "").split()),
+                        }
+
+                    if status == "error":
+                        raise ApplicationError(
+                            f"n8n transcription failed: {record.get('transcript_text', 'Unknown error')}",
+                            type="TRANSCRIPTION_ERROR",
+                        )
+
+        activity.logger.info(f"Waiting for n8n transcription, elapsed={elapsed}s")
+        time.sleep(POLL_INTERVAL)
+        elapsed += POLL_INTERVAL
+
+    raise ApplicationError(
+        f"n8n transcription timeout after {MAX_WAIT_TIME}s",
+        type="TIMEOUT",
+    )
 
 
 @activity.defn
 async def transcribe_audio(
     audio_url: str,
     language_code: Optional[str] = None,
+    creative_id: Optional[str] = None,
 ) -> dict:
     """
     Transcribe audio/video using AssemblyAI.
@@ -65,9 +268,13 @@ async def transcribe_audio(
     This activity handles long-running transcription jobs (2-10 minutes)
     with periodic heartbeats for crash recovery.
 
+    For Google Drive URLs, uses n8n webhook which has OAuth access.
+    For other URLs, uses direct AssemblyAI submission.
+
     Args:
-        audio_url: URL to audio/video file (must be publicly accessible)
+        audio_url: URL to audio/video file
         language_code: Optional language code (e.g., "en", "ru")
+        creative_id: Creative UUID (required for Google Drive URLs)
 
     Returns:
         dict with transcript_id, text, and status
@@ -75,6 +282,25 @@ async def transcribe_audio(
     Raises:
         ApplicationError: If transcription fails or is cancelled
     """
+    # Check if Google Drive URL - use n8n path
+    if is_google_drive_url(audio_url):
+        file_id = extract_gdrive_file_id(audio_url)
+        if not file_id:
+            raise ApplicationError(
+                f"Could not extract file ID from Google Drive URL: {audio_url}",
+                type="INVALID_URL",
+            )
+
+        if not creative_id:
+            raise ApplicationError(
+                "creative_id is required for Google Drive transcription",
+                type="MISSING_PARAM",
+            )
+
+        activity.logger.info(f"Using n8n path for Google Drive file: {file_id}")
+        return await transcribe_via_n8n(file_id, creative_id)
+
+    # Direct AssemblyAI path for non-Google Drive URLs
     import assemblyai as aai
 
     api_key = os.getenv("ASSEMBLYAI_API_KEY")
@@ -89,7 +315,7 @@ async def transcribe_audio(
     if audio_url != original_url:
         activity.logger.info(f"Converted URL: {original_url} -> {audio_url}")
 
-    activity.logger.info(f"Starting transcription for: {audio_url}")
+    activity.logger.info(f"Starting direct transcription for: {audio_url}")
 
     # Configure transcription
     config = aai.TranscriptionConfig(

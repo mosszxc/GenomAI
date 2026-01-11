@@ -157,7 +157,11 @@ class CreativePipelineWorkflow:
 
                 transcription_result = await workflow.execute_activity(
                     transcribe_audio,
-                    args=[audio_url, None],  # language_code - auto-detect
+                    args=[
+                        audio_url,
+                        None,
+                        input.creative_id,
+                    ],  # url, language, creative_id
                     start_to_close_timeout=timedelta(minutes=15),
                     heartbeat_timeout=timedelta(seconds=60),
                     retry_policy=long_running_retry,
