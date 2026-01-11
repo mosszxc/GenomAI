@@ -31,5 +31,18 @@ WHERE jsonb_typeof(payload) != 'object' OR payload IS NULL;
 make test → 35 passed in 0.92s
 ```
 
+### Production test (after deploy)
+```bash
+curl -s https://genomai.onrender.com/health
+# → {"status":"ok","timestamp":"2026-01-11T16:05:04.304881"}
+```
+
+```sql
+SELECT total, valid_objects, invalid FROM genomai.decomposed_creatives;
+-- Result: total=3, valid_objects=3, invalid=0
+```
+
+**PASSED**
+
 ## PR
-https://github.com/mosszxc/GenomAI/pull/413
+https://github.com/mosszxc/GenomAI/pull/413 (merged)
