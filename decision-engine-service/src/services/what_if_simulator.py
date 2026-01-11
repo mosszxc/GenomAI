@@ -255,10 +255,9 @@ async def get_component_stats(
         "avatar_id=is.null",
     ]
 
+    # If geo specified, filter by it; otherwise get all geos
     if geo:
         filters.append(f"geo=eq.{geo}")
-    else:
-        filters.append("geo=is.null")
 
     async with httpx.AsyncClient() as client:
         response = await client.get(
@@ -270,23 +269,47 @@ async def get_component_stats(
         response.raise_for_status()
         data = response.json()
 
-    stats = {}
+    # Aggregate data across geos for each component
+    aggregated = {}
     for row in data:
         value = row.get("component_value")
         if not value:
             continue
 
         win_rate = row.get("win_rate")
+        sample_size = row.get("sample_size") or 0
+
         if win_rate is not None:
             try:
                 win_rate = float(win_rate)
             except (TypeError, ValueError):
                 win_rate = None
 
+        if value not in aggregated:
+            aggregated[value] = {
+                "total_wins": 0,
+                "total_samples": 0,
+                "component_type": row.get("component_type"),
+            }
+
+        # Aggregate: sum samples and weighted wins
+        if win_rate is not None and sample_size > 0:
+            aggregated[value]["total_wins"] += win_rate * sample_size
+            aggregated[value]["total_samples"] += sample_size
+
+    # Convert aggregated to final stats
+    stats = {}
+    for value, agg in aggregated.items():
+        total_samples = agg["total_samples"]
+        if total_samples > 0:
+            win_rate = agg["total_wins"] / total_samples
+        else:
+            win_rate = None
+
         stats[value] = {
             "win_rate": win_rate,
-            "sample_size": row.get("sample_size") or 0,
-            "component_type": row.get("component_type"),
+            "sample_size": total_samples,
+            "component_type": agg["component_type"],
         }
 
     # Add entries for components not found in learnings
