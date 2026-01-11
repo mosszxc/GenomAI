@@ -12,7 +12,13 @@
 set -e
 
 ISSUE_NUM="$1"
-AGENT_ID="${HOSTNAME:-$(hostname)}-$$"
+
+# Read agent ID from file if exists, otherwise generate from hostname and PID
+if [ -f ~/.claude-agent-id ]; then
+    AGENT_ID=$(cat ~/.claude-agent-id)
+else
+    AGENT_ID="${HOSTNAME:-$(hostname)}-$$"
+fi
 
 if [ -z "$ISSUE_NUM" ]; then
     echo "Usage: $0 <issue-number>"

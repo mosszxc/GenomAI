@@ -12,8 +12,13 @@
 
 set -e
 
-# Generate agent ID from hostname and PID
-AGENT_ID="${HOSTNAME:-$(hostname)}-$$"
+# Read agent ID from file if exists, otherwise generate from hostname and PID
+if [ -f ~/.claude-agent-id ]; then
+    AGENT_ID=$(cat ~/.claude-agent-id)
+else
+    AGENT_ID="${HOSTNAME:-$(hostname)}-$$"
+    echo "⚠️  Tip: Run /ag1-/ag5 to set a persistent agent identity"
+fi
 HOSTNAME_VAL="${HOSTNAME:-$(hostname)}"
 
 if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
