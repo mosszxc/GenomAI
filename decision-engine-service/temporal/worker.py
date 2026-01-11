@@ -76,6 +76,18 @@ from temporal.activities.hypothesis_generation import (
     generate_hypotheses,
     save_hypotheses,
 )
+from temporal.activities.module_extraction import (
+    extract_modules_from_decomposition,
+    get_creative_metrics,
+    upsert_module,
+)
+from temporal.activities.modular_generation import (
+    check_modular_readiness,
+    select_module_combinations,
+    synthesize_hypothesis_text,
+    save_modular_hypothesis,
+    generate_modular_hypotheses,
+)
 from temporal.activities.telegram import (
     send_hypothesis_to_telegram,
     get_buyer_chat_id,
@@ -206,14 +218,6 @@ from temporal.activities.agent_supervisor import (
     get_supervisor_stats,
 )
 
-# Import activities - Module Extraction (Modular Creative System, Issue #376)
-from temporal.activities.module_extraction import (
-    extract_modules_from_decomposition,
-    get_creative_metrics,
-    upsert_module,
-)
-
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -262,6 +266,16 @@ async def run_worker():
             # Hypothesis Generation
             generate_hypotheses,
             save_hypotheses,
+            # Module Extraction (Modular Creative System)
+            extract_modules_from_decomposition,
+            get_creative_metrics,
+            upsert_module,
+            # Modular Hypothesis Generation
+            check_modular_readiness,
+            select_module_combinations,
+            synthesize_hypothesis_text,
+            save_modular_hypothesis,
+            generate_modular_hypotheses,
             # Telegram Delivery
             send_hypothesis_to_telegram,
             get_buyer_chat_id,
@@ -324,6 +338,16 @@ async def run_all_workers():
             # Hypothesis Generation
             generate_hypotheses,
             save_hypotheses,
+            # Module Extraction (Modular Creative System)
+            extract_modules_from_decomposition,
+            get_creative_metrics,
+            upsert_module,
+            # Modular Hypothesis Generation
+            check_modular_readiness,
+            select_module_combinations,
+            synthesize_hypothesis_text,
+            save_modular_hypothesis,
+            generate_modular_hypotheses,
             # Telegram Delivery
             send_hypothesis_to_telegram,
             get_buyer_chat_id,
