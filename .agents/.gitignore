@@ -1,0 +1,5 @@
+# Lock files should not be committed (they are local coordination)
+locks/
+
+# Keep STATUS.md
+!STATUS.md

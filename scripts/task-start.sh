@@ -7,12 +7,30 @@ set -e
 ISSUE_NUM="$1"
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREES_DIR="$PROJECT_ROOT/.worktrees"
+AGENTS_DIR="$PROJECT_ROOT/.agents"
+LOCKS_DIR="$AGENTS_DIR/locks"
+
+# Generate unique agent ID (hostname + terminal session)
+AGENT_ID="${HOSTNAME:-$(hostname)}-$$"
 
 if [ -z "$ISSUE_NUM" ]; then
     echo "Usage: $0 <issue-number>"
     echo ""
     echo "Available issues:"
     gh issue list --state open --limit 10
+    echo ""
+    echo "=== Active Agents ==="
+    if [ -d "$LOCKS_DIR" ] && [ -n "$(ls -A "$LOCKS_DIR" 2>/dev/null)" ]; then
+        for lock in "$LOCKS_DIR"/*.lock; do
+            [ -f "$lock" ] || continue
+            issue=$(basename "$lock" .lock | sed 's/issue-//')
+            agent=$(sed -n 's/.*"agent":[ ]*"\([^"]*\)".*/\1/p' "$lock" 2>/dev/null || echo "unknown")
+            started=$(sed -n 's/.*"started_at":[ ]*"\([^"]*\)".*/\1/p' "$lock" 2>/dev/null || echo "unknown")
+            echo "  Issue #$issue - Agent: $agent (since $started)"
+        done
+    else
+        echo "  (none)"
+    fi
     exit 1
 fi
 
@@ -22,6 +40,43 @@ if [ -z "$ISSUE_TITLE" ]; then
     echo "Error: Issue #$ISSUE_NUM not found"
     exit 1
 fi
+
+# === MULTI-AGENT COORDINATION ===
+mkdir -p "$LOCKS_DIR"
+LOCK_FILE="$LOCKS_DIR/issue-${ISSUE_NUM}.lock"
+
+# Check if issue is already locked by another agent
+if [ -f "$LOCK_FILE" ]; then
+    EXISTING_AGENT=$(sed -n 's/.*"agent":[ ]*"\([^"]*\)".*/\1/p' "$LOCK_FILE" 2>/dev/null || echo "unknown")
+    LOCKED_AT=$(sed -n 's/.*"started_at":[ ]*"\([^"]*\)".*/\1/p' "$LOCK_FILE" 2>/dev/null || echo "unknown")
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════════╗"
+    echo "║  ⚠️  ISSUE #$ISSUE_NUM IS ALREADY CLAIMED                      ║"
+    echo "╚═══════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "  Agent: $EXISTING_AGENT"
+    echo "  Since: $LOCKED_AT"
+    echo ""
+    echo "Options:"
+    echo "  1. Choose a different issue"
+    echo "  2. Coordinate with the other agent"
+    echo "  3. Force claim: rm $LOCK_FILE && $0 $ISSUE_NUM"
+    echo ""
+    exit 1
+fi
+
+# Create lock file
+LOCK_TMP="$LOCK_FILE.tmp.$$"
+cat > "$LOCK_TMP" << EOF
+{
+  "agent": "$AGENT_ID",
+  "issue": $ISSUE_NUM,
+  "title": "$ISSUE_TITLE",
+  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+mv "$LOCK_TMP" "$LOCK_FILE"
+echo "🔒 Lock acquired for issue #$ISSUE_NUM"
 
 # Create branch name from issue (lowercase, dashes, max 50 chars)
 BRANCH_NAME="issue-${ISSUE_NUM}-$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-' | cut -c1-40)"
