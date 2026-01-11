@@ -35,6 +35,8 @@ done
 
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREES_DIR="$PROJECT_ROOT/.worktrees"
+AGENTS_DIR="$PROJECT_ROOT/.agents"
+LOCKS_DIR="$AGENTS_DIR/locks"
 
 if [ -z "$ISSUE_NUM" ]; then
     echo "Usage: $0 <issue-number> [--process <name>] [--no-pr] [--skip-verify]"
@@ -48,6 +50,18 @@ if [ -z "$ISSUE_NUM" ]; then
     echo ""
     echo "Active worktrees:"
     git worktree list
+    echo ""
+    echo "=== Active Agents ==="
+    if [ -d "$LOCKS_DIR" ] && [ -n "$(ls -A "$LOCKS_DIR" 2>/dev/null)" ]; then
+        for lock in "$LOCKS_DIR"/*.lock; do
+            [ -f "$lock" ] || continue
+            issue=$(basename "$lock" .lock | sed 's/issue-//')
+            agent=$(sed -n 's/.*"agent":[ ]*"\([^"]*\)".*/\1/p' "$lock" 2>/dev/null || echo "unknown")
+            echo "  Issue #$issue - Agent: $agent"
+        done
+    else
+        echo "  (none)"
+    fi
     exit 1
 fi
 
@@ -236,6 +250,13 @@ echo ""
 echo "Cleaning up worktree..."
 git worktree remove "$WORKTREE_PATH" --force 2>/dev/null || true
 git branch -d "$BRANCH_NAME" 2>/dev/null || true
+
+# === MULTI-AGENT COORDINATION: Release lock ===
+LOCK_FILE="$LOCKS_DIR/issue-${ISSUE_NUM}.lock"
+if [ -f "$LOCK_FILE" ]; then
+    rm -f "$LOCK_FILE"
+    echo "🔓 Lock released for issue #$ISSUE_NUM"
+fi
 
 # Run full cleanup to catch any other merged worktrees
 echo ""

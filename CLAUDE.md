@@ -135,6 +135,39 @@ Always push after commit. No exceptions.
 
 ⚠️ **Merge блокируется активным деплоем.** Push в ветки — свободно.
 
+### Multi-Agent Task Coordination
+Lock-файлы предотвращают дублирование работы между агентами.
+
+**Автоматически:**
+- `task-start.sh` создаёт `.agents/locks/issue-{N}.lock`
+- `task-done.sh` удаляет lock
+
+**Перед началом работы:**
+```bash
+# Проверить активные агенты
+ls .agents/locks/
+
+# Или вызвать без аргументов
+./scripts/task-start.sh
+```
+
+**Если issue занят:**
+```
+╔═══════════════════════════════════════════════════════════════╗
+║  ⚠️  ISSUE #123 IS ALREADY CLAIMED                            ║
+╚═══════════════════════════════════════════════════════════════╝
+
+  Agent: hostname-12345
+  Since: 2025-01-11T10:00:00Z
+
+Options:
+  1. Choose a different issue
+  2. Coordinate with the other agent
+  3. Force claim: rm .agents/locks/issue-123.lock
+```
+
+**Status board:** `.agents/STATUS.md` — shared overview всех агентов
+
 ## TodoWrite Rules
 При создании todo списка **ВСЕГДА** добавлять последним пунктом:
 ```
