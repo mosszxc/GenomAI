@@ -134,7 +134,8 @@ class CreativePipelineWorkflow:
                 assemblyai_transcript_id = existing_transcript.get(
                     "assemblyai_transcript_id"
                 )
-                saved_transcript_id = existing_transcript.get("id")
+                # Convert bigint id to string for type compatibility
+                saved_transcript_id = str(existing_transcript["id"])
                 workflow.logger.info(
                     f"Using existing transcript version={existing_transcript.get('version')} "
                     f"for creative={input.creative_id}"
@@ -171,7 +172,8 @@ class CreativePipelineWorkflow:
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
-                saved_transcript_id = saved_transcript.get("id")
+                # Convert bigint id to string for type compatibility
+                saved_transcript_id = str(saved_transcript["id"])
 
                 # Emit transcription event
                 await workflow.execute_activity(

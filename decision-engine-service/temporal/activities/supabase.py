@@ -257,6 +257,7 @@ async def create_idea(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
+    # Note: buyer_id is not stored in ideas table, only avatar_id
     idea = {
         "id": str(uuid.uuid4()),
         "canonical_hash": canonical_hash,
@@ -264,8 +265,6 @@ async def create_idea(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    if buyer_id:
-        idea["buyer_id"] = buyer_id
     if avatar_id:
         idea["avatar_id"] = avatar_id
 
@@ -318,17 +317,15 @@ async def save_decomposed_creative(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
+    # Note: canonical_hash and transcript_id are passed but not stored in DB
+    # canonical_hash is used for idea deduplication later in workflow
     decomposed = {
         "id": str(uuid.uuid4()),
         "creative_id": creative_id,
         "payload": json.dumps(payload) if isinstance(payload, dict) else payload,
-        "canonical_hash": canonical_hash,
         "schema_version": payload.get("schema_version", "v1"),
         "created_at": datetime.utcnow().isoformat(),
     }
-
-    if transcript_id:
-        decomposed["transcript_id"] = transcript_id
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
