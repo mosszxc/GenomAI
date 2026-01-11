@@ -84,6 +84,11 @@ from temporal.activities.maintenance import (
     emit_maintenance_event,
     check_staleness,
 )
+from temporal.activities.feature_monitoring import (
+    update_feature_correlations,
+    detect_feature_drift,
+    emit_feature_event,
+)
 
 __all__ = [
     # Supabase activities
@@ -155,4 +160,8 @@ __all__ = [
     "check_data_integrity",
     "emit_maintenance_event",
     "check_staleness",
+    # Feature monitoring activities
+    "update_feature_correlations",
+    "detect_feature_drift",
+    "emit_feature_event",
 ]
