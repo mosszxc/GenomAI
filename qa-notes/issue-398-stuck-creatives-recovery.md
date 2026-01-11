@@ -87,9 +87,30 @@ WHERE t.id IS NULL AND c.status = 'pending'
 - https://github.com/mosszxc/GenomAI/pull/412
 - Merged and deployed: 2026-01-11
 
+## Production Test Results
+
+**Triggered**: 2026-01-11T16:18:35Z
+**Command**: `POST /api/schedules/maintenance/trigger`
+
+**Logs**:
+```
+16:18:42 - Looking for stuck creatives: transcription>5min, decomposition>30min
+16:18:46 - Found 6 stuck creatives: transcription=2, decomposition=4
+16:18:46 - Started recovery for creative 5b8d7ff7 (stuck_reason=transcription)
+16:18:46 - Started recovery for creative 9b86962c (stuck_reason=transcription)
+16:18:47 - Started recovery for creative 2a7be4a1 (stuck_reason=decomposition)
+16:18:47 - Started recovery for creative 7243f624 (stuck_reason=decomposition)
+16:18:47 - Started recovery for creative 3e34c211 (stuck_reason=decomposition)
+16:18:47 - Started recovery for creative 5c2bfc7e (stuck_reason=decomposition)
+16:18:47 - Recovery complete: 6 recovered, 0 failed
+16:18:47 - Maintenance complete: stuck_recovered=6
+```
+
+**Result**: PASSED - 6 creatives recovered successfully
+
 ## Status
 - [x] Code implemented
 - [x] Tests passed
 - [x] PR merged
 - [x] Deployed to production
-- [ ] Verified in production (pending next MaintenanceWorkflow run)
+- [x] Verified in production (6 stuck creatives recovered)
