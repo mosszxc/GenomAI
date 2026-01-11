@@ -146,6 +146,7 @@ async def transcribe_via_n8n(
             headers=headers,
             json={
                 "creative_id": creative_id,
+                "Name": f"transcript_{creative_id[:8]}",  # Required by pg_cron
                 "VideoID": video_id,  # Google Drive file ID for Convert stage
                 "ConvertStatus": "queued",  # Triggers pg_cron worker
                 "Status": "queued",
