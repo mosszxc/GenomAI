@@ -89,6 +89,7 @@ created_at  TIMESTAMP      -- When snapshot was created
 | `idea_confidence_versions` | История confidence | No (append-only) | Learning Loop API |
 | `fatigue_state_versions` | История fatigue | No (append-only) | Learning Loop API |
 | `component_learnings` | Learnings по компонентам | Yes | Learning Loop |
+| `component_learning_snapshots` | Daily snapshots для drift detection | No (append-only) | MaintenanceWorkflow |
 | `avatar_learnings` | Learnings по аватарам | Yes | Learning Loop |
 
 ### Buyer Tables
