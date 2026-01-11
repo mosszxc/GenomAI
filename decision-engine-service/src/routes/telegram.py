@@ -407,6 +407,7 @@ async def handle_help_command(message: TelegramMessage) -> None:
         "/start - Start registration\n"
         "/stats - View your statistics\n"
         "/genome - Component performance heatmap\n"
+        "/confidence - Win rate confidence intervals\n"
         "/trends - Win rate trends chart (admin)\n"
         "/knowledge - View pending knowledge extractions\n"
         "/help - Show this help\n\n"
@@ -482,6 +483,70 @@ async def handle_genome_command(message: TelegramMessage) -> None:
         await send_telegram_message(
             message.chat_id,
             f"Failed to generate heatmap: {str(e)[:100]}",
+        )
+
+
+async def handle_confidence_command(message: TelegramMessage) -> None:
+    """
+    Handle /confidence command - show win rate confidence intervals.
+
+    Usage:
+        /confidence - Show all components with CI
+        /confidence emotion_primary - Show specific component type
+    """
+    from src.services.confidence import (
+        get_component_confidence_data,
+        format_confidence_telegram,
+        get_available_component_types,
+    )
+
+    # Parse component type from command
+    text = message.text or ""
+    parts = text.split()
+    component_type = parts[1] if len(parts) > 1 else None
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Validate component type if specified
+        if component_type:
+            available_types = await get_available_component_types()
+            if component_type not in available_types and available_types:
+                types_list = ", ".join(available_types[:10])
+                await send_telegram_message(
+                    message.chat_id,
+                    f"Unknown component type: <code>{component_type}</code>\n\n"
+                    f"Available types:\n<code>{types_list}</code>\n\n"
+                    f"Usage: /confidence [component_type]",
+                )
+                return
+
+        # Get and format confidence data
+        data = await get_component_confidence_data(component_type=component_type)
+        confidence_text = format_confidence_telegram(data)
+
+        await send_telegram_message(message.chat_id, confidence_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=confidence_text,
+            context={"component_type": component_type},
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate confidence intervals: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Failed to generate confidence intervals: {str(e)[:100]}",
         )
 
 
@@ -1053,6 +1118,8 @@ async def process_telegram_update(update: dict) -> None:
             await handle_knowledge_command(message)
         elif text.startswith("/genome"):
             await handle_genome_command(message)
+        elif text.startswith("/confidence"):
+            await handle_confidence_command(message)
         elif text.startswith("/trends"):
             await handle_trends_command(message)
         elif text.startswith("/"):
