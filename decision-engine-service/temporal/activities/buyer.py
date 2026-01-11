@@ -344,23 +344,23 @@ async def queue_historical_import(input: QueueHistoricalImportInput) -> str:
     )
 
     headers = _get_supabase_headers()
+    # Use upsert to handle duplicate campaign_id
+    headers["Prefer"] = "resolution=merge-duplicates,return=representation"
     base_url = _get_supabase_url()
 
     queue_entry = {
-        "id": str(uuid.uuid4()),
         "buyer_id": input.buyer_id,
         "campaign_id": input.campaign_id,
         "video_url": input.video_url,
         "keitaro_source": input.keitaro_source,
         "metrics": input.metrics,
         "status": "pending_video",
-        "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
     }
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"{base_url}/historical_import_queue",
+            f"{base_url}/historical_import_queue?on_conflict=campaign_id",
             headers=headers,
             json=queue_entry,
             timeout=30.0,
@@ -368,7 +368,7 @@ async def queue_historical_import(input: QueueHistoricalImportInput) -> str:
         response.raise_for_status()
         data = response.json()
 
-        entry_id = data[0]["id"] if data else queue_entry["id"]
+        entry_id = data[0]["id"] if data else "upserted"
         activity.logger.info(f"Queued historical import: {entry_id}")
 
         return entry_id
