@@ -9,13 +9,11 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from temporalio.client import Client
 
 router = APIRouter()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
 SCHEMA = "genomai"
 
 
@@ -116,9 +114,10 @@ async def upload_source(request: UploadSourceRequest, _: bool = Depends(verify_a
         4. Notify admin
     """
     from temporal.models.knowledge import KnowledgeSourceInput
+    from temporal.client import get_temporal_client
 
     try:
-        client = await Client.connect(TEMPORAL_ADDRESS)
+        client = await get_temporal_client()
 
         input_data = KnowledgeSourceInput(
             title=request.title,
@@ -243,9 +242,10 @@ async def approve_extraction(
     Starts KnowledgeApplicationWorkflow to apply the knowledge.
     """
     from temporal.models.knowledge import ApplyKnowledgeInput
+    from temporal.client import get_temporal_client
 
     try:
-        client = await Client.connect(TEMPORAL_ADDRESS)
+        client = await get_temporal_client()
 
         input_data = ApplyKnowledgeInput(
             extraction_id=extraction_id,
