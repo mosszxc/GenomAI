@@ -1,7 +1,7 @@
 # Issue #344: emit_metrics_event returns 400 Bad Request
 
 ## Problem
-Activity `emit_metrics_event` failed with 400 Bad Request when writing `keitaro.polling.completed` and `metrics.processing.completed` events to `event_log` table.
+Activity `emit_metrics_event` failed with 400 Bad Request when writing events to `event_log` table.
 
 ## Root Cause
 - `entity_id` column in `event_log` has type **UUID**
@@ -16,15 +16,27 @@ Activity `emit_metrics_event` failed with 400 Bad Request when writing `keitaro.
 
 ## Files Changed
 - `temporal/activities/metrics.py:326-370` - EmitMetricsEventInput + emit_metrics_event
-- `temporal/workflows/keitaro_polling.py:196-207` - Removed entity_id, added workflow_id to payload
+- `temporal/workflows/keitaro_polling.py` - Removed entity_id from all events, added workflow_id to payload
 - `temporal/workflows/metrics_processing.py:173-183` - Same change
+
+## Follow-up Fix
+Issue #342 (merged before #344) added `RawMetricsObserved` event with same bug.
+Required additional commit to fix: `aa0b6b4`
 
 ## Testing
 | Test | Result |
 |------|--------|
 | Unit tests | 85/85 passed |
 | SQL INSERT without entity_id | OK (entity_id=null) |
-| Post-deploy keitaro-poller trigger | Pending |
+| Post-deploy keitaro-poller trigger | **OK** - event recorded with entity_id=null |
 
-## PR
-https://github.com/mosszxc/GenomAI/pull/384
+## Verified in DB
+```sql
+SELECT event_type, entity_id, payload->>'workflow_id', occurred_at
+FROM genomai.event_log WHERE event_type = 'keitaro.polling.completed';
+-- Result: entity_id=null, workflow_id in payload
+```
+
+## PRs/Commits
+- PR #384 (initial fix)
+- Commit aa0b6b4 (follow-up for RawMetricsObserved)
