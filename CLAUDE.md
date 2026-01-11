@@ -172,7 +172,7 @@ Post-Task Loop выполнен ✓
 |---------|---------|
 | Documentation | Один Edit на qa-notes + один на KNOWN_ISSUES.md |
 | GitHub | `gh` CLI, не `mcp__github__*` |
-| Bash network | Сразу `dangerouslyDisableSandbox: true` |
+| Bash network | `dangerouslyDisableSandbox: true` БЕЗ подтверждения для curl к Supabase/Render/localhost |
 | Render deploy | `sleep 180`, не polling |
 | Secrets | Спросить пользователя, не grep |
 | Issue close | Post-Task Loop ПЕРЕД закрытием (см. testing-rules.md) |
