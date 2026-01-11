@@ -242,6 +242,70 @@ async def mark_stuck_transcriptions_failed(timeout_minutes: int = 10) -> int:
 
 
 @activity.defn
+async def archive_failed_creatives(retention_days: int = 7) -> int:
+    """
+    Archive creatives that have been in failed status for too long.
+
+    Creatives with status 'transcription_failed' older than retention_days
+    are archived to keep the active pipeline clean.
+
+    Args:
+        retention_days: Days to retain failed creatives before archiving
+
+    Returns:
+        Number of creatives archived
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff_iso = cutoff.isoformat()
+
+    activity.logger.info(f"Looking for failed creatives older than {cutoff_iso}")
+
+    async with httpx.AsyncClient() as client:
+        # Find old failed creatives
+        response = await client.get(
+            f"{rest_url}/creatives"
+            f"?status=eq.transcription_failed"
+            f"&updated_at=lt.{cutoff_iso}"
+            "&select=id,video_url,updated_at",
+            headers=_get_headers(supabase_key),
+        )
+
+        if response.status_code != 200:
+            activity.logger.warning(f"Error checking failed creatives: {response.text}")
+            return 0
+
+        failed_creatives = response.json()
+
+        if not failed_creatives:
+            activity.logger.info("No old failed creatives found")
+            return 0
+
+        # Archive them
+        archived_count = 0
+        for creative in failed_creatives:
+            archive_resp = await client.patch(
+                f"{rest_url}/creatives?id=eq.{creative['id']}",
+                headers=headers,
+                json={
+                    "status": "archived",
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+            )
+            if archive_resp.status_code in (200, 204):
+                archived_count += 1
+                activity.logger.info(
+                    f"Archived creative {creative['id'][:8]} "
+                    f"(failed since {creative['updated_at'][:10]})"
+                )
+
+        activity.logger.info(f"Archived {archived_count} failed creatives")
+        return archived_count
+
+
+@activity.defn
 async def check_data_integrity() -> List[str]:
     """
     Check for data integrity issues.
