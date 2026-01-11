@@ -5,13 +5,15 @@ Multi-step Telegram-based buyer registration workflow.
 Uses Temporal signals for user input and state machine for flow control.
 
 States:
-    AWAITING_NAME → AWAITING_GEO → AWAITING_VERTICAL → AWAITING_KEITARO → LOADING_HISTORY → COMPLETED
+    AWAITING_NAME → AWAITING_GEO → AWAITING_VERTICAL → AWAITING_KEITARO
+    → LOADING_HISTORY → AWAITING_VIDEOS → COMPLETED
 
 Replaces n8n workflows:
     - BuyQncnHNb7ulL6z (Telegram Router)
     - hgTozRQFwh4GLM0z (Buyer Onboarding)
 """
 
+import re
 from datetime import timedelta
 from typing import Optional, List
 from temporalio import workflow
@@ -33,64 +35,113 @@ with workflow.unsafe.imports_passed_through():
         create_buyer,
         load_buyer_by_telegram_id,
         send_telegram_message,
+        get_pending_video_campaigns,
+        UpdateImportVideoInput,
+        update_import_with_video,
     )
 
 
-# Onboarding messages
+# Onboarding messages (Russian, friendly tone)
 MESSAGES = {
     "welcome": (
-        "<b>Welcome to GenomAI!</b>\n\n"
-        "I'll help you set up your account. Let's start with your name.\n\n"
-        "<i>Please enter your name or company name:</i>"
+        "👋 <b>Привет! Добро пожаловать в GenomAI</b>\n\n"
+        "Давай настроим твой профиль.\n\n"
+        "🏷️ <i>Как тебя зовут?</i>"
     ),
     "ask_geo": (
-        "Great, <b>{name}</b>!\n\n"
-        "Now, which GEOs do you work with?\n"
-        "Enter comma-separated country codes (e.g., US, UK, DE):\n\n"
-        "<i>Available: US, UK, DE, FR, IT, ES, NL, AU, CA, BR, MX, IN, ID, etc.</i>"
+        "✨ Отлично, <b>{name}</b>!\n\n"
+        "🗺️ С какими гео ты работаешь?\n"
+        "Введи коды стран через запятую (например: US, UK, DE):\n\n"
+        "<i>Доступные: US, UK, DE, FR, IT, ES, NL, AU, CA, BR, MX, IN, ID...</i>"
     ),
     "ask_vertical": (
-        "GEOs saved: <b>{geos}</b>\n\n"
-        "What verticals do you work in?\n"
-        "Enter comma-separated (e.g., gambling, nutra, crypto):\n\n"
-        "<i>Available: gambling, nutra, crypto, dating, ecommerce, finance, gaming, sweepstakes</i>"
+        "🗺️ Гео: <b>{geos}</b>\n\n"
+        "💊 Какие вертикали льёшь?\n"
+        "Введи через запятую (например: потенция, простатит):\n\n"
+        "<i>Доступные: потенция, простатит, цистит, грибок, давление, диабет, зрение, суставы, похудение</i>"
     ),
     "ask_keitaro": (
-        "Verticals saved: <b>{verticals}</b>\n\n"
-        "Finally, what's your Keitaro source/affiliate parameter?\n"
-        "This is used to load your historical campaigns.\n\n"
-        "<i>Enter your source identifier (e.g., 'buyer_john', 'affiliate_123'):</i>"
+        "💊 Вертикали: <b>{verticals}</b>\n\n"
+        "🔑 Последний шаг — укажи свой <b>sub10</b> из Keitaro.\n"
+        "Это нужно для загрузки твоей истории.\n\n"
+        "<i>Введи значение sub10 (например: 'moss', 'trubew'):</i>"
     ),
     "loading_history": (
-        "Setting up your account...\n\n"
-        "Loading your historical campaigns from Keitaro.\n"
-        "This may take a few minutes.\n\n"
-        "<i>Source: {keitaro_source}</i>"
+        "⏳ <b>Настраиваю профиль...</b>\n\n"
+        "📜 Загружаю твою историю из Keitaro.\n"
+        "Это займёт пару минут.\n\n"
+        "<i>sub10: {keitaro_source}</i>"
     ),
     "completed": (
-        "Your account is ready!\n\n"
-        "<b>Name:</b> {name}\n"
-        "<b>GEOs:</b> {geos}\n"
-        "<b>Verticals:</b> {verticals}\n"
-        "<b>Keitaro Source:</b> {keitaro_source}\n\n"
-        "Loaded <b>{campaigns_count}</b> historical campaigns.\n\n"
-        "You can now:\n"
-        "- Send video URLs to register new creatives\n"
-        "- Use /stats to view your performance\n"
-        "- Use /help for more commands"
+        "🎉 <b>Готово!</b>\n\n"
+        "🏷️ <b>Имя:</b> {name}\n"
+        "🗺️ <b>Гео:</b> {geos}\n"
+        "💊 <b>Вертикали:</b> {verticals}\n"
+        "🔑 <b>sub10:</b> {keitaro_source}\n\n"
+        "📊 Загружено <b>{campaigns_count}</b> кампаний.\n"
+        "📹 Видео на анализе: <b>{videos_count}</b>\n\n"
+        "🚀 <b>Теперь можешь:</b>\n"
+        "• Кинуть URL видео для регистрации креатива\n"
+        "• /stats — твоя статистика\n"
+        "• /help — список команд"
     ),
-    "timeout": ("Session timed out due to inactivity.\n\nSend /start to begin again."),
+    "timeout": (
+        "⏰ Сессия истекла.\n\n"
+        "Отправь /start чтобы начать заново."
+    ),
     "invalid_geo": (
-        "Invalid GEO codes. Please use valid country codes.\n"
-        "Examples: US, UK, DE, FR, IT, ES\n\n"
-        "<i>Try again:</i>"
+        "❌ Неверные коды стран.\n"
+        "Примеры: US, UK, DE, FR, IT, ES\n\n"
+        "<i>Попробуй ещё раз:</i>"
     ),
     "invalid_vertical": (
-        "Invalid verticals. Please use valid vertical names.\n"
-        "Examples: gambling, nutra, crypto, dating\n\n"
-        "<i>Try again:</i>"
+        "❌ Неверные вертикали.\n"
+        "Примеры: потенция, простатит, цистит, грибок\n\n"
+        "<i>Попробуй ещё раз:</i>"
+    ),
+    "ask_videos_intro": (
+        "📹 <b>Загружено {total} кампаний без видео</b>\n\n"
+        "Сейчас покажу каждую — скинь ссылку на креатив."
+    ),
+    "ask_campaign_video": (
+        "{num}️⃣ <b>Кампания:</b> {name}\n"
+        "🆔 ID: <code>{campaign_id}</code>\n"
+        "📊 Клики: {clicks} | Конверсии: {conversions}\n\n"
+        "<i>Скинь URL видео:</i>"
+    ),
+    "video_received": (
+        "✅ Видео получено, запускаю анализ..."
+    ),
+    "no_campaigns": (
+        "📭 Кампаний для привязки видео не найдено.\n"
+        "Можешь скидывать видео позже через обычные сообщения."
+    ),
+    "invalid_video_url": (
+        "❌ Не распознал ссылку на видео.\n"
+        "Отправь URL (YouTube, .mp4 и т.д.)"
     ),
 }
+
+# Video URL patterns
+VIDEO_URL_PATTERNS = [
+    r"youtube\.com/watch",
+    r"youtu\.be/",
+    r"vimeo\.com/",
+    r"drive\.google\.com/file",
+    r"\.mp4",
+    r"\.mov",
+    r"\.webm",
+    r"\.avi",
+    r"/video",
+]
+
+
+def is_video_url(text: str) -> bool:
+    """Check if text contains a video URL."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    return any(re.search(pattern, text_lower) for pattern in VIDEO_URL_PATTERNS)
 
 
 @workflow.defn
@@ -118,6 +169,7 @@ class BuyerOnboardingWorkflow:
         # Message queue for user input
         self._pending_message: Optional[BuyerMessage] = None
         self._campaigns_count: int = 0
+        self._videos_count: int = 0
         self._error: Optional[str] = None
 
     @workflow.run
@@ -363,7 +415,121 @@ class BuyerOnboardingWorkflow:
                 else import_result.total_campaigns
             )
 
-            # Step 6: Completed
+            # Step 6: Ask for videos for each campaign
+            # Get campaigns waiting for video
+            pending_campaigns = await workflow.execute_activity(
+                get_pending_video_campaigns,
+                self._buyer_id,
+                start_to_close_timeout=timedelta(seconds=30),
+                retry_policy=default_retry,
+            )
+
+            if pending_campaigns:
+                self._state = OnboardingState.AWAITING_VIDEOS
+                total_campaigns = len(pending_campaigns)
+
+                # Send intro message
+                await workflow.execute_activity(
+                    send_telegram_message,
+                    args=[
+                        self._chat_id,
+                        MESSAGES["ask_videos_intro"].format(total=total_campaigns),
+                    ],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+
+                # Import CreativeRegistrationWorkflow for video processing
+                with workflow.unsafe.imports_passed_through():
+                    from temporal.workflows.historical_import import (
+                        CreativeRegistrationWorkflow,
+                    )
+
+                # Iterate through each campaign
+                for i, campaign in enumerate(pending_campaigns, 1):
+                    metrics = campaign.get("metrics", {})
+                    campaign_name = metrics.get("name", f"Campaign {campaign['campaign_id']}")
+                    clicks = metrics.get("clicks", 0)
+                    conversions = metrics.get("conversions", 0)
+
+                    # Ask for video for this campaign
+                    await workflow.execute_activity(
+                        send_telegram_message,
+                        args=[
+                            self._chat_id,
+                            MESSAGES["ask_campaign_video"].format(
+                                num=i,
+                                name=campaign_name,
+                                campaign_id=campaign["campaign_id"],
+                                clicks=clicks,
+                                conversions=conversions,
+                            ),
+                        ],
+                        start_to_close_timeout=timedelta(seconds=30),
+                        retry_policy=default_retry,
+                    )
+
+                    # Wait for valid video URL
+                    while True:
+                        await workflow.wait_condition(
+                            lambda: self._pending_message is not None,
+                            timeout=step_timeout,
+                        )
+                        if self._pending_message is None:
+                            return await self._handle_timeout()
+
+                        text = self._pending_message.text.strip()
+                        self._pending_message = None
+
+                        if is_video_url(text):
+                            # Update import record with video URL
+                            await workflow.execute_activity(
+                                update_import_with_video,
+                                UpdateImportVideoInput(
+                                    import_id=campaign["id"],
+                                    video_url=text,
+                                    status="ready",
+                                ),
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=default_retry,
+                            )
+
+                            # Start creative processing workflow
+                            await workflow.start_child_workflow(
+                                CreativeRegistrationWorkflow.run,
+                                args=[self._buyer_id, text, campaign["campaign_id"], None],
+                                id=f"onboarding-video-{self._buyer_id}-{campaign['campaign_id']}",
+                                task_queue="telegram",
+                            )
+
+                            self._videos_count += 1
+
+                            # Send confirmation
+                            await workflow.execute_activity(
+                                send_telegram_message,
+                                args=[self._chat_id, MESSAGES["video_received"]],
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=default_retry,
+                            )
+                            break  # Move to next campaign
+                        else:
+                            # Invalid URL, ask again
+                            await workflow.execute_activity(
+                                send_telegram_message,
+                                args=[self._chat_id, MESSAGES["invalid_video_url"]],
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=default_retry,
+                            )
+            else:
+                # No campaigns to process
+                await workflow.execute_activity(
+                    send_telegram_message,
+                    args=[self._chat_id, MESSAGES["no_campaigns"]],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+
+            # Step 7: Completed
             self._state = OnboardingState.COMPLETED
             await workflow.execute_activity(
                 send_telegram_message,
@@ -375,6 +541,7 @@ class BuyerOnboardingWorkflow:
                         verticals=", ".join(self._verticals),
                         keitaro_source=self._keitaro_source,
                         campaigns_count=self._campaigns_count,
+                        videos_count=self._videos_count,
                     ),
                 ],
                 start_to_close_timeout=timedelta(seconds=30),
