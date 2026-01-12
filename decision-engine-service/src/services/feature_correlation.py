@@ -177,9 +177,11 @@ async def get_feature_cpa_pairs(
             decision_to_cpa[dec_id] = []
         decision_to_cpa[dec_id].append(cpa)
 
-    # Average CPA per decision
+    # Average CPA per decision (skip empty lists to avoid ZeroDivisionError)
     decision_to_avg_cpa = {
-        dec_id: sum(cpas) / len(cpas) for dec_id, cpas in decision_to_cpa.items()
+        dec_id: sum(cpas) / len(cpas)
+        for dec_id, cpas in decision_to_cpa.items()
+        if cpas
     }
 
     # Step 5: Join feature values with CPA
