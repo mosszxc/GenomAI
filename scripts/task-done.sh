@@ -155,7 +155,26 @@ cd "$PROJECT_ROOT"
 # Merge PR to develop
 if [ "$NO_PR" != "true" ] && [ -n "$PR_URL" ]; then
     echo ""
-    echo "Merging PR to develop..."
+    echo "Waiting for CI checks..."
+
+    # Wait for checks (timeout 5 min)
+    if gh pr checks "$BRANCH_NAME" --watch --fail-fast 2>/dev/null; then
+        echo "✓ CI checks passed"
+    else
+        echo "⚠️  CI checks failed or timed out"
+        echo "Fix issues and re-run, or merge manually: $PR_URL"
+        exit 1
+    fi
+
+    # Check for merge conflicts
+    MERGEABLE=$(gh pr view "$BRANCH_NAME" --json mergeable -q '.mergeable' 2>/dev/null || echo "UNKNOWN")
+    if [ "$MERGEABLE" = "CONFLICTING" ]; then
+        echo "❌ Merge conflicts detected!"
+        echo "Resolve conflicts manually: $PR_URL"
+        exit 1
+    fi
+
+    echo "Merging PR..."
     if gh pr merge "$BRANCH_NAME" --squash --delete-branch 2>/dev/null; then
         echo "✓ PR merged"
     else
