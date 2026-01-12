@@ -349,9 +349,9 @@ mcp__render__list_deploys → status != "live" → ЖДАТЬ перед merge
 | Workflow | Queue | Schedule |
 |----------|-------|----------|
 | CreativePipelineWorkflow | creative-pipeline | Webhook trigger |
-| KeitaroPollerWorkflow | metrics | Every 10 min |
-| MetricsProcessingWorkflow | metrics | Every 30 min |
-| LearningLoopWorkflow | metrics | Every 1 hour |
+| KeitaroPollerWorkflow | metrics | Every 1 hour → triggers chain |
+| MetricsProcessingWorkflow | metrics | Child of KeitaroPoller |
+| LearningLoopWorkflow | metrics | Child of MetricsProcessing |
 | DailyRecommendationWorkflow | metrics | 09:00 UTC |
 | MaintenanceWorkflow | metrics | Every 6 hours |
 

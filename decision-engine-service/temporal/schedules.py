@@ -2,9 +2,10 @@
 Temporal Schedules Management
 
 Creates and manages scheduled workflows:
-- Keitaro Poller (every 10 minutes)
-- Metrics Processing (every 30 minutes)
-- Learning Loop (every hour)
+- Keitaro Poller (every hour) → triggers metrics-processor → triggers learning-loop
+- Daily Recommendations (09:00 UTC)
+- Maintenance (every 6 hours)
+- Health Check (every 3 hours)
 
 Usage:
     python -m temporal.schedules create
@@ -29,17 +30,15 @@ from temporalio.client import (
 from temporal.config import settings
 from temporal.client import get_temporal_client
 from temporal.workflows.keitaro_polling import KeitaroPollerWorkflow, KeitaroPollerInput
-from temporal.workflows.metrics_processing import (
-    MetricsProcessingWorkflow,
-    MetricsProcessingInput,
-)
-from temporal.workflows.learning_loop import LearningLoopWorkflow, LearningLoopInput
 from temporal.workflows.recommendation import (
     DailyRecommendationWorkflow,
     DailyRecommendationInput,
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow, MaintenanceInput
 from temporal.workflows.health_check import HealthCheckWorkflow, HealthCheckInput
+
+# NOTE: MetricsProcessingWorkflow and LearningLoopWorkflow imports removed.
+# They are now triggered as child workflows from keitaro-poller, not scheduled separately.
 
 
 logging.basicConfig(
@@ -54,23 +53,12 @@ SCHEDULES = {
         "workflow": KeitaroPollerWorkflow.run,
         "args": [KeitaroPollerInput(interval="yesterday", create_snapshots=True)],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
-        "interval": timedelta(minutes=10),
-        "description": "Polls Keitaro for metrics every 10 minutes",
-    },
-    "metrics-processor": {
-        "workflow": MetricsProcessingWorkflow.run,
-        "args": [MetricsProcessingInput(batch_limit=50, trigger_learning=True)],
-        "task_queue": settings.temporal.TASK_QUEUE_METRICS,
-        "interval": timedelta(minutes=30),
-        "description": "Processes metrics snapshots into outcomes every 30 minutes",
-    },
-    "learning-loop": {
-        "workflow": LearningLoopWorkflow.run,
-        "args": [LearningLoopInput(batch_limit=100, process_individually=False)],
-        "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=1),
-        "description": "Runs learning loop every hour",
+        "description": "Polls Keitaro hourly, then triggers metrics-processor → learning-loop chain",
     },
+    # NOTE: metrics-processor and learning-loop removed from schedules.
+    # They are now triggered as child workflows:
+    # keitaro-poller → metrics-processor (child) → learning-loop (child)
     "daily-recommendations": {
         "workflow": DailyRecommendationWorkflow.run,
         "args": [DailyRecommendationInput(skip_existing=True, max_recommendations=0)],

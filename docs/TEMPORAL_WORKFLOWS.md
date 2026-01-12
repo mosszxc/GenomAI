@@ -15,12 +15,14 @@ GenomAI использует Temporal для оркестрации бизнес
 │                      Temporal Cloud                          │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │                    Schedules                         │   │
-│  │  • keitaro-poller (10 min)                          │   │
-│  │  • metrics-processor (30 min)                       │   │
-│  │  • learning-loop (1 hour)                           │   │
+│  │  • keitaro-poller (1 hour) → chain trigger          │   │
 │  │  • daily-recommendations (09:00 UTC)                │   │
 │  │  • maintenance (6 hours)                            │   │
-│  │  • agent-supervisor (2 hours)                       │   │
+│  │  • health-check (3 hours)                           │   │
+│  │                                                      │   │
+│  │  Child workflows (not scheduled):                   │   │
+│  │  • metrics-processor (child of keitaro)             │   │
+│  │  • learning-loop (child of metrics-processor)       │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                           │                                  │
 │                           ▼                                  │
@@ -137,7 +139,7 @@ class ModularHypothesisWorkflow:
 ### KeitaroPollerWorkflow
 
 **Queue:** `metrics`
-**Schedule:** Every 10 minutes
+**Schedule:** Every 1 hour (triggers metrics-processor → learning-loop chain)
 
 Сбор метрик из Keitaro API:
 1. Получить список trackers
@@ -148,7 +150,7 @@ class ModularHypothesisWorkflow:
 ### MetricsProcessingWorkflow
 
 **Queue:** `metrics`
-**Schedule:** Every 30 minutes
+**Schedule:** Child workflow of KeitaroPollerWorkflow (triggers learning-loop)
 
 Обработка метрик:
 1. Получить unprocessed snapshots
@@ -158,7 +160,7 @@ class ModularHypothesisWorkflow:
 ### LearningLoopWorkflow
 
 **Queue:** `metrics`
-**Schedule:** Every hour
+**Schedule:** Child workflow of MetricsProcessingWorkflow
 
 Обновление scores:
 1. Получить unprocessed outcomes
