@@ -1,13 +1,15 @@
 # Backlog Priority Manager
 
 Анализ и приоритизация issues через лейблы `queue-1`, `queue-2`, `queue-3`...
+Плюс группировка параллельных задач через `parallel-A`, `parallel-B`...
 
 ## Использование
 
 ```
-/backlog              — анализ + расставить лейблы очередности
+/backlog              — анализ + расставить лейблы очередности + параллельные группы
 /backlog show         — только показать текущую очередь (без изменений)
-/backlog reset        — убрать все queue-* лейблы
+/backlog parallel     — только показать параллельные группы
+/backlog reset        — убрать все queue-* и parallel-* лейблы
 ```
 
 ## Лейблы очередности
@@ -18,6 +20,41 @@
 | `queue-2` | Делать вторым |
 | `queue-3` | Делать третьим |
 | ... | ... |
+
+## Лейблы параллельных групп
+
+| Лейбл | Значение |
+|-------|----------|
+| `parallel-A` | Группа A — можно запускать одновременно |
+| `parallel-B` | Группа B — после группы A |
+| `parallel-C` | Группа C — после группы B |
+| `blocked` | Заблокирован другим issue |
+
+## Процессы (для определения совместимости)
+
+| Процесс | Ключевые слова в title/body/labels |
+|---------|-----------------------------------|
+| `de` | decision-engine, DE, decision |
+| `ll` | learning-loop, learning, LL |
+| `hf` | hypothesis-factory, hypothesis, HF |
+| `vi` | video-ingestion, video, temporal |
+| `kt` | keitaro, metrics, poller |
+| `tg` | telegram, notification, bot |
+| `db` | schema, migration, database |
+
+## Матрица совместимости процессов
+
+| Process | de | ll | hf | vi | kt | tg | db |
+|---------|----|----|----|----|----|----|-----|
+| de | - | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ |
+| ll | ✅ | - | ✅ | ✅ | ✅ | ✅ | ❌ |
+| hf | ❌ | ✅ | - | ✅ | ✅ | ✅ | ❌ |
+| vi | ✅ | ✅ | ✅ | - | ✅ | ✅ | ❌ |
+| kt | ✅ | ✅ | ✅ | ✅ | - | ✅ | ❌ |
+| tg | ✅ | ✅ | ✅ | ✅ | ✅ | - | ❌ |
+| db | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | - |
+
+**Правило:** `db` (миграции) всегда выполняются отдельно первыми.
 
 ## Действие
 
@@ -79,26 +116,100 @@ gh label create "queue-2" --color "FF4500" --description "Priority 2" 2>/dev/nul
 gh label create "queue-3" --color "FF8C00" --description "Priority 3" 2>/dev/null || true
 gh label create "queue-4" --color "FFD700" --description "Priority 4" 2>/dev/null || true
 gh label create "queue-5" --color "9ACD32" --description "Priority 5" 2>/dev/null || true
+
+# Лейблы параллельных групп
+gh label create "parallel-A" --color "0E8A16" --description "Parallel group A - start now" 2>/dev/null || true
+gh label create "parallel-B" --color "1D76DB" --description "Parallel group B - after A" 2>/dev/null || true
+gh label create "parallel-C" --color "5319E7" --description "Parallel group C - after B" 2>/dev/null || true
+gh label create "blocked" --color "B60205" --description "Blocked by another issue" 2>/dev/null || true
+```
+
+### 6. Определить параллельные группы
+
+**Алгоритм:**
+
+1. Взять issues отсортированные по приоритету (queue)
+2. Для каждого определить процесс (de, ll, hf, vi, kt, tg, db)
+3. Группа A: первые N issues которые совместимы по матрице
+4. Группа B: следующие совместимые issues (после зависимостей группы A)
+5. Blocked: issues с открытыми зависимостями
+
+```python
+# Псевдокод
+groups = {'A': [], 'B': [], 'C': []}
+blocked = []
+
+for issue in sorted_by_priority:
+    if has_open_dependency(issue):
+        blocked.append(issue)
+        continue
+
+    process = detect_process(issue)
+
+    # Попробовать добавить в группу A
+    if is_compatible_with_group(process, groups['A']):
+        groups['A'].append(issue)
+    elif is_compatible_with_group(process, groups['B']):
+        groups['B'].append(issue)
+    else:
+        groups['C'].append(issue)
+```
+
+### 7. Обновить лейблы параллельных групп
+
+```bash
+# Убрать старые parallel-* лейблы
+gh issue edit {number} --remove-label "parallel-A,parallel-B,parallel-C,blocked"
+
+# Добавить новый лейбл группы
+gh issue edit {number} --add-label "parallel-{GROUP}"
 ```
 
 ## Вывод
 
 ```markdown
-## Backlog Queue Updated
+## Backlog Analysis Complete
 
-| Queue | Issue | Title | Weight | Reason |
-|-------|-------|-------|--------|--------|
-| 1 | #401 | Fix critical bug | 150 | critical + blocks #402 |
-| 2 | #403 | Add validation | 70 | bug + old (10 days) |
-| 3 | #405 | Update docs | 25 | enhancement |
+### Priority Queue
 
-### Changes Made
-- #401: added `queue-1`
-- #403: changed `queue-5` → `queue-2`
-- #405: added `queue-3`
+| Queue | Issue | Title | Process | Weight | Reason |
+|-------|-------|-------|---------|--------|--------|
+| 1 | #401 | Fix critical bug | de | 150 | critical + blocks #402 |
+| 2 | #403 | Add validation | ll | 70 | bug + old (10 days) |
+| 3 | #405 | Keitaro metrics | kt | 50 | enhancement |
+| 4 | #407 | Update docs | — | 25 | docs |
 
-### Blocked Issues (not in queue)
+### Parallel Groups
+
+🟢 **Group A** (можно запускать СЕЙЧАС):
+| Issue | Title | Process |
+|-------|-------|---------|
+| #401 | Fix critical bug | de |
+| #403 | Add validation | ll |
+| #405 | Keitaro metrics | kt |
+
+🔵 **Group B** (после Group A):
+| Issue | Title | Process | Ждёт |
+|-------|-------|---------|------|
+| #407 | Refactor DE | de | #401 |
+| #409 | Update hypothesis | hf | — |
+
+🔴 **Blocked**:
 - #410: blocked by #401 (open)
+- #412: blocked by #403 (open)
+
+### Labels Updated
+- #401: `queue-1`, `parallel-A`
+- #403: `queue-2`, `parallel-A`
+- #405: `queue-3`, `parallel-A`
+- #407: `queue-4`, `parallel-B`
+- #410: `blocked`
+
+### Recommendation
+Запустить 3 агента параллельно на Group A:
+- Agent 1 → #401 (de)
+- Agent 2 → #403 (ll)
+- Agent 3 → #405 (kt)
 ```
 
 ## Команды после анализа
@@ -119,12 +230,30 @@ gh issue list --state open --json number,title,labels --jq '.[] | select(.labels
 gh issue list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(startswith("queue-"))) | {queue: (.labels | map(.name) | map(select(startswith("queue-")))[0]), number, title}' | jq -s 'sort_by(.queue)'
 ```
 
+## Режим `parallel`
+
+Показать только параллельные группы:
+
+```bash
+echo "=== Group A (start now) ==="
+gh issue list --state open --label "parallel-A" --json number,title,labels --jq '.[] | "#\(.number) \(.title)"'
+
+echo "=== Group B (after A) ==="
+gh issue list --state open --label "parallel-B" --json number,title,labels --jq '.[] | "#\(.number) \(.title)"'
+
+echo "=== Group C (after B) ==="
+gh issue list --state open --label "parallel-C" --json number,title,labels --jq '.[] | "#\(.number) \(.title)"'
+
+echo "=== Blocked ==="
+gh issue list --state open --label "blocked" --json number,title,labels --jq '.[] | "#\(.number) \(.title)"'
+```
+
 ## Режим `reset`
 
-Убрать все queue-* лейблы:
+Убрать все queue-* и parallel-* лейблы:
 
 ```bash
 for issue in $(gh issue list --state open --json number -q '.[].number'); do
-    gh issue edit $issue --remove-label "queue-1,queue-2,queue-3,queue-4,queue-5,queue-6,queue-7,queue-8,queue-9,queue-10" 2>/dev/null || true
+    gh issue edit $issue --remove-label "queue-1,queue-2,queue-3,queue-4,queue-5,queue-6,queue-7,queue-8,queue-9,queue-10,parallel-A,parallel-B,parallel-C,blocked" 2>/dev/null || true
 done
 ```
