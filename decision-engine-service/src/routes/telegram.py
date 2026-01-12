@@ -20,6 +20,7 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
 
 from src.utils.parsing import safe_float
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,6 +30,39 @@ TELEGRAM_BASE_DELAY = 1.0  # seconds
 TELEGRAM_MAX_DELAY = 10.0  # seconds
 
 router = APIRouter()
+
+
+# Webhook error tracking for monitoring
+class WebhookErrorStats:
+    """Simple in-memory counter for webhook errors."""
+
+    def __init__(self):
+        self.total_errors = 0
+        self.last_error: Optional[str] = None
+        self.last_error_time: Optional[datetime] = None
+        self.error_types: dict[str, int] = {}
+
+    def record_error(self, error: Exception) -> None:
+        """Record a webhook error."""
+        self.total_errors += 1
+        self.last_error = str(error)
+        self.last_error_time = datetime.utcnow()
+        error_type = type(error).__name__
+        self.error_types[error_type] = self.error_types.get(error_type, 0) + 1
+
+    def get_stats(self) -> dict:
+        """Get error statistics."""
+        return {
+            "total_errors": self.total_errors,
+            "last_error": self.last_error,
+            "last_error_time": self.last_error_time.isoformat()
+            if self.last_error_time
+            else None,
+            "error_types": self.error_types,
+        }
+
+
+webhook_error_stats = WebhookErrorStats()
 
 
 class TelegramUpdate(BaseModel):
@@ -2610,6 +2644,19 @@ async def handle_user_message(message: TelegramMessage) -> None:
 
 async def process_telegram_update(update: dict) -> None:
     """Process incoming Telegram update."""
+    try:
+        await _process_telegram_update_inner(update)
+    except Exception as e:
+        # Log with full traceback - critical for debugging background task failures
+        logger.exception(
+            f"Failed to process Telegram update {update.get('update_id')}: {e}"
+        )
+        # Track error for monitoring
+        webhook_error_stats.record_error(e)
+
+
+async def _process_telegram_update_inner(update: dict) -> None:
+    """Inner function for processing Telegram updates."""
     # Handle callback queries (inline button presses)
     if "callback_query" in update:
         await handle_callback_query(update)
@@ -2709,8 +2756,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         return {"ok": True}
 
     except Exception as e:
-        logger.error(f"Telegram webhook error: {e}")
-        # Still return 200 to prevent Telegram from retrying
+        # Log with full traceback for debugging
+        logger.exception(f"Telegram webhook error: {e}")
+        # Track error for monitoring (GET /webhook/telegram/errors)
+        webhook_error_stats.record_error(e)
+        # Return 200 to prevent Telegram from retrying endlessly
+        # (Telegram retries on non-2xx, which can cause infinite loops on persistent errors)
         return {"ok": True, "error": str(e)}
 
 
@@ -2748,3 +2799,17 @@ async def telegram_webhook_status():
 
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+@router.get("/webhook/telegram/errors")
+async def telegram_webhook_errors():
+    """
+    Get webhook error statistics for monitoring.
+
+    Returns:
+        - total_errors: Total number of webhook errors since service start
+        - last_error: Last error message
+        - last_error_time: Timestamp of last error
+        - error_types: Breakdown by exception type
+    """
+    return webhook_error_stats.get_stats()
