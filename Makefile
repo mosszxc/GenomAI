@@ -141,3 +141,42 @@ pre-commit-check:
 # Pre-push simulation
 pre-push-check:
 	pre-commit run --all-files --hook-stage pre-push
+
+# ============ Supabase Local ============
+
+supabase-start:
+	supabase start
+
+supabase-stop:
+	supabase stop
+
+supabase-reset:
+	supabase db reset
+
+supabase-status:
+	supabase status
+
+# Full local environment (Supabase + FastAPI)
+local:
+	./scripts/local-full.sh
+
+local-reset:
+	./scripts/local-full.sh --reset
+
+# Environment switching
+env-local:
+	@echo "Run: source scripts/env-switch.sh local"
+
+env-prod:
+	@echo "Run: source scripts/env-switch.sh prod"
+
+env-status:
+	@source scripts/env-switch.sh status
+
+# ============ Release ============
+
+release:
+	./scripts/release.sh
+
+release-dry:
+	./scripts/release.sh --dry-run

@@ -66,3 +66,11 @@ Thumbs.db
 # Git worktrees for parallel task execution
 .worktrees/
 
+# Supabase local
+supabase/.branches
+supabase/.temp
+.supabase/
+
+# Environment files
+.env.prod
+

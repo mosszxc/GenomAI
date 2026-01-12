@@ -72,6 +72,79 @@ curl -X POST http://localhost:54321/api/decision/ -d '...'
 - Python 3.10+ (автоматически используется python3.12 если установлен)
 - `.venv` создаётся автоматически при первом запуске
 
+## Локальный Supabase
+
+### Первичная настройка (один раз)
+```bash
+# 1. Установить Supabase CLI
+brew install supabase/tap/supabase
+
+# 2. Конвертировать миграции
+./scripts/migrate-to-supabase.sh
+
+# 3. Запустить локальный Supabase
+supabase start
+
+# 4. Применить миграции
+supabase db reset
+```
+
+### Ежедневная работа
+```bash
+# Запуск полного окружения (Supabase + FastAPI)
+./scripts/local-full.sh
+
+# Или по отдельности
+supabase start
+./scripts/local-dev.sh
+```
+
+### Переключение окружения
+```bash
+source scripts/env-switch.sh local   # Локальная БД
+source scripts/env-switch.sh prod    # Production БД (осторожно!)
+source scripts/env-switch.sh status  # Текущее окружение
+```
+
+### Доступ
+| Сервис | URL |
+|--------|-----|
+| Supabase Studio | http://localhost:54323 |
+| Supabase API | http://localhost:54321 |
+| FastAPI | http://localhost:10000 |
+| PostgreSQL | postgresql://postgres:postgres@localhost:54322/postgres |
+
+### База данных
+```bash
+supabase db reset           # Сбросить и применить все миграции
+supabase migration new name # Создать новую миграцию
+psql postgresql://postgres:postgres@localhost:54322/postgres  # Прямой доступ
+```
+
+## Git Workflow (develop branch)
+
+### Ветки
+- `main` — production, auto-deploy на Render
+- `develop` — накопление изменений перед релизом
+- `issue-N-*` — feature branches для задач
+
+### Flow
+```
+feature branch → PR → develop → тест локально → release → main → deploy
+```
+
+### Команды
+```bash
+# Работа над задачей (PR идёт в develop)
+./scripts/task-start.sh 123
+# ... работа ...
+./scripts/task-done.sh 123
+
+# Релиз develop → main
+./scripts/release.sh
+./scripts/release.sh --dry-run  # Предпросмотр
+```
+
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `infrastructure/schemas/` `docs/`
 

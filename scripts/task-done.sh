@@ -227,7 +227,7 @@ fi
 if [ "$NO_PR" != "true" ]; then
     echo ""
     echo "Creating PR with auto-merge label..."
-    PR_URL=$(gh pr create --title "Closes #$ISSUE_NUM" --body "Closes #$ISSUE_NUM" --head "$BRANCH_NAME" --label "auto-merge" 2>/dev/null || echo "")
+    PR_URL=$(gh pr create --title "Closes #$ISSUE_NUM" --body "Closes #$ISSUE_NUM" --base develop --head "$BRANCH_NAME" --label "auto-merge" 2>/dev/null || echo "")
 
     if [ -n "$PR_URL" ]; then
         echo "PR created: $PR_URL"
