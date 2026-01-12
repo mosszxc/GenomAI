@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy
+from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
 
 with workflow.unsafe.imports_passed_through():
     from temporal.activities.maintenance import (
@@ -352,8 +352,12 @@ class MaintenanceWorkflow:
                     )
 
                     # Start recovery workflows for stuck creatives
+                    # Use ALLOW_DUPLICATE_FAILED_ONLY to only restart if previous failed
                     for stuck in stuck_creatives:
                         try:
+                            # Use same ID as original workflow to avoid duplicates
+                            # ALLOW_DUPLICATE_FAILED_ONLY ensures we only restart
+                            # if previous workflow FAILED/TERMINATED, not if still running
                             await workflow.start_child_workflow(
                                 CreativePipelineWorkflow.run,
                                 CreativeInput(
@@ -361,19 +365,40 @@ class MaintenanceWorkflow:
                                     buyer_id=stuck.get("buyer_id"),
                                     source_type="recovery",
                                 ),
-                                id=f"recovery-{stuck['creative_id'][:8]}-{workflow.now().timestamp():.0f}",
+                                id=f"creative-pipeline-{stuck['creative_id']}",
                                 task_queue="creative-pipeline",
+                                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
                             )
                             result.stuck_creatives_recovered += 1
                             workflow.logger.info(
                                 f"Started recovery for creative {stuck['creative_id'][:8]} "
                                 f"(stuck_reason={stuck['stuck_reason']})"
                             )
+                        except workflow.ChildWorkflowError as e:
+                            # Check if workflow already running (expected with ALLOW_DUPLICATE_FAILED_ONLY)
+                            if "already started" in str(e).lower():
+                                workflow.logger.info(
+                                    f"Creative {stuck['creative_id'][:8]} workflow already running, skipping recovery"
+                                )
+                            else:
+                                result.stuck_creatives_failed += 1
+                                workflow.logger.error(
+                                    f"Failed to recover creative {stuck['creative_id'][:8]}: {e}"
+                                )
                         except Exception as e:
-                            result.stuck_creatives_failed += 1
-                            workflow.logger.error(
-                                f"Failed to recover creative {stuck['creative_id'][:8]}: {e}"
-                            )
+                            # WorkflowAlreadyStartedError might also be raised
+                            if (
+                                "already started" in str(e).lower()
+                                or "already running" in str(e).lower()
+                            ):
+                                workflow.logger.info(
+                                    f"Creative {stuck['creative_id'][:8]} workflow already running, skipping recovery"
+                                )
+                            else:
+                                result.stuck_creatives_failed += 1
+                                workflow.logger.error(
+                                    f"Failed to recover creative {stuck['creative_id'][:8]}: {e}"
+                                )
 
                     workflow.logger.info(
                         f"Recovery complete: {result.stuck_creatives_recovered} recovered, "
