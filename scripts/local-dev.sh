@@ -3,6 +3,28 @@
 
 set -e
 
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+
+# Загрузить локальное окружение если есть
+if [ -f "$PROJECT_ROOT/.env.local" ]; then
+    set -a
+    source "$PROJECT_ROOT/.env.local"
+    set +a
+    echo "Loaded .env.local"
+fi
+
+# Проверить что Supabase запущен (если используем локальный)
+if [[ "$SUPABASE_URL" == *"127.0.0.1"* ]] || [[ "$SUPABASE_URL" == *"localhost"* ]]; then
+    if ! curl -s "http://127.0.0.1:54321/rest/v1/" > /dev/null 2>&1; then
+        echo ""
+        echo "WARNING: Local Supabase not running!"
+        echo "Start it with: cd $PROJECT_ROOT && supabase start"
+        echo ""
+        echo "Continuing anyway (server may have connection errors)..."
+        echo ""
+    fi
+fi
+
 PID_DIR="/tmp/genomai-dev"
 mkdir -p "$PID_DIR"
 

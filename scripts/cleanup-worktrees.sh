@@ -57,7 +57,7 @@ echo ""
 git fetch --prune --quiet
 
 # Get list of merged branches (excluding main)
-MERGED=$(git branch --merged main | grep -v '^\*' | grep -v 'main' | sed 's/^[+ ]*//' || true)
+MERGED=$(git branch --merged main | grep -v '^\*' | grep -v 'main' | grep -v 'develop' | sed 's/^[+ ]*//' || true)
 
 CLEANED=0
 PRESERVED=0
