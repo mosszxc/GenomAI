@@ -17,16 +17,5 @@
 ## Test
 
 ```bash
-cd decision-engine-service && python3 -c "
-from temporal.schedules import SCHEDULES
-errors = []
-for name, config in SCHEDULES.items():
-    timeout = config.get('execution_timeout')
-    if not timeout:
-        errors.append(f'{name}: missing execution_timeout')
-if errors:
-    print('FAIL:', errors)
-    exit(1)
-print('OK: all schedules have execution_timeout')
-"
+cd decision-engine-service && python3 -c "from temporal.schedules import SCHEDULES; missing=[k for k,v in SCHEDULES.items() if not v.get('execution_timeout')]; exit(1) if missing else print('OK: all schedules have execution_timeout')"
 ```
