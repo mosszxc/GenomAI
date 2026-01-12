@@ -2,22 +2,19 @@
 
 ## Что изменено
 
-- Увеличен `heartbeat_timeout` для transcribe_audio activity с 60 секунд до 5 минут
-- Файл: `decision-engine-service/temporal/workflows/creative_pipeline.py:166`
+- Увеличен `heartbeat_timeout` с 60 секунд до 5 минут в `creative_pipeline.py:166`
+- Activity уже отправляет heartbeat каждые 30 секунд при polling AssemblyAI
+- Увеличенный timeout даёт запас на сетевые задержки и медленные ответы API
 
-## Причина
+## Почему 5 минут
 
-AssemblyAI может обрабатывать аудио 5-15 минут. При heartbeat_timeout=60s:
-1. Activity отправляет heartbeat каждые 30 сек (POLL_INTERVAL)
-2. Если AssemblyAI API тормозит 2+ минуты → heartbeat timeout
-3. Temporal убивает activity → retry → exhausted retries
-
-## Решение
-
-`heartbeat_timeout=timedelta(minutes=5)` позволяет до 10 polling cycles (5 мин / 30 сек) без heartbeat timeout.
+- AssemblyAI может обрабатывать 2-10 минут
+- Poll interval = 30 сек, HTTP timeout = 30 сек
+- При задержках heartbeat мог не успевать за 60 сек
+- 5 минут даёт достаточный запас без риска зависания
 
 ## Test
 
 ```bash
-grep -q "heartbeat_timeout=timedelta(minutes=5)" decision-engine-service/temporal/workflows/creative_pipeline.py && echo "OK: heartbeat_timeout=5min"
+grep -q "heartbeat_timeout=timedelta(minutes=5)" .worktrees/issue-477-arch-high-heartbeat-timeout-60-сек-слишк/decision-engine-service/temporal/workflows/creative_pipeline.py && echo "OK: heartbeat_timeout=5min"
 ```
