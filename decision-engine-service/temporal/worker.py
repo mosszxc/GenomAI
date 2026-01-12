@@ -45,6 +45,10 @@ from temporal.workflows.historical_import import (
 )
 from temporal.workflows.knowledge_ingestion import KnowledgeIngestionWorkflow
 from temporal.workflows.knowledge_application import KnowledgeApplicationWorkflow
+from temporal.workflows.premise_extraction import (
+    PremiseExtractionWorkflow,
+    BatchPremiseExtractionWorkflow,
+)
 from temporal.workflows.agent_supervisor import AgentSupervisorWorkflow
 from temporal.workflows.modular_hypothesis import ModularHypothesisWorkflow
 
@@ -199,6 +203,14 @@ from temporal.activities.hygiene_health import (
 from temporal.activities.knowledge_extraction import (
     extract_knowledge_from_transcript,
     validate_extraction,
+)
+
+# Import activities - Premise Extraction
+from temporal.activities.premise_extraction import (
+    load_creative_data,
+    extract_premises_via_llm,
+    upsert_premise_and_learning,
+    emit_premise_extraction_event,
 )
 from temporal.activities.knowledge_db import (
     save_knowledge_source,
@@ -475,6 +487,8 @@ async def run_all_workers():
         workflows=[
             KnowledgeIngestionWorkflow,
             KnowledgeApplicationWorkflow,
+            PremiseExtractionWorkflow,
+            BatchPremiseExtractionWorkflow,
         ],
         activities=[
             # Knowledge extraction (LLM)
@@ -492,6 +506,11 @@ async def run_all_workers():
             apply_process_rule,
             apply_component_weight,
             apply_creative_attribute,
+            # Premise extraction activities
+            load_creative_data,
+            extract_premises_via_llm,
+            upsert_premise_and_learning,
+            emit_premise_extraction_event,
             # Telegram (for notifications)
             send_telegram_message,
         ],
