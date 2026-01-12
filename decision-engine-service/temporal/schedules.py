@@ -54,6 +54,9 @@ SCHEDULES = {
         "args": [KeitaroPollerInput(interval="yesterday", create_snapshots=True)],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=1),
+        "execution_timeout": timedelta(
+            minutes=30
+        ),  # Issue #553: prevent unbounded execution
         "description": "Polls Keitaro hourly, then triggers metrics-processor → learning-loop chain",
     },
     # NOTE: metrics-processor and learning-loop removed from schedules.
@@ -64,6 +67,7 @@ SCHEDULES = {
         "args": [DailyRecommendationInput(skip_existing=True, max_recommendations=0)],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "cron": "0 9 * * *",  # Daily at 09:00 UTC
+        "execution_timeout": timedelta(minutes=30),
         "description": "Generates and delivers daily recommendations at 09:00 UTC",
     },
     "maintenance": {
@@ -78,6 +82,7 @@ SCHEDULES = {
         ],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=6),
+        "execution_timeout": timedelta(hours=1),
         "description": "Maintenance + cleanup every 6 hours",
     },
     "health-check": {
@@ -93,6 +98,7 @@ SCHEDULES = {
         ],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=3),
+        "execution_timeout": timedelta(minutes=15),
         "description": "Health monitoring every 3 hours",
     },
 }
@@ -119,6 +125,7 @@ async def create_schedule(client: Client, schedule_id: str, config: dict) -> boo
                     *config["args"],
                     id=f"{schedule_id}-{{{{.ScheduledTime}}}}",
                     task_queue=config["task_queue"],
+                    execution_timeout=config.get("execution_timeout"),  # Issue #553
                 ),
                 spec=spec,
                 state=ScheduleState(note=config["description"]),
