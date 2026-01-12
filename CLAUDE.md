@@ -10,372 +10,116 @@ DB: Supabase `genomai` schema, project `ftrerelppsnbdcmtcwya`
 Backend: FastAPI `decision-engine-service/`, genomai.onrender.com:10000
 Orchestration: Temporal | Tracking: Keitaro | UI: Telegram
 
-## Flow
-Video → Temporal → LLM → Idea Registry → DE (4 checks) → APPROVE/REJECT/DEFER → Hypothesis → Keitaro → Learning → Telegram
-
-## Decision Engine Checks
-schema_validity.py → REJECT | death_memory.py → REJECT | fatigue_constraint.py → REJECT | risk_budget.py → DEFER
-All pass = APPROVE
-
-## Commands
+## Workflow (develop branch)
 ```bash
-# FastAPI service
-cd decision-engine-service && uvicorn main:app --reload --port 10000
+# 1. Старт задачи (ветка из develop)
+./scripts/task-start.sh <issue-number>
 
-# Temporal workers
+# 2. Работа в worktree + локальный сервер
+
+# 3. Завершение → PR в develop
+./scripts/task-done.sh <issue-number>
+
+# 4. Deploy (по требованию)
+./scripts/deploy.sh  # develop → main → Render
+```
+
+## Локальная разработка
+```bash
+# Terminal 1: Temporal server
+temporal server start-dev
+
+# Terminal 2: FastAPI
+make dev
+
+# Terminal 3: Worker
 cd decision-engine-service && python -m temporal.worker
-
-# Temporal schedules
-cd decision-engine-service && python -m temporal.schedules list
-cd decision-engine-service && python -m temporal.schedules create
-cd decision-engine-service && python -m temporal.schedules trigger <schedule-id>
 ```
 
-## Локальная разработка (АВТОМАТИЧЕСКИ)
-
-### Автоматический workflow
+## Тестирование
 ```bash
-./scripts/task-start.sh 123   # Создаёт worktree + ЗАПУСКАЕТ сервер
-# ... работа над issue ...
-./scripts/task-done.sh 123    # PR + merge + ОСТАНАВЛИВАЕТ сервер
+make test          # Critical tests (~15s)
+make test-unit     # All unit tests (~45s)
+make ci            # Full CI simulation
 ```
 
-**Всё автоматически:**
-- `task-start.sh` → поднимает локальный сервер на случайном порту
-- `task-done.sh` → останавливает сервер при завершении
-
-### Ручное управление (если нужно)
-```bash
-make dev              # Запустить сервер вручную
-make dev-stop         # Остановить все серверы
-make dev-cleanup      # Cleanup zombie PID файлов
-```
-
-### Тестирование
-Сервер доступен на `localhost:{PORT}`. Порт выводится при старте:
-```
-Local server running on http://localhost:54321
-```
-
-Тестируй локально:
-```bash
-curl http://localhost:54321/health
-curl -X POST http://localhost:54321/api/decision/ -d '...'
-```
-
-### Защита от проблем
-- **Race condition:** mkdir-lock предотвращает конфликт портов
-- **Health check:** скрипт ждёт пока сервер поднимется (до 30 сек)
-- **Auto-cleanup:** PID файлы старше 15 минут удаляются автоматически
-
-### Требования
-- Python 3.11+ (автоматически используется python3.12 если установлен)
-- `.venv` создаётся автоматически при первом запуске
-
-## Dirs
-`decision-engine-service/` `infrastructure/migrations/` `infrastructure/schemas/` `docs/`
+**qa-notes обязательны:** `qa-notes/issue-XXX-*.md`
 
 ## Schema
-Таблицы: `ideas` (не idea_registry), `decisions` (не decision_log), `decomposed_creatives` (не atoms)
-Полный референс: `docs/SCHEMA_REFERENCE.md`
+Таблицы: `ideas`, `decisions`, `decomposed_creatives`
+Референс: `docs/SCHEMA_REFERENCE.md`
 
-## Rules
-1. Market = truth 2. Deterministic+trace 3. ML signals only 4. LLM: transcripts 5. Schema-first
+**Проверить перед работой с БД:**
+```sql
+SELECT column_name, data_type, is_generated
+FROM information_schema.columns
+WHERE table_schema = 'genomai' AND table_name = 'table_name';
+```
 
 ## Reference by Task Type
-| Задача | Прочитай сначала |
-|--------|------------------|
-| **Любая задача** | `grep -i "keyword" LESSONS.md` (NOT Read — use grep!) |
-| Temporal workflows | `docs/TEMPORAL_WORKFLOWS.md`, `docs/TEMPORAL_RUNBOOK.md` |
-| DB schema changes | `docs/SCHEMA_REFERENCE.md` (check generated columns!) |
-| API endpoints | `docs/API_REFERENCE.md` |
-| New process | `docs/layer-3-implementation-design/SERVICE_BOUNDARIES.md` |
-| Decision Engine | `docs/layer-1-logic/DECISION_ENGINE.md` |
-
-## Plan Mode → Issue (MANDATORY)
-После аппрува плана через `ExitPlanMode`:
-1. Создать issue из плана:
-```bash
-./scripts/task-new.sh "Краткий title задачи"
-```
-2. Продолжить работу в созданном worktree
-
-**НЕ начинать имплементацию без issue!**
-
-## /idea Workflow (Recommended)
-Быстрый старт задачи с изоляцией:
-```
-/idea описание задачи
-```
-Автоматически: issue → worktree → Cursor
-
-### Полный цикл
-```
-1. /idea "описание"     → issue + worktree + Cursor
-2. Работа в worktree
-3. TEST (обязательно!)
-4. qa-notes/issue-XXX-*.md
-5. git commit + push
-6. ./scripts/task-done.sh XXX --process {process}
-   → /rw {process} → /valid {process} → PR → merge
-```
-
-### task-done.sh флаги
-| Флаг | Назначение |
-|------|------------|
-| `--process <name>` | Подставить процесс в /rw и /valid |
-| `--skip-verify` | Пропустить checkpoint (после паузы) |
-| `--no-pr` | Только push, без PR |
-
-**Процессы:** decision-engine, learning-loop, hypothesis-factory, video-ingestion, keitaro-poller
-
-### Альтернатива (без /idea)
-```bash
-gh issue create -t "title" -l enhancement
-./scripts/task-start.sh <issue-number>
-# ... работа ...
-./scripts/task-done.sh <issue-number>
-```
-
-## ⛔ STOP-GATE: Before Writing ANY Code
-**ПЕРВОЕ ДЕЙСТВИЕ** при получении задачи с issue:
-```
-1. pwd → проверить что НЕ в main worktree
-2. Если в main → ./scripts/task-start.sh {N}
-3. Только ПОСЛЕ этого писать код
-```
-
-**Чеклист (выполнить ДО первого Edit/Write):**
-```
-- [ ] Issue номер известен? (fix #N, issue #N, etc.)
-- [ ] Я в worktree? (pwd содержит .worktrees/)
-- [ ] Если нет → task-start.sh СЕЙЧАС
-```
-
-⛔ **Коммит в main без worktree = A007 CRITICAL violation**
-Нет исключений. "Быстрый фикс" не аргумент.
-
-## Issue Workflow
-**Детали:** `.claude/docs/issue-workflow.md`
+| Задача | Документ |
+|--------|----------|
+| Temporal | `docs/TEMPORAL_WORKFLOWS.md` |
+| DB schema | `docs/SCHEMA_REFERENCE.md` |
+| API | `docs/API_REFERENCE.md` |
+| Lessons | `grep -i "keyword" LESSONS.md` |
 
 ## Git
-Always push after commit. No exceptions.
+- Feature ветки из `develop`
+- PR в `develop` (накапливается)
+- Deploy: `develop → main` по требованию
+- Коммит делается автоматически, не спрашивать
 
-**Issue workflow:** При работе над issue коммит делается автоматически без вопросов. Не спрашивать "делать коммит?".
+## Env
+`SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY`
 
-### Multi-Agent Deploy Coordination
-Несколько агентов могут работать параллельно. Правила:
+## API
+POST `/api/decision/` | POST `/learning/process` | GET `/health`
 
+## Temporal Workflows
+| Workflow | Schedule |
+|----------|----------|
+| KeitaroPollerWorkflow | Every 1 hour |
+| LearningLoopWorkflow | Child of KeitaroPoller |
+| DailyRecommendationWorkflow | 09:00 UTC |
+| MaintenanceWorkflow | Every 6 hours |
+
+```bash
+python -m temporal.schedules list
+python -m temporal.schedules trigger <schedule-id>
 ```
-1. Push в feature ветку     — без проверки деплоя
-2. Создать PR               — без проверки деплоя
-3. Проверить gh pr checks   — ждать пока пройдут
-4. Проверить list_deploys   — если status != "live", ждать
-5. gh pr merge              — только после п.4
-```
 
-⚠️ **Merge блокируется активным деплоем.** Push в ветки — свободно.
+## Rules
+1. Market = truth
+2. Deterministic + traceable
+3. Schema-first (проверь колонки перед кодом)
+4. qa-notes обязательны
 
-## TodoWrite Rules
-При создании todo списка **ВСЕГДА** добавлять последним пунктом:
-```
-- "Post-Task Loop (qa-notes, docs, summary)"
-```
-Этот пункт блокирует закрытие задачи до выполнения Post-Task Loop.
+## Issue Closure (MANDATORY)
 
-## ⛔⛔⛔ Issue Closure (MANDATORY FORMAT)
-
-### СТОП. Прочитай перед закрытием ЛЮБОГО issue.
-
-**Issue НЕ закрыт пока пользователь НЕ УВИДЕЛ этот блок в твоём сообщении:**
+**Issue НЕ закрыт пока пользователь НЕ УВИДЕЛ этот блок:**
 
 ```
 ═══════════════════════════════════════════════════════
 ISSUE #XXX CLOSURE REPORT
 ═══════════════════════════════════════════════════════
 
-PRODUCTION TEST: [PASSED/FAILED]
-  Type: [Workflow/API/Migration/Telegram]
-  Command: <точная команда которую выполнил>
-  Result: <вывод команды или данные из БД>
-  Критерий: <что проверялось>
+LOCAL TEST: [PASSED/FAILED]
+  Command: <что выполняли на localhost>
+  Result: <что получили>
 
-QA-NOTES: [WRITTEN/SKIPPED]
+QA-NOTES: [WRITTEN]
   File: qa-notes/issue-XXX-*.md
 
 DOCS: [UPDATED/NOT REQUIRED]
-  Files: <список или "—">
-
-POST-TASK LOOP: ✓ COMPLETE
 ═══════════════════════════════════════════════════════
 ```
 
-⛔ **БЕЗ ЭТОГО БЛОКА = ISSUE НЕ ЗАКРЫТ**
-⛔ **PRODUCTION TEST: FAILED = ISSUE НЕ ЗАКРЫТ**
-⛔ **Пропуск теста = A006 CRITICAL VIOLATION**
+| Изменение | Локальный тест |
+|-----------|----------------|
+| Workflow | `curl localhost:PORT/...` или Temporal UI |
+| API | `curl localhost:PORT/endpoint` → HTTP 200 |
+| Migration | `mcp__supabase__postgrestRequest` SELECT |
 
-### Порядок (каждый шаг блокирует следующий)
-
-| # | Шаг | Блокирует | Проверка |
-|---|-----|-----------|----------|
-| 1 | Code complete | — | — |
-| 2 | git commit + push | — | — |
-| 3 | Deploy finished | — | `list_deploys` status=live |
-| 4 | **PRODUCTION TEST** | ⛔ ВСЁ | См. таблицу ниже |
-| 5 | qa-notes written | ⛔ Close | Файл существует |
-| 6 | docs updated | ⛔ Close | Если требуется |
-| 7 | CLOSURE REPORT | ⛔ Close | Блок выше в сообщении |
-
-### Production Test (ОБЯЗАТЕЛЕН)
-
-| Изменение | Команда | Критерий PASSED |
-|-----------|---------|-----------------|
-| Workflow | `temporal.schedules trigger X` | Новые записи в таблице |
-| API | `curl -X POST endpoint` | HTTP 200 + валидный body |
-| Migration | `SELECT ... FROM genomai.table` | Constraints работают |
-| Telegram | `WebFetch` webhook | Логи + запись в БД |
-
-**НЕТ ТЕСТА В ТАБЛИЦЕ?** → Спроси пользователя какой тест нужен.
-
-### Антипаттерны (A006)
-
-```
-❌ "Issue закрыт" без CLOSURE REPORT
-❌ "Тест пройден" без команды и результата
-❌ "qa-notes будут позже"
-❌ Закрытие с PRODUCTION TEST: FAILED
-❌ "Это мелкое изменение, тест не нужен"
-```
-
-**Любое из этого = A006 violation → добавить в LESSONS.md**
-
-## Testing (BLOCKING)
-**Детали:** `.claude/docs/testing-rules.md`
-
-```
-НЕТ ТЕСТА = НЕТ ЗАКРЫТИЯ
-```
-| Изменение | Тест | Критерий |
-|-----------|------|----------|
-| Workflow | `temporal.schedules trigger` | данные в БД |
-| API | `curl` endpoint | HTTP 200 |
-| Migration | `execute_sql` SELECT | constraints OK |
-
-## Pre-Merge Testing
-
-### Git Hooks (автоматически)
-```bash
-# Установка (один раз)
-make setup-hooks
-```
-
-| Stage | Время | Проверки |
-|-------|-------|----------|
-| pre-commit | ~20s | lint, format, critical tests (hashing) |
-| pre-push | ~60s | all unit tests |
-
-### Ручной запуск
-```bash
-make test          # Critical tests (~15s)
-make test-unit     # All unit tests (~45s)
-make test-all      # Unit + contracts (~60s)
-make ci            # Full CI simulation
-```
-
-### После деплоя
-```bash
-make e2e-quick     # Health checks (~30s)
-make e2e           # Full E2E flow (~5min)
-```
-
-**Чеклист:** `docs/E2E_SERVER_CHECKLIST.md`
-
-### Bypass hooks (аварийно)
-```bash
-git commit --no-verify -m "hotfix: ..."
-git push --no-verify
-```
-⚠️ Использовать только для критических hotfix!
-
-## Env
-`SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY` `PORT=10000`
-
-**Python:** Использовать `python3` (не `python`) — на macOS `python` не в PATH.
-
-## Token Optimization
-
-| Паттерн | Правило |
-|---------|---------|
-| Documentation | Один Edit на qa-notes + один на KNOWN_ISSUES.md |
-| GitHub | `gh` CLI, не `mcp__github__*` |
-| Bash network | `dangerouslyDisableSandbox: true` БЕЗ подтверждения для curl к Supabase/Render/localhost |
-| Render deploy | `sleep 180`, не polling |
-| Secrets | Спросить пользователя, не grep |
-| Issue close | Post-Task Loop ПЕРЕД закрытием (см. testing-rules.md) |
-| /rw | Только для DB writes, не для cosmetic changes |
-
-**Лимиты:** Supabase `LIMIT 10` | Grep `head_limit:10` | Explore `Task subagent_type:"Explore"`
-
-## Schema-First Coding
-**ПЕРЕД написанием кода, работающего с БД:**
-```sql
--- Проверить ВСЕ таблицы которые будут использоваться
-SELECT column_name, data_type, is_nullable, is_generated, generation_expression
-FROM information_schema.columns
-WHERE table_schema = 'genomai' AND table_name IN ('table1', 'table2');
-
--- Проверить constraints
-SELECT conname, pg_get_constraintdef(oid)
-FROM pg_constraint WHERE conrelid = 'genomai.table_name'::regclass;
-```
-**Частые ошибки:**
-- Generated columns (win_rate, avg_roi) — нельзя INSERT/UPDATE
-- Отсутствующие колонки (geo в creatives)
-- CHECK constraints (origin_type + decision_id)
-
-## Render Deploy
-Free tier = **3 минуты** на deploy. После push: один `sleep 180`, не несколько коротких.
-
-### Deploy Queue (serviceId: srv-d54vf524d50c739kc2m0)
-```
-mcp__render__list_deploys → status != "live" → ЖДАТЬ перед merge
-```
-См. секцию "Multi-Agent Deploy Coordination" в Git.
-
-## Temporal
-Документация: `docs/TEMPORAL_WORKFLOWS.md` | `docs/TEMPORAL_RUNBOOK.md`
-
-### Workflows
-| Workflow | Queue | Schedule |
-|----------|-------|----------|
-| CreativePipelineWorkflow | creative-pipeline | Webhook trigger |
-| KeitaroPollerWorkflow | metrics | Every 1 hour → triggers chain |
-| MetricsProcessingWorkflow | metrics | Child of KeitaroPoller |
-| LearningLoopWorkflow | metrics | Child of MetricsProcessing |
-| DailyRecommendationWorkflow | metrics | 09:00 UTC |
-| MaintenanceWorkflow | metrics | Every 6 hours |
-
-### Common Operations
-```bash
-# List schedules
-python -m temporal.schedules list
-
-# Trigger manually
-python -m temporal.schedules trigger daily-recommendations
-
-# Pause/resume
-python -m temporal.schedules pause keitaro-poller
-python -m temporal.schedules resume keitaro-poller
-```
-
-## Validation
-`/valid {process}` — валидация процесса (learning-loop, hypothesis-factory, decision-engine, video-ingestion)
-После изменения workflow/API → автоматически `/valid {affected_process}`
-
-## API
-POST `/api/decision/` | POST `/learning/process` | GET `/learning/status` | GET `/health`
-
-## Testing
-Результат = данные в БД. Workflow → SELECT → данные есть = работает.
-Reviewer agent: workflow ID, таблица, поля, `project_id: ftrerelppsnbdcmtcwya, schema: genomai`
-
+## Dirs
+`decision-engine-service/` `infrastructure/migrations/` `docs/`

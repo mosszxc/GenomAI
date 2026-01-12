@@ -1,7 +1,7 @@
 # Makefile for GenomAI
 # Usage: make <target>
 
-.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-ready issues-critical issues-by-priority
+.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-ready issues-critical issues-by-priority dev dev-stop
 
 # Default target
 help:
@@ -11,6 +11,10 @@ help:
 	@echo "Setup:"
 	@echo "  make install        - Install dependencies"
 	@echo "  make setup-hooks    - Install git hooks"
+	@echo ""
+	@echo "Local Dev:"
+	@echo "  make dev            - Start local FastAPI server"
+	@echo "  make dev-stop       - Stop all local servers"
 	@echo ""
 	@echo "Linting:"
 	@echo "  make lint           - Run ruff check with auto-fix"
@@ -52,6 +56,19 @@ setup-hooks:
 	@echo "Git hooks installed successfully!"
 	@echo "pre-commit: lint + format + critical tests"
 	@echo "pre-push: all unit tests"
+
+# ============ Local Dev ============
+
+dev:
+	@./scripts/local-dev.sh
+
+dev-stop:
+	@for pf in /tmp/genomai-dev/server-*.pid; do \
+		[ -f "$$pf" ] || continue; \
+		pid=$$(cat "$$pf"); \
+		kill "$$pid" 2>/dev/null && echo "Stopped server (PID: $$pid)" || true; \
+		rm -f "$$pf"; \
+	done
 
 # ============ Linting ============
 
