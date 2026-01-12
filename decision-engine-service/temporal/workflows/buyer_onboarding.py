@@ -741,14 +741,18 @@ class BuyerOnboardingWorkflow:
 
     @workflow.query
     def get_progress(self) -> dict:
-        """Query workflow progress details."""
+        """Query workflow progress details.
+
+        Returns a snapshot with copied lists to prevent race conditions
+        and accidental mutation of internal state.
+        """
         return {
             "state": self._state.value,
             "telegram_id": self._telegram_id,
             "buyer_id": self._buyer_id,
             "name": self._name,
-            "geos": self._geos,
-            "verticals": self._verticals,
+            "geos": list(self._geos),
+            "verticals": list(self._verticals),
             "keitaro_source": self._keitaro_source,
             "campaigns_count": self._campaigns_count,
             "error": self._error,
