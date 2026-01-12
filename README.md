@@ -1,535 +1,262 @@
-    # 🧬 GenomAI
+# GenomAI
 
-> Autonomous Creative Decision System — полностью автономная система принятия креативных решений в нестабильной рыночной среде
+> Autonomous Creative Decision System v2.0
 
-## 📖 О проекте
+## О проекте
 
-**GenomAI** — это автономная система принятия креативных решений, предназначенная для:
-- **Обнаружения устойчивых связок** креативных переменных
-- **Эволюции через контролируемые мутации** существующих паттернов
-- **Управления выгоранием аудитории** на уровне кластеров
-- **Системного повышения hitrate** решений во времени
+**GenomAI** — автономная система принятия креативных решений для нестабильной рыночной среды.
 
-GenomAI функционирует как внешний стратегический мозг, где:
-- рынок является единственным источником истины
-- решения оцениваются по последствиям
-- обучение происходит на результатах собственных действий
+- Обнаружение устойчивых связок креативных переменных
+- Эволюция через контролируемые мутации паттернов
+- Управление выгоранием аудитории на уровне кластеров
+- Системное повышение hitrate решений
 
-### 🎯 Основные принципы
-
-1. **Market is the only ground truth**
-2. **Survival > short-term revenue**
-3. **Decision → Outcome → Learning**
-4. **Selection bias признаётся и не «лечится»**
-5. **Выгорание — сигнал, а не ошибка**
-6. **Автоматизация предпочтительнее ручных решений**
-7. **Человек — interrupt, а не участник цикла**
-
-### 🧠 Архитектура принятия решений
-
-```
-External Signals (Market / Spy / Context)
-            ↓
-ML Advisory Layer
-(similarity, novelty, fatigue signals)
-            ↓
-ML → Bucket Conversion
-(float → discrete buckets)
-            ↓
-Decision Engine
-(rules, policies, constraints)
-            ↓
-Hypothesis Factory
-            ↓
-Market Execution
-            ↓
-Outcome Logging
-            ↓
-Learning Loop
-            ↓
-Decision Engine
-```
-
-**ML никогда не bypass'ит Decision Engine.**  
-**Decision Engine работает ТОЛЬКО с bucket-значениями, не с raw float.**
+**Принцип:** Рынок — единственный источник истины. Решения оцениваются по последствиям. Обучение на результатах собственных действий.
 
 ---
 
-## 📚 Документация
+## Архитектура
 
-### 🟥 Layer 0 — Doctrine / Конституция системы
+```
+Video → Temporal → LLM → Idea Registry → Decision Engine → Hypothesis → Keitaro → Learning
+```
 
-**Высший приоритет.** Фундаментальные принципы, правила и политики системы.
+### Decision Engine (4 checks)
+```
+schema_validity.py → REJECT
+death_memory.py    → REJECT
+fatigue_constraint → REJECT
+risk_budget.py     → DEFER
+All pass           → APPROVE
+```
 
-📘 **[Concept Document](./docs/layer-0-doctrine/CONCEPT.md)** — Концептуальный документ проекта (v1.0):
-- Краткое определение системы
-- Цели проекта (продуктовая, операционная, стратегическая)
-- Базовые принципы и инварианты
-- Доменная модель и основные сущности
-- Язык системы (Canonical Schema)
-- 14 процессов системы (сквозной жизненный цикл)
-- Память и обучение
-- Роль ИИ и автоматизации
-- Типичные риски и ловушки
-- **Начните с этого документа для общего понимания**
+### Temporal Workflows
 
-🔒 **[Architecture Lock / Doctrine](./docs/layer-0-doctrine/ARCHITECTURE_LOCK.md)** — Высший архитектурный артефакт проекта (v1.0):
-- Архитектурные инварианты и запреты
-- Роли компонентов системы (Decision Engine, ML, LLM, n8n, Human)
-- **Критическое правило дискретизации ML-сигналов:** Decision Engine получает ТОЛЬКО buckets, не raw float
-- Non-negotiable правила и границы автоматизации
-- **Этот документ выше PRD, задач и спринтов**
-
-📋 **[Development Order](./docs/DEVELOPMENT_ORDER.md)** — Строгий порядок разработки системы (engineering roadmap):
-- 18 фаз разработки от архитектурного lock до human override layer
-- Правило: любой этап нельзя начинать, если предыдущий не зафиксирован документально
-
-📚 **[Domain Model / Glossary](./docs/layer-1-logic/DOMAIN_MODEL.md)** — Единый словарь предметной области (v1.0):
-- Определение ключевых сущностей (Idea, Hypothesis, Creative, Outcome, Decision и др.)
-- Запрещённые смешения понятий
-- **Если термин не определён здесь — он не используется в системе**
-
-### 🟧 Layer 1 — System Design / Logical Architecture
-
-**Логическая архитектура системы.** Спецификации компонентов, схемы данных, контракты.
-
-📐 **[Canonical Schema Specification](./docs/layer-1-logic/CANONICAL_SCHEMA.md)** — Каноническая схема данных (v1.2):
-- Строгая типизация всех сущностей (Idea, Hypothesis, Outcome, Decision)
-- Enum определения для всех полей
-- State Transition (state_before → state_after) — core-поля Idea
-- Cultural Context (context_frame) — core-поле Idea
-- Narrative Tension (tension_type) — derived/advisory signal
-- ML signal buckets (novelty_bucket, similarity_bucket, confidence_bucket) — дискретизация для Decision Engine
-- Historical cluster tracking (active_cluster_id, cluster_at_decision, cluster_id_at_outcome)
-- Policy versioning (policy_version в Decision)
-- Правила валидации и версионирования
-- **Если поля нет в schema — его не существует**
-
-⚙️ **[Decision Engine Specification](./docs/layer-1-logic/DECISION_ENGINE.md)** — Детерминированное ядро системы (v1.1):
-- Единственный компонент, принимающий решения (APPROVE/REJECT/DEFER)
-- Фиксированный порядок проверок (9 checks)
-- **ML signal discretization:** работает ТОЛЬКО с bucket-значениями, не с raw float
-- Использование State Transition, Narrative Tension, Cultural Context
-- Обязательный decision trace с минимальным explainability contract (6–7 полей)
-- **Decision Engine использует только значения полей, никогда не использует интерпретации/объяснения**
-- **Decision Engine — закон системы**
-
-🔒 **[Data Contracts Specification](./docs/layer-1-logic/DATA_CONTRACTS.md)** — Контракты входных данных (v1.0):
-- Контракты для всех источников данных (performance, spy, LLM, human override)
-- Правила валидации и отклонения невалидных данных
-- Запрет silent correction и coercion
-- **Data contracts — иммунная система GenomAI**
-
-🔄 **[Data Flow Specification](./docs/layer-1-logic/DATA_FLOW.md)** — Канонический поток данных и жизненный цикл объектов (v1.0):
-- Логический путь данных от входа до обучения
-- Порядок обработки: Input → Validation → Decomposition → Idea Registration → Decision Engine → Hypothesis Generation → Execution → Outcome Ingestion → Learning Loop
-- Временные гарантии и fail-safe стратегии
-- **Ни один объект не может появиться без причины, ни одно обучение без решения**
-
-🔁 **[Entity Lifecycle Specification](./docs/layer-1-logic/ENTITY_LIFECYCLE.md)** — Жизненный цикл и владение сущностями (v1.0):
-- Правила создания, изменения и закрытия всех сущностей (Creative, Idea, Hypothesis, Decision, Outcome, Cluster, Memory)
-- Ownership Matrix — кто владеет каждой сущностью
-- Запрещённые операции и cross-entity гарантии
-- **Сущности отражают реальность системы, а не желания человека. Система не переписывает историю**
-
-🏗️ **[System Architecture Specification](./docs/layer-1-logic/SYSTEM_ARCHITECTURE.md)** — Логическая архитектура системы (v1.0):
-- Компоненты системы и их ответственность (Ingestion, Validation, Decomposition, Idea Registry, Decision Engine, Hypothesis Factory, Outcome Ingestion, Learning Loop, Memory Stores)
-- Allowed Interactions Matrix — разрешённые взаимодействия между компонентами
-- Forbidden Interactions — запрещённые связи
-- Sync/Async семантика и failure isolation
-- **Компоненты не думают. Думает только система в целом. Решает только Decision Engine**
-
-🤖 **[LLM Usage Policy](./docs/layer-1-logic/LLM_USAGE_POLICY.md)** — Политика использования LLM (v1.0):
-- Разрешенные use cases (decomposition, classification, hypothesis generation)
-- Запрещенные use cases (decision-making, risk assessment, schema modification)
-- Правила валидации и изоляции LLM от decision logic
-- **LLMs — ускорители, а не авторитеты**
-
-🧠 **[Learning & Memory Policy](./docs/layer-1-logic/LEARNING_MEMORY_POLICY.md)** — Политика обучения и памяти (v1.2):
-- Типы памяти (Outcome, Decision, Death, Fatigue, Confidence)
-- Time Decay Policy — устаревание знаний (~30 дней базовый срок)
-- Горизонты обучения (T1, T2, T3) с изоляцией (cross-horizon leakage prevention)
-- Learning Loop механизм
-- Fatigue на уровнях: skin, message, angle, transition, tension, context, exhausted
-- **Tension fatigue ≠ idea death** — форма конфликта может выгореть, но идея остаётся живой
-- Epistemic Shock rate limiting (максимальная частота, cooldown, бюджет)
-- Historical vs Active cluster tracking (нет ретроактивного переписывания истории)
-- **Система помнит ошибки дольше, чем успехи**
-
-👤 **[Usage & Interaction Doctrine](./docs/layer-0-doctrine/USAGE_DOCTRINE.md)** — Модель взаимодействия медиабайера с системой (v1.1):
-- Push-модель взаимодействия (без интерактивных запросов)
-- Telegram Bot как транспортный интерфейс (не логический компонент)
-- Core Usage Loop: загрузка транскриптов → запуск → передача фактов → получение решений
-- Feedback Contract: только факты, без интерпретаций
-- Запрещённое использование (blacklist): чат, копирайтер, ручной выбор идей
-- Responsibility Split: кто за что отвечает
-- **Медиабайер кормит систему фактами, система возвращает решения и допустимые реализации**
-
-### 🟨 Layer 2 — Product & Integration Specs
-
-**Спецификации продукта и интеграций.** API, интерфейсы, интеграционные контракты.
-
-💬 **[Telegram Interaction Model Specification](./docs/layer-2-product/TELEGRAM_INTERACTION_MODEL.md)** — Модель взаимодействия через Telegram-бота (v1.0):
-- Push-Only Model — строго событийная коммуникация, запросно-ответная модель запрещена
-- Типы сообщений: Creative Transcript, Performance Outcome, Decision Result, Generated Transcript, System Notification
-- Stateless Messaging — каждое сообщение изолировано, состояние только внутри системы
-- **Критическое ограничение:** пользователь передаёт только транскрипты видео, не визуалы/primary/description
-- Forbidden Interaction Patterns: диалог, команды, выбор идей, ручной триггер Decision Engine
-- **Telegram — транспорт, а не мозг. Если Telegram начинает управлять системой — архитектура нарушена**
-
-📥 **[Input Normalization Specification](./docs/layer-2-product/INPUT_NORMALIZATION.md)** — Правила нормализации и приёма входных данных (v1.0):
-- Поддерживаемые типы входов: Creative Video Reference (video_url + tracker_id), Performance Outcome Reference
-- Автоматическая транскрипция — Media Buyer никогда не присылает транскрипт вручную
-- **Критическое ограничение:** система работает ТОЛЬКО с транскриптом видео (аудиочасть)
-- Нормализация: проверка доступности видео → проверка tracker_id → создание Creative → транскрипция → валидация
-- Forbidden Input Patterns: ручной транскрипт, частичный текст, Creative без tracker_id
-- **Media Buyer передаёт ссылки и факты. Система берёт на себя всё остальное**
-
-📤 **[Output Payloads Specification](./docs/layer-2-product/OUTPUT_PAYLOADS.md)** — Выходные данные системы (v1.0):
-- Поддерживаемые типы выходов: Decision Result, Generated Transcript, Constraint Notice, Outcome Acknowledgement, Error/Rejection
-- **Критическое ограничение:** транскрипты содержат ТОЛЬКО текст речи, не визуалы/primary/description
-- Forbidden Output Types: ранжирование, рекомендации, прогнозы, внутренние метрики, варианты «на выбор»
-- Silent Output Semantics: молчание — валидный output
-- **Система говорит ровно столько, сколько нужно для действия — и ни словом больше**
-
-🔄 **[User Flows Specification](./docs/layer-2-product/USER_FLOWS.md)** — Канонические пользовательские сценарии (v1.1):
-- 8 основных флоу: Creative Registration, Transcription Failure, Receiving New Test Transcripts, External Launch, Performance Feedback Submission, Re-evaluation, Deferred/Rejected Idea, Silent Operation Mode
-- Автоматическая транскрипция — пользователь никогда не видит и не редактирует транскрипт
-- **Критическое ограничение:** система работает ТОЛЬКО с транскриптом видео (аудиочасть)
-- Асинхронность: один вход → 0..N выходов, порядок сообщений не гарантирован
-- Forbidden User Flows: ручная отправка транскриптов, редактирование текста, запросы генерации, выбор идей
-- **Пользователь взаимодействует с системой через ссылки и факты, все смысловые преобразования — внутреннее дело GenomAI**
-
-🎯 **[MVP Scope Specification](./docs/layer-2-product/MVP_SCOPE.md)** — Минимальный жизнеспособный продукт (v1.0):
-- In-Scope: video_url + tracker_id, автоматическая транскрипция, Decision Engine (MVP Mode), базовый Learning Loop, Telegram (push-модель)
-- Out-of-Scope: epistemic shock, multi-horizon logic, advanced ML signals, human override, scaling, analytics
-- MVP Success Criteria: корректная работа системы, получение Outcome, изменение поведения от обучения
-- Exit Criteria: накопление N Outcome, система убила идею/сменила поведение/перестала выдавать из-за fatigue
-- **MVP не меняет архитектуру, временно отключает часть возможностей. Если функция не обоснована получением Outcome — она лишняя**
-
-### 🟩 Layer 3 — Implementation & Infra
-
-**Спецификации реализации и инфраструктуры.** Логические сервисы, технологии, деплой.
-
-🔧 **[Service Boundaries Specification](./docs/layer-3-implementation-design/SERVICE_BOUNDARIES.md)** — Границы сервисов и ответственность (v1.0):
-- 10 логических сервисов: Ingestion, Validation, Transcription, Decomposition, Idea Registry, Decision Engine, Hypothesis Factory, Outcome Ingestion, Learning Loop, Memory Store
-- Stateless vs Stateful сервисы и их различия
-- Allowed Service Interactions — разрешённые взаимодействия между сервисами
-- Forbidden Couplings — запрещённые связи (Decision Engine ↔ Memory Store write, Decomposition ↔ Outcome и др.)
-- **Сервис знает только то, что ему архитектурно разрешено знать. Если сервис знает больше — он спроектирован неверно**
-
-💾 **[Storage Model Specification](./docs/layer-3-implementation-design/STORAGE_MODEL.md)** — Каноническая модель хранения данных (v1.0):
-- 4 логических слоя хранения: Raw Input (mutable), Temporal Snapshots (immutable), Aggregated Outcomes (immutable), Learning Memory (append-only)
-- Daily Scan как механизм создания Temporal Snapshots (DailyMetricsSnapshot)
-- Outcome как агрегированное окно (OutcomeAggregate), не равное raw metrics или daily snapshot
-- Правила immutability: если данные можно изменить — на них нельзя обучаться
-- Learning Memory обновляется ТОЛЬКО на основе OutcomeAggregate с origin_type = system
-- **Система никогда не обучается на "сырых" данных. Обучение возможно только на агрегированных, временнó стабилизированных outcome**
-
-📅 **[Event Model Specification](./docs/layer-3-implementation-design/EVENT_MODEL.md)** — Каноническая модель событий (v1.1):
-- 5 классов событий: Ingestion Events, Metric Observation Events, Temporal Aggregation Events, Decision & Execution Events, Learning Events
-- Canonical Event Flow: CreativeReferenceReceived → RawMetricsObserved → DailyMetricsSnapshotCreated → OutcomeWindowClosed → OutcomeAggregated → OutcomeAppliedToLearning
-- Критическое правило: Learning возможен только после закрытия окна и агрегации
-- Запрещённые паттерны: Learning на RawMetricsObserved, Learning на DailyMetricsSnapshotCreated, Decision на основе snapshot или raw
-- **Если событие отражает "прямо сейчас", оно не может влиять на будущее решений**
-
-⚠️ **[Error Handling Specification](./docs/layer-3-implementation-design/ERROR_HANDLING.md)** — Семантика обработки ошибок и сбоев (v1.0):
-- 5 классов ошибок: Data Absence, Data Delay, Data Duplication, Processing Failure, Semantic Violation
-- Правила обработки по слоям (L1-L4): Raw Metrics, Daily Snapshot, Outcome Aggregation, Learning
-- Retry/No-Retry Matrix: retry только для ingestion и snapshot creation, запрет retry для aggregation и learning
-- Idempotency Enforcement: повтор OutcomeAppliedToLearning = hard abort
-- Partial Failure Semantics: никакой rollback истории не допускается
-- Silent Failure Rule: система не обязана объяснять пользователю причины
-- **Лучше не обучиться, чем обучиться неправильно. Никакая ошибка не имеет права изменить знания системы**
+| Workflow | Queue | Trigger |
+|----------|-------|---------|
+| CreativePipelineWorkflow | creative-pipeline | Webhook |
+| ModularHypothesisWorkflow | creative-pipeline | Internal |
+| KeitaroPollerWorkflow | metrics | Every 10 min |
+| MetricsProcessingWorkflow | metrics | Every 30 min |
+| LearningLoopWorkflow | metrics | Every 1 hour |
+| DailyRecommendationWorkflow | metrics | 09:00 UTC |
+| MaintenanceWorkflow | metrics | Every 6 hours |
+| BuyerOnboardingWorkflow | telegram | Telegram /start |
+| HistoricalImportWorkflow | telegram | API trigger |
+| KnowledgeIngestionWorkflow | knowledge | Transcript webhook |
+| PremiseExtractionWorkflow | knowledge | Post-transcription |
 
 ---
 
-## 📁 Структура проекта
+## Stack
+
+| Component | Technology |
+|-----------|------------|
+| Database | Supabase (`genomai` schema) |
+| Backend | FastAPI (Render) |
+| Orchestration | Temporal Cloud |
+| Tracking | Keitaro |
+| UI | Telegram Bot |
+| LLM | OpenAI (transcripts only) |
+| Transcription | AssemblyAI |
+
+---
+
+## Структура проекта
 
 ```
 .
-├── decision-engine-service/           # 🚀 FastAPI Decision Engine
-│   ├── main.py                        # Entry point
+├── decision-engine-service/    # FastAPI + Temporal Workers
+│   ├── main.py                 # FastAPI entry point
 │   ├── src/
-│   │   ├── checks/                    # DE constraint checks
-│   │   │   ├── schema_validity.py
-│   │   │   ├── death_memory.py
-│   │   │   ├── fatigue_constraint.py
-│   │   │   └── risk_budget.py
-│   │   ├── routes/                    # API endpoints
-│   │   │   ├── decision.py
-│   │   │   ├── learning.py
-│   │   │   ├── outcomes.py
-│   │   │   ├── premise.py
-│   │   │   ├── recommendations.py
-│   │   │   └── schema.py
-│   │   ├── services/                  # Business logic
-│   │   │   ├── decision_engine.py
-│   │   │   ├── learning_loop.py
-│   │   │   ├── outcome_service.py
-│   │   │   ├── recommendation.py
-│   │   │   ├── premise_selector.py
-│   │   │   ├── premise_learning.py
-│   │   │   ├── avatar_service.py
-│   │   │   ├── exploration.py
-│   │   │   └── component_learning.py
-│   │   └── utils/                     # Utilities
-│   └── tests/                         # Unit tests
-├── infrastructure/                    # 🗄️ Infrastructure
-│   ├── migrations/                    # 24 SQL migrations
-│   └── schemas/                       # JSON schemas
-├── docs/                              # 📚 Документация
-│   ├── N8N_WORKFLOWS.md               # n8n workflow reference
-│   ├── SCHEMA_REFERENCE.md            # DB schema reference
-│   ├── API_REFERENCE.md               # API documentation
-│   ├── SYSTEM_CAPABILITIES.md         # System capabilities
-│   ├── DEPENDENCY_GRAPH.md            # Component dependencies
-│   ├── layer-0-doctrine/              # 🟥 Doctrine
-│   ├── layer-1-logic/                 # 🟧 System Design
-│   ├── layer-2-product/               # 🟨 Product Specs
-│   ├── layer-3-implementation-design/ # 🟩 Implementation Design
-│   └── layer-4-implementation-planning/ # 🟦 Implementation Planning
-├── scripts/                           # 🔧 Utility scripts
-│   ├── sync_dependencies.py           # Dependency sync
-│   └── validate_contracts.py          # Contract validation
-├── tests/                             # 🧪 Integration tests
-│   └── integration/                   # E2E pipeline tests
-├── .github/                           # ⚙️ GitHub настройки
-│   └── workflows/                     # GitHub Actions
-└── README.md                          # 📖 Этот файл
+│   │   ├── checks/             # DE constraint checks (4)
+│   │   ├── routes/             # API endpoints
+│   │   └── services/           # Business logic
+│   ├── temporal/
+│   │   ├── workflows/          # 15 workflows
+│   │   ├── activities/         # 24 activities
+│   │   ├── worker.py           # Worker definitions
+│   │   ├── schedules.py        # Schedule management
+│   │   └── config.py           # Temporal config
+│   └── tests/                  # Unit tests
+├── infrastructure/
+│   ├── migrations/             # 42 SQL migrations
+│   └── schemas/                # JSON schemas
+├── docs/                       # Documentation
+│   ├── TEMPORAL_WORKFLOWS.md   # Workflow reference
+│   ├── TEMPORAL_RUNBOOK.md     # Operations guide
+│   ├── SCHEMA_REFERENCE.md     # DB schema
+│   ├── API_REFERENCE.md        # API docs
+│   └── layer-*/                # Architecture docs
+├── scripts/                    # Dev utilities
+│   ├── task-start.sh           # Start issue worktree
+│   ├── task-done.sh            # Complete issue + PR
+│   └── task-new.sh             # Create new issue
+└── qa-notes/                   # Test documentation
 ```
 
 ---
 
-## 🎯 Статус проекта
+## Быстрый старт
 
-**Последнее обновление:** 2025-12-30
+### Запуск сервиса
 
-### 🚀 Реализованная система
+```bash
+cd decision-engine-service
 
-| Компонент | Статус | Описание |
-|-----------|--------|----------|
-| **Decision Engine** | ✅ LIVE | FastAPI на Render (genomai.onrender.com:10000) |
-| **n8n Workflows** | ✅ 31 активный | Оркестрация всех процессов |
-| **Supabase DB** | ✅ 30 таблиц | Схема `genomai` |
-| **Telegram Bot** | ✅ LIVE | Buyer взаимодействие + Zaliv сессии |
-| **Keitaro Integration** | ✅ LIVE | Метрики и трекинг |
-| **Learning Loop** | ✅ LIVE | Обучение на outcomes |
-| **Premise Layer** | ✅ LIVE | Нарративные vehicles для гипотез |
-| **Recommendation System** | ✅ LIVE | Рекомендации компонентов байерам |
-| **Avatar System** | ✅ LIVE | Emergent аватары из креативов |
-| **Exploration System** | ✅ LIVE | 25% exploration budget |
-| **Spy Creatives** | ✅ LIVE | Анализ креативов конкурентов |
-| **Pipeline Health Monitor** | ✅ LIVE | Автомониторинг и алерты |
+# FastAPI
+uvicorn main:app --reload --port 10000
 
-### 📊 Статистика БД
-- **buyers**: 1 зарегистрирован
-- **creatives**: 16 креативов
-- **historical_import_queue**: 337 кампаний в очереди
-- **decisions/ideas/hypotheses**: 3/3/активно
+# Temporal Workers
+python -m temporal.worker
 
-### ✅ Выполненные фазы (из 17)
-
-| Фаза | Название | Статус |
-|------|----------|--------|
-| 0 | Architectural Lock | ✅ |
-| 1 | Domain Modeling | ✅ |
-| 2 | Core Variable Definition | ✅ |
-| 3 | Canonical Schema | ✅ |
-| 4 | Schema Validation | ✅ |
-| 5 | Storage & Memory Layer | ✅ |
-| 6 | Input & Ingestion Layer | ✅ |
-| 7 | Decomposition Layer (LLM) | ✅ |
-| 10 | Decision Engine | ✅ |
-| 11 | Hypothesis Factory | ✅ |
-| 13 | Outcome Logging | ✅ |
-| 15 | Learning Loop | ✅ |
-
-### 🆕 Дополнительно реализовано
-
-| Функционал | Компоненты |
-|------------|------------|
-| **Buyer System** | Onboarding, Registration, Stats, Daily Digest, Zaliv Session |
-| **Historical Import** | Loader, URL Handler, Batch Processing, Video Handler |
-| **Keitaro Polling** | Автоматический сбор метрик, Snapshot Creator |
-| **Telegram Router** | Маршрутизация команд, Creative Reply Handler |
-| **Test Conclusion** | Автозавершение тестов по spend |
-| **Premise Layer** | Premise Registry, Selector, Learning (#166-#171) |
-| **Recommendation System** | Daily Generator, Delivery, Component Learning |
-| **Avatar System** | Emergent avatars, Avatar Learning |
-| **Exploration System** | Exploration Log, 25% budget allocation |
-| **Spy Creatives** | Spy Creative Registration (конкуренты) |
-
-### 📋 В разработке
-
-| Фаза | Название | Статус |
-|------|----------|--------|
-| 8 | Similarity / Novelty / Clustering | ⏳ Pending |
-| 9 | Fatigue & Death Systems | ⏳ Pending |
-| 14 | Horizon Evaluation | ⏳ Pending |
-| 16 | Epistemic Shock | ⏳ Pending |
-| 17 | Human Override Layer | ⏳ Pending |
-
----
-
-**🟥 Layer 0 — Doctrine:**
-- ✅ **Concept Document** - [Concept Document](./docs/layer-0-doctrine/CONCEPT.md) (v1.0)
-- ✅ **Architecture Lock** - [Architecture Lock / Doctrine](./docs/layer-0-doctrine/ARCHITECTURE_LOCK.md) (v1.0)
-- ✅ **Usage & Interaction Doctrine** - [Usage & Interaction Doctrine](./docs/layer-0-doctrine/USAGE_DOCTRINE.md) (v1.1)
-
-**🟧 Layer 1 — System Design:**
-- ✅ **System Architecture** - [System Architecture Specification](./docs/layer-1-logic/SYSTEM_ARCHITECTURE.md) (v1.0)
-- ✅ **Domain Model** - [Domain Model / Glossary](./docs/layer-1-logic/DOMAIN_MODEL.md) (v1.0)
-- ✅ **Entity Lifecycle** - [Entity Lifecycle Specification](./docs/layer-1-logic/ENTITY_LIFECYCLE.md) (v1.0)
-- ✅ **Canonical Schema** - [Canonical Schema Specification](./docs/layer-1-logic/CANONICAL_SCHEMA.md) (v1.2)
-- ✅ **Data Flow** - [Data Flow Specification](./docs/layer-1-logic/DATA_FLOW.md) (v1.0)
-- ✅ **Decision Engine** - [Decision Engine Specification](./docs/layer-1-logic/DECISION_ENGINE.md) (v1.1)
-- ✅ **Learning & Memory Policy** - [Learning & Memory Policy](./docs/layer-1-logic/LEARNING_MEMORY_POLICY.md) (v1.2)
-- ✅ **Data Contracts** - [Data Contracts Specification](./docs/layer-1-logic/DATA_CONTRACTS.md) (v1.0)
-- ✅ **LLM Usage Policy** - [LLM Usage Policy](./docs/layer-1-logic/LLM_USAGE_POLICY.md) (v1.0)
-- ✅ **Environment Context** - [Environment Context Specification](./docs/layer-1-logic/ENVIRONMENT_CONTEXT.md) (v1.0)
-
-**🟨 Layer 2 — Product & Integration:**
-- ✅ **User Flows** - [User Flows Specification](./docs/layer-2-product/USER_FLOWS.md) (v1.1)
-- ✅ **Telegram Interaction Model** - [Telegram Interaction Model Specification](./docs/layer-2-product/TELEGRAM_INTERACTION_MODEL.md) (v1.0)
-- ✅ **Input Normalization** - [Input Normalization Specification](./docs/layer-2-product/INPUT_NORMALIZATION.md) (v1.0)
-- ✅ **Output Payloads** - [Output Payloads Specification](./docs/layer-2-product/OUTPUT_PAYLOADS.md) (v1.0)
-- ✅ **MVP Scope** - [MVP Scope Specification](./docs/layer-2-product/MVP_SCOPE.md) (v1.0)
-
-**🟩 Layer 3 — Implementation Design:**
-- ✅ **Service Boundaries** - [Service Boundaries Specification](./docs/layer-3-implementation-design/SERVICE_BOUNDARIES.md) (v1.0)
-- ✅ **Event Model** - [Event Model Specification](./docs/layer-3-implementation-design/EVENT_MODEL.md) (v1.1)
-- ✅ **Storage Model** - [Storage Model Specification](./docs/layer-3-implementation-design/STORAGE_MODEL.md) (v1.0)
-- ✅ **Error Handling** - [Error Handling Specification](./docs/layer-3-implementation-design/ERROR_HANDLING.md) (v1.0)
-
-**🟦 Layer 4 — Implementation:**
-- ✅ **Decision Engine** - FastAPI на Render ([genomai.onrender.com](https://genomai.onrender.com))
-- ✅ **n8n Workflows** - 31 активный workflow ([N8N_WORKFLOWS.md](./docs/N8N_WORKFLOWS.md))
-- ✅ **Database** - 30 таблиц в схеме `genomai`
-- ✅ **Migrations** - 24 миграции в `infrastructure/migrations/`
-
----
-
-## 💡 Ключевые концепции
-
-### Decision Horizon Doctrine
-
-Система работает с тремя временными горизонтами:
-- **T₁ (0–3 дня)**: первичная реакция рынка, exploration
-- **T₂ (3–14 дней)**: устойчивость и повторяемость, основной рабочий горизонт
-- **T₃ (14+ дней)**: обновление политик и ограничений
-
-**Cross-horizon leakage prevention:** сигналы из T1 НЕ обновляют стратегические priors (T3).
-
-### Hypothesis Death & Resurrection
-
-Система различает три состояния гипотез:
-- **Soft Failure**: единичный провал, гипотеза доступна с отрицательным весом
-- **Hard Failure**: повторяемый провал, exploit запрещён
-- **Dead Hypothesis**: полностью исключается из генерации, логируется в Death Memory
-
-### Fatigue Doctrine
-
-Выгорание детектируется на уровне кластеров:
-1. **Skin Exhaustion** → только визуальные мутации
-2. **Message Exhaustion** → запрет повторения message-структур
-3. **Angle Exhaustion** → exploit полностью запрещён
-4. **Transition Exhaustion** → усталость от повторяющегося перехода состояния
-5. **Tension Exhaustion** → усталость от одинаковой формы конфликта (≠ idea death)
-6. **Context Exhaustion** → усталость от рамки доверия
-7. **Forced Novelty** → принудительное exploration
-
-### ML Signal Discretization
-
-**Критическое правило:** Decision Engine работает ТОЛЬКО с bucket-значениями, не с raw float.
-
-- ML предоставляет: `similarity_score`, `novelty_score`, `confidence_weight` (float)
-- Decision Engine получает: `similarity_bucket`, `novelty_bucket`, `confidence_bucket` (enum)
-- Конвертация float → bucket явная, версионированная, воспроизводимая
-
-**Результат:** Decision Engine остаётся детерминированным и explainable. ML полностью advisory.
-
-### Epistemic Shock Rate Limiting
-
-**Правила:**
-- Максимальная частота: не чаще 1 shock на N решений (например, 1 на 50–100)
-- Минимальный cooldown: обязательный интервал между shock (например, 24 часа)
-- Бюджет: выделенный бюджет (например, не более 5–10% от общего)
-
-**Результат:** Shock остаётся инструментом, а не режимом. Система не «дергается».
-
-### Historical vs Active Cluster Tracking
-
-- `active_cluster_id` в Idea — текущее состояние (может меняться)
-- `cluster_at_decision` в Decision — исторический снимок
-- `cluster_id_at_outcome` в Outcome — исторический снимок
-
-**Результат:** Нет ретроактивного «переписывания истории». Learning Loop корректный во времени.
-
-### State Transition, Narrative Tension, Cultural Context
-
-**State Transition** (state_before → state_after) — что продаётся  
-**Narrative Tension** (tension_type) — почему человек не может остаться прежним  
-**Cultural Context** (context_frame) — почему он вообще слушает  
-
-Это механизмы контроля причин, без которых система видит только следствия и не управляет деградацией.
-
----
-
-## 🎯 Финальный принцип
-
-Идеальная GenomAI — это система, которая зарабатывает, когда человек ей не мешает.
-
-Человек остаётся источником редкого сдвига.
-
-Все остальные решения — ответственность системы.
-
----
-
-## 🧪 Автоматизация тестирования
-
-### Тестирование n8n Workflows через GitHub Issues
-
-**Новое!** Автоматическое тестирование workflows при упоминании в Issues:
-
-```markdown
-# В Issue добавьте комментарий:
-/test-workflow workflow-id
-
-# Пример:
-/test-workflow mv6diVtqnuwr7qev
+# Управление schedules
+python -m temporal.schedules list
+python -m temporal.schedules trigger <schedule-id>
 ```
 
-**Что произойдёт:**
-1. GitHub Action автоматически запустится
-2. Скрипт начнёт ждать ручного запуска workflow в n8n UI
-3. После запуска workflow, результаты автоматически появятся в комментарии к Issue
+### Environment
 
-**Настройка:**
-- Добавьте `N8N_API_KEY` в GitHub Secrets (Settings → Secrets and variables → Actions)
-- Получить API ключ: n8n Dashboard → Settings → API → Create API Key
-
-**Подробнее:**
-- [GitHub Actions Integration](./tests/scripts/README_GITHUB_ACTIONS.md) — Автоматизация через GitHub Actions
-- [Ручное тестирование](./tests/scripts/README_N8N_TESTING.md) — Ручное тестирование workflows
-
----
-
-## ❓ Нужна помощь?
-
-Если что-то непонятно:
-1. Начните с [Concept Document](./docs/layer-0-doctrine/CONCEPT.md) — общее понимание системы
-2. Изучите [Architecture Lock](./docs/layer-0-doctrine/ARCHITECTURE_LOCK.md) — это основа всех решений
-3. Изучите [Domain Model](./docs/layer-1-logic/DOMAIN_MODEL.md) — единый язык системы
-4. Ознакомьтесь с [Canonical Schema](./docs/layer-1-logic/CANONICAL_SCHEMA.md) — структура данных
-5. Изучите [Data Contracts](./docs/layer-1-logic/DATA_CONTRACTS.md) — контракты входных данных
-6. Прочитайте [LLM Usage Policy](./docs/layer-1-logic/LLM_USAGE_POLICY.md) — правила использования LLM
-7. Изучите [Learning & Memory Policy](./docs/layer-1-logic/LEARNING_MEMORY_POLICY.md) — обучение и память системы
-8. Прочитайте [Decision Engine Specification](./docs/layer-1-logic/DECISION_ENGINE.md) — ядро системы
-9. Изучите [Usage & Interaction Doctrine](./docs/layer-0-doctrine/USAGE_DOCTRINE.md) — как медиабайер взаимодействует с системой
-10. Следуйте [Development Order](./docs/DEVELOPMENT_ORDER.md) для разработки
-11. Спросите у меня (AI помощника) - я помогу!
+```
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+API_KEY=
+TEMPORAL_ADDRESS=
+TEMPORAL_NAMESPACE=
+TEMPORAL_API_KEY=
+OPENAI_API_KEY=
+ASSEMBLYAI_API_KEY=
+KEITARO_API_KEY=
+```
 
 ---
 
-**Удачи в разработке! 🎉**
+## v2.0 Features
+
+### Temporal Migration
+- Полная миграция с n8n на Temporal Cloud
+- 15 workflows, 24 activities
+- Durable execution, built-in retry
+- Temporal UI для мониторинга
+
+### Modular Creative System
+- Module extraction из креативов
+- Module bank для повторного использования
+- Module learning на outcomes
+- Modular hypothesis generation
+
+### Multi-Agent Orchestration
+- Agent identity (`/ag1`-`/ag5`, `/next`)
+- Temporal supervisor (2h interval)
+- Supabase task queue
+- Orphan task detection
+
+### Knowledge Extraction
+- Premise layer с обучением
+- Transcript persistence
+- Inspiration system
+- Knowledge application workflow
+
+### Telegram Commands
+
+| Command | Description |
+|---------|-------------|
+| `/genome` | Component performance heatmap |
+| `/trends` | Win rate charts |
+| `/confidence` | Confidence intervals |
+| `/drift` | Performance drift detection |
+| `/correlations` | Component synergy |
+| `/recommend` | Auto-recommendations |
+| `/feedback` | Bug report → GitHub issue |
+| `/ag1`-`/ag5` | Agent identity |
+
+### Developer Experience
+- Pre-merge testing (git hooks)
+- `/idea` command → issue + worktree + Cursor
+- Local worktree system
+- Auto-cleanup merged branches
+
+---
+
+## Testing
+
+```bash
+# Critical tests (~15s)
+make test
+
+# All unit tests (~45s)
+make test-unit
+
+# Full CI simulation
+make ci
+
+# E2E after deploy
+make e2e-quick     # Health checks (~30s)
+make e2e           # Full flow (~5min)
+```
+
+### Git Hooks
+
+```bash
+make setup-hooks   # Install once
+```
+
+| Stage | Time | Checks |
+|-------|------|--------|
+| pre-commit | ~20s | lint, format, critical tests |
+| pre-push | ~60s | all unit tests |
+
+---
+
+## API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/api/decision/` | POST | Submit decision request |
+| `/learning/process` | POST | Trigger learning |
+| `/learning/status` | GET | Learning status |
+| `/api/schedules/` | GET | List Temporal schedules |
+| `/api/schedules/{id}/trigger` | POST | Trigger schedule |
+
+---
+
+## Documentation
+
+### Layer 0 — Doctrine
+- [CONCEPT.md](./docs/layer-0-doctrine/CONCEPT.md) — System concept
+- [ARCHITECTURE_LOCK.md](./docs/layer-0-doctrine/ARCHITECTURE_LOCK.md) — Invariants
+
+### Layer 1 — Logic
+- [DECISION_ENGINE.md](./docs/layer-1-logic/DECISION_ENGINE.md) — DE spec
+- [CANONICAL_SCHEMA.md](./docs/layer-1-logic/CANONICAL_SCHEMA.md) — Data schema
+- [LEARNING_MEMORY_POLICY.md](./docs/layer-1-logic/LEARNING_MEMORY_POLICY.md) — Learning rules
+
+### Operations
+- [TEMPORAL_WORKFLOWS.md](./docs/TEMPORAL_WORKFLOWS.md) — Workflow reference
+- [TEMPORAL_RUNBOOK.md](./docs/TEMPORAL_RUNBOOK.md) — Operations guide
+- [SCHEMA_REFERENCE.md](./docs/SCHEMA_REFERENCE.md) — DB tables
+
+---
+
+## Releases
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| [v2.0.0](https://github.com/mosszxc/GenomAI/releases/tag/v2.0.0) | 2026-01-12 | Temporal migration, Modular Creative System |
+| [v1.1.0](https://github.com/mosszxc/GenomAI/releases/tag/v1.1.0) | 2025-12-26 | Buyer Production Release |
+| [v1.0.0](https://github.com/mosszxc/GenomAI/releases/tag/v1.0.0) | 2025-12-26 | Production Ready |
+
+---
+
+## Принципы
+
+1. **Market = truth** — рынок единственный источник истины
+2. **Deterministic + trace** — детерминированные решения с полным trace
+3. **ML signals only** — ML только advisory, не decision
+4. **LLM: transcripts** — LLM только для обработки транскриптов
+5. **Schema-first** — schema определяет всё
+
+---
+
+**Production:** [genomai.onrender.com](https://genomai.onrender.com)
