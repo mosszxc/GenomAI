@@ -1,7 +1,7 @@
 # Makefile for GenomAI
 # Usage: make <target>
 
-.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-ready issues-critical issues-by-priority dev dev-stop
+.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-ready issues-critical issues-by-priority up down dev dev-stop
 
 # Default target
 help:
@@ -13,8 +13,9 @@ help:
 	@echo "  make setup-hooks    - Install git hooks"
 	@echo ""
 	@echo "Local Dev:"
-	@echo "  make dev            - Start local FastAPI server"
-	@echo "  make dev-stop       - Stop all local servers"
+	@echo "  make up             - Start all (Temporal + Worker + FastAPI)"
+	@echo "  make down           - Stop all"
+	@echo "  make dev            - Start FastAPI only"
 	@echo ""
 	@echo "Linting:"
 	@echo "  make lint           - Run ruff check with auto-fix"
@@ -58,6 +59,12 @@ setup-hooks:
 	@echo "pre-push: all unit tests"
 
 # ============ Local Dev ============
+
+up:
+	@./scripts/dev-up.sh
+
+down:
+	@./scripts/dev-down.sh
 
 dev:
 	@./scripts/local-dev.sh

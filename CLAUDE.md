@@ -26,14 +26,8 @@ Orchestration: Temporal | Tracking: Keitaro | UI: Telegram
 
 ## Локальная разработка
 ```bash
-# Terminal 1: Temporal server
-temporal server start-dev
-
-# Terminal 2: FastAPI
-make dev
-
-# Terminal 3: Worker
-cd decision-engine-service && python -m temporal.worker
+make up     # Утром: запустить всё (Temporal + Worker + FastAPI)
+make down   # Вечером: остановить всё
 ```
 
 ## Тестирование
