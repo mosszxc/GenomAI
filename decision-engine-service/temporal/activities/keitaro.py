@@ -254,11 +254,11 @@ async def get_campaigns_by_source(
     input: GetCampaignsBySourceInput,
 ) -> GetCampaignsBySourceOutput:
     """
-    Get all campaigns for a specific source/affiliate from Keitaro.
+    Get campaigns for a specific source/affiliate from Keitaro.
 
-    Fetches campaigns list and filters by:
-    1. Campaign name contains source (e.g., "TU")
-    2. Created within last 30 days (or specified date range)
+    Returns:
+    1. Last 10 campaigns by creation date
+    2. Plus all campaigns with conversions > 0
 
     Args:
         input: Contains source and optional date range
@@ -279,15 +279,9 @@ async def get_campaigns_by_source(
         response.raise_for_status()
         all_campaigns = response.json()
 
-    # Step 2: Calculate date cutoff (last 30 days by default)
-    if input.date_from:
-        cutoff = datetime.fromisoformat(input.date_from)
-    else:
-        cutoff = datetime.utcnow() - timedelta(days=30)
-
-    # Step 3: Filter campaigns by name and creation date
+    # Step 2: Filter campaigns by source in name
     source_upper = input.source.upper()
-    campaigns = []
+    matching_campaigns = []
 
     for c in all_campaigns:
         name = c.get("name", "")
@@ -297,28 +291,112 @@ async def get_campaigns_by_source(
         if source_upper not in name.upper():
             continue
 
-        # Filter by creation date
+        # Parse creation date
         try:
             created_dt = datetime.fromisoformat(created_at.replace("Z", ""))
-            if created_dt < cutoff:
-                continue
         except (ValueError, TypeError):
-            continue
+            created_dt = datetime.min
 
+        matching_campaigns.append({
+            "id": str(c.get("id", "")),
+            "name": name,
+            "created_at": created_dt,
+        })
+
+    activity.logger.info(
+        f"Found {len(matching_campaigns)} campaigns matching source '{input.source}'"
+    )
+
+    if not matching_campaigns:
+        return GetCampaignsBySourceOutput(
+            campaigns=[], total=0, source=input.source
+        )
+
+    # Step 3: Get metrics for all matching campaigns
+    campaign_ids = [c["id"] for c in matching_campaigns]
+
+    # Fetch metrics via report/build API with campaign dimension
+    metrics_url = _get_keitaro_url("/report/build")
+
+    # Calculate date range (last 30 days for metrics)
+    if input.date_from:
+        date_from = input.date_from
+    else:
+        date_from = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    date_to = input.date_to or datetime.utcnow().strftime("%Y-%m-%d")
+
+    metrics_payload = {
+        "range": {
+            "from": date_from,
+            "to": date_to,
+            "timezone": "UTC"
+        },
+        "metrics": ["clicks", "conversions", "revenue", "cost"],
+        "dimensions": ["campaign_id"],
+        "filters": [
+            {"name": "campaign_id", "operator": "IN_LIST", "expression": campaign_ids}
+        ]
+    }
+
+    campaign_metrics = {}
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(metrics_url, headers=headers, json=metrics_payload)
+            response.raise_for_status()
+            metrics_data = response.json()
+
+            for row in metrics_data.get("rows", []):
+                cid = str(row.get("campaign_id", ""))
+                if cid:
+                    campaign_metrics[cid] = {
+                        "clicks": int(row.get("clicks", 0) or 0),
+                        "conversions": int(row.get("conversions", 0) or 0),
+                        "revenue": float(row.get("revenue", 0) or 0),
+                        "cost": float(row.get("cost", 0) or 0),
+                    }
+    except Exception as e:
+        activity.logger.warning(f"Failed to fetch campaign metrics: {e}")
+
+    # Step 4: Sort by creation date (newest first) and select
+    matching_campaigns.sort(key=lambda x: x["created_at"], reverse=True)
+
+    # Take last 10 by date
+    latest_10 = matching_campaigns[:10]
+    latest_10_ids = {c["id"] for c in latest_10}
+
+    # Find campaigns with conversions that are not in latest 10
+    campaigns_with_conversions = []
+    for c in matching_campaigns:
+        cid = c["id"]
+        if cid in latest_10_ids:
+            continue
+        metrics = campaign_metrics.get(cid, {})
+        if metrics.get("conversions", 0) > 0:
+            campaigns_with_conversions.append(c)
+
+    # Combine: latest 10 + campaigns with conversions
+    selected_campaigns = latest_10 + campaigns_with_conversions
+
+    # Build result
+    campaigns = []
+    for c in selected_campaigns:
+        cid = c["id"]
+        metrics = campaign_metrics.get(cid, {})
         campaigns.append(
             CampaignInfo(
-                campaign_id=str(c.get("id", "")),
-                name=name,
-                clicks=0,  # Will be populated by metrics if needed
-                conversions=0,
-                revenue=0.0,
-                cost=0.0,
+                campaign_id=cid,
+                name=c["name"],
+                clicks=metrics.get("clicks", 0),
+                conversions=metrics.get("conversions", 0),
+                revenue=metrics.get("revenue", 0.0),
+                cost=metrics.get("cost", 0.0),
             )
         )
 
     activity.logger.info(
-        f"Found {len(campaigns)} campaigns for source '{input.source}' "
-        f"(created after {cutoff.date()})"
+        f"Selected {len(campaigns)} campaigns: "
+        f"{len(latest_10)} latest + {len(campaigns_with_conversions)} with conversions"
     )
 
     return GetCampaignsBySourceOutput(
