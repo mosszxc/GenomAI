@@ -20,6 +20,7 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
 
 from src.utils.parsing import safe_float
+
 logger = logging.getLogger(__name__)
 
 
