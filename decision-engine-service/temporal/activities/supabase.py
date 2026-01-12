@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 from typing import Optional, Dict, Any
 from temporalio import activity
-import httpx
+from src.core.http_client import get_http_client
 
 # Schema name for all operations
 SCHEMA = "genomai"
@@ -82,19 +82,19 @@ async def create_creative(
     if target_vertical:
         creative["target_vertical"] = target_vertical
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/creatives",
-            headers=headers,
-            json=creative,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/creatives",
+        headers=headers,
+        json=creative,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise RuntimeError("Failed to create creative: no data returned")
+    if not data:
+        raise RuntimeError("Failed to create creative: no data returned")
 
-        return data[0]
+    return data[0]
 
 
 @activity.defn
@@ -140,28 +140,28 @@ async def create_historical_creative(
     if target_vertical:
         creative["target_vertical"] = target_vertical
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/creatives",
-            headers=headers,
-            json=creative,
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/creatives",
+        headers=headers,
+        json=creative,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if not data:
+        raise RuntimeError("Failed to create historical creative: no data returned")
+
+    created_creative = data[0]
+
+    # If we have metrics, create outcome_aggregate record
+    if metrics:
+        activity.logger.info(
+            f"Historical creative {created_creative['id']} has metrics: {metrics}"
         )
-        response.raise_for_status()
-        data = response.json()
+        # Metrics will be processed by outcome_aggregator later
 
-        if not data:
-            raise RuntimeError("Failed to create historical creative: no data returned")
-
-        created_creative = data[0]
-
-        # If we have metrics, create outcome_aggregate record
-        if metrics:
-            activity.logger.info(
-                f"Historical creative {created_creative['id']} has metrics: {metrics}"
-            )
-            # Metrics will be processed by outcome_aggregator later
-
-        return created_creative
+    return created_creative
 
 
 @activity.defn
@@ -178,15 +178,15 @@ async def get_creative(creative_id: str) -> Optional[Dict[str, Any]]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/creatives?id=eq.{creative_id}&select=*",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/creatives?id=eq.{creative_id}&select=*",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return data[0] if data else None
+    return data[0] if data else None
 
 
 @activity.defn
@@ -222,15 +222,15 @@ async def check_idea_exists(canonical_hash: str) -> Optional[Dict[str, Any]]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/ideas?canonical_hash=eq.{canonical_hash}&select=*&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/ideas?canonical_hash=eq.{canonical_hash}&select=*&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return data[0] if data else None
+    return data[0] if data else None
 
 
 @activity.defn
@@ -268,28 +268,28 @@ async def create_idea(
     if avatar_id:
         idea["avatar_id"] = avatar_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/ideas",
-            headers=headers,
-            json=idea,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/ideas",
+        headers=headers,
+        json=idea,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise RuntimeError("Failed to create idea: no data returned")
+    if not data:
+        raise RuntimeError("Failed to create idea: no data returned")
 
-        created_idea = data[0]
+    created_idea = data[0]
 
-        # Link decomposed_creative to idea
-        await client.patch(
-            f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
-            headers=headers,
-            json={"idea_id": created_idea["id"]},
-        )
+    # Link decomposed_creative to idea
+    await client.patch(
+        f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
+        headers=headers,
+        json={"idea_id": created_idea["id"]},
+    )
 
-        return created_idea
+    return created_idea
 
 
 @activity.defn
@@ -333,64 +333,64 @@ async def upsert_idea(
     if avatar_id:
         idea["avatar_id"] = avatar_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/ideas",
-            headers=headers,
-            json=idea,
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/ideas",
+        headers=headers,
+        json=idea,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if data:
+        # INSERT succeeded - this is a new idea
+        created_idea = data[0]
+        created_idea["upsert_status"] = "created"
+
+        # Link decomposed_creative to idea
+        link_headers = _get_headers(supabase_key, for_write=True)
+        await client.patch(
+            f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
+            headers=link_headers,
+            json={"idea_id": created_idea["id"]},
         )
-        response.raise_for_status()
-        data = response.json()
 
-        if data:
-            # INSERT succeeded - this is a new idea
-            created_idea = data[0]
-            created_idea["upsert_status"] = "created"
-
-            # Link decomposed_creative to idea
-            link_headers = _get_headers(supabase_key, for_write=True)
-            await client.patch(
-                f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
-                headers=link_headers,
-                json={"idea_id": created_idea["id"]},
-            )
-
-            activity.logger.info(
-                f"Created new idea {created_idea['id']} for hash {canonical_hash[:16]}..."
-            )
-            return created_idea
-
-        # Step 2: INSERT returned empty (conflict) - fetch existing
-        read_headers = _get_headers(supabase_key)
-        response = await client.get(
-            f"{rest_url}/ideas?canonical_hash=eq.{canonical_hash}&select=*&limit=1",
-            headers=read_headers,
+        activity.logger.info(
+            f"Created new idea {created_idea['id']} for hash {canonical_hash[:16]}..."
         )
-        response.raise_for_status()
-        existing = response.json()
+        return created_idea
 
-        if existing:
-            existing_idea = existing[0]
-            existing_idea["upsert_status"] = "existing"
+    # Step 2: INSERT returned empty (conflict) - fetch existing
+    read_headers = _get_headers(supabase_key)
+    response = await client.get(
+        f"{rest_url}/ideas?canonical_hash=eq.{canonical_hash}&select=*&limit=1",
+        headers=read_headers,
+    )
+    response.raise_for_status()
+    existing = response.json()
 
-            # Link decomposed_creative to existing idea
-            link_headers = _get_headers(supabase_key, for_write=True)
-            await client.patch(
-                f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
-                headers=link_headers,
-                json={"idea_id": existing_idea["id"]},
-            )
+    if existing:
+        existing_idea = existing[0]
+        existing_idea["upsert_status"] = "existing"
 
-            activity.logger.info(
-                f"Found existing idea {existing_idea['id']} for hash {canonical_hash[:16]}..."
-            )
-            return existing_idea
-
-        # This should not happen - UNIQUE conflict but no record found
-        raise RuntimeError(
-            f"Race condition recovery failed: idea with hash {canonical_hash} "
-            "not found after conflict"
+        # Link decomposed_creative to existing idea
+        link_headers = _get_headers(supabase_key, for_write=True)
+        await client.patch(
+            f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
+            headers=link_headers,
+            json={"idea_id": existing_idea["id"]},
         )
+
+        activity.logger.info(
+            f"Found existing idea {existing_idea['id']} for hash {canonical_hash[:16]}..."
+        )
+        return existing_idea
+
+    # This should not happen - UNIQUE conflict but no record found
+    raise RuntimeError(
+        f"Race condition recovery failed: idea with hash {canonical_hash} "
+        "not found after conflict"
+    )
 
 
 @activity.defn
@@ -437,19 +437,19 @@ async def save_decomposed_creative(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/decomposed_creatives",
-            headers=headers,
-            json=decomposed,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/decomposed_creatives",
+        headers=headers,
+        json=decomposed,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise RuntimeError("Failed to save decomposed creative")
+    if not data:
+        raise RuntimeError("Failed to save decomposed creative")
 
-        return data[0]
+    return data[0]
 
 
 @activity.defn
@@ -479,12 +479,12 @@ async def update_creative_status(
         update_data["error"] = error[:1000] if error else "Unknown error"
         update_data["failed_at"] = datetime.utcnow().isoformat()
 
-    async with httpx.AsyncClient() as client:
-        await client.patch(
-            f"{rest_url}/creatives?id=eq.{creative_id}",
-            headers=headers,
-            json=update_data,
-        )
+    client = get_http_client()
+    await client.patch(
+        f"{rest_url}/creatives?id=eq.{creative_id}",
+        headers=headers,
+        json=update_data,
+    )
 
 
 @activity.defn
@@ -525,16 +525,16 @@ async def emit_event(
     if entity_id:
         event["entity_id"] = entity_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/event_log",
-            headers=headers,
-            json=event,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/event_log",
+        headers=headers,
+        json=event,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return data[0] if data else event
+    return data[0] if data else event
 
 
 @activity.defn
@@ -561,65 +561,65 @@ async def save_transcript(
     headers = _get_headers(supabase_key, for_write=True)
     read_headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Idempotency check: if same assemblyai_transcript_id exists, return it
-        if assemblyai_transcript_id:
-            response = await client.get(
-                f"{rest_url}/transcripts"
-                f"?assemblyai_transcript_id=eq.{assemblyai_transcript_id}"
-                f"&select=*&limit=1",
-                headers=read_headers,
-            )
-            response.raise_for_status()
-            existing = response.json()
-            if existing:
-                activity.logger.info(
-                    f"Transcript already exists for assemblyai_id={assemblyai_transcript_id}"
-                )
-                return existing[0]
-
-        # Get current max version for creative
+    client = get_http_client()
+    # Idempotency check: if same assemblyai_transcript_id exists, return it
+    if assemblyai_transcript_id:
         response = await client.get(
             f"{rest_url}/transcripts"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=version"
-            f"&order=version.desc"
-            f"&limit=1",
+            f"?assemblyai_transcript_id=eq.{assemblyai_transcript_id}"
+            f"&select=*&limit=1",
             headers=read_headers,
         )
         response.raise_for_status()
-        versions = response.json()
+        existing = response.json()
+        if existing:
+            activity.logger.info(
+                f"Transcript already exists for assemblyai_id={assemblyai_transcript_id}"
+            )
+            return existing[0]
 
-        next_version = 1
-        if versions and versions[0].get("version"):
-            next_version = versions[0]["version"] + 1
+    # Get current max version for creative
+    response = await client.get(
+        f"{rest_url}/transcripts"
+        f"?creative_id=eq.{creative_id}"
+        f"&select=version"
+        f"&order=version.desc"
+        f"&limit=1",
+        headers=read_headers,
+    )
+    response.raise_for_status()
+    versions = response.json()
 
-        # Insert new transcript
-        transcript = {
-            "creative_id": creative_id,
-            "version": next_version,
-            "transcript_text": transcript_text,
-            "created_at": datetime.utcnow().isoformat(),
-        }
+    next_version = 1
+    if versions and versions[0].get("version"):
+        next_version = versions[0]["version"] + 1
 
-        if assemblyai_transcript_id:
-            transcript["assemblyai_transcript_id"] = assemblyai_transcript_id
+    # Insert new transcript
+    transcript = {
+        "creative_id": creative_id,
+        "version": next_version,
+        "transcript_text": transcript_text,
+        "created_at": datetime.utcnow().isoformat(),
+    }
 
-        response = await client.post(
-            f"{rest_url}/transcripts",
-            headers=headers,
-            json=transcript,
-        )
-        response.raise_for_status()
-        data = response.json()
+    if assemblyai_transcript_id:
+        transcript["assemblyai_transcript_id"] = assemblyai_transcript_id
 
-        if not data:
-            raise RuntimeError("Failed to save transcript: no data returned")
+    response = await client.post(
+        f"{rest_url}/transcripts",
+        headers=headers,
+        json=transcript,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        activity.logger.info(
-            f"Saved transcript for creative={creative_id}, version={next_version}"
-        )
-        return data[0]
+    if not data:
+        raise RuntimeError("Failed to save transcript: no data returned")
+
+    activity.logger.info(
+        f"Saved transcript for creative={creative_id}, version={next_version}"
+    )
+    return data[0]
 
 
 @activity.defn
@@ -639,21 +639,21 @@ async def get_existing_transcript(creative_id: str) -> Optional[Dict[str, Any]]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/transcripts"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=*"
-            f"&order=version.desc"
-            f"&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/transcripts"
+        f"?creative_id=eq.{creative_id}"
+        f"&select=*"
+        f"&order=version.desc"
+        f"&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            activity.logger.info(
-                f"Found existing transcript for creative={creative_id}, "
-                f"version={data[0].get('version')}"
-            )
-        return data[0] if data else None
+    if data:
+        activity.logger.info(
+            f"Found existing transcript for creative={creative_id}, "
+            f"version={data[0].get('version')}"
+        )
+    return data[0] if data else None

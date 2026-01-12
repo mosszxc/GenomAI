@@ -14,7 +14,7 @@ Issue: Inspiration System
 """
 
 import os
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional, List
 from dataclasses import dataclass
 from datetime import datetime
@@ -107,14 +107,14 @@ async def create_external_inspiration(
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/external_inspirations",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/external_inspirations",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     return data[0] if data else {}
 
@@ -157,14 +157,14 @@ async def update_external_inspiration(
     if not payload:
         return {}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/external_inspirations?id=eq.{inspiration_id}",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/external_inspirations?id=eq.{inspiration_id}",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     return data[0] if data else {}
 
@@ -179,16 +179,16 @@ async def get_pending_inspirations(limit: int = 10) -> List[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/external_inspirations"
-            f"?status=eq.pending"
-            f"&order=created_at.asc"
-            f"&limit={limit}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/external_inspirations"
+        f"?status=eq.pending"
+        f"&order=created_at.asc"
+        f"&limit={limit}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def get_extracted_inspirations(limit: int = 10) -> List[dict]:
@@ -201,16 +201,16 @@ async def get_extracted_inspirations(limit: int = 10) -> List[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/external_inspirations"
-            f"?status=eq.extracted"
-            f"&order=created_at.asc"
-            f"&limit={limit}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/external_inspirations"
+        f"?status=eq.extracted"
+        f"&order=created_at.asc"
+        f"&limit={limit}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def inject_external_components(
@@ -237,13 +237,13 @@ async def inject_external_components(
     headers = _get_headers(supabase_key)
 
     # Get inspiration
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/external_inspirations?id=eq.{inspiration_id}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/external_inspirations?id=eq.{inspiration_id}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     if not data:
         raise SupabaseError(f"Inspiration {inspiration_id} not found")
@@ -301,32 +301,32 @@ async def get_inspiration_stats() -> dict:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Get counts by status
-        response = await client.get(
-            f"{rest_url}/external_inspirations?select=status&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    # Get counts by status
+    response = await client.get(
+        f"{rest_url}/external_inspirations?select=status&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        by_status = {}
-        for row in data:
-            status = row.get("status", "unknown")
-            by_status[status] = by_status.get(status, 0) + 1
+    by_status = {}
+    for row in data:
+        status = row.get("status", "unknown")
+        by_status[status] = by_status.get(status, 0) + 1
 
-        # Get counts by source
-        response = await client.get(
-            f"{rest_url}/external_inspirations?select=source_type&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    # Get counts by source
+    response = await client.get(
+        f"{rest_url}/external_inspirations?select=source_type&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        by_source = {}
-        for row in data:
-            source = row.get("source_type", "unknown")
-            by_source[source] = by_source.get(source, 0) + 1
+    by_source = {}
+    for row in data:
+        source = row.get("source_type", "unknown")
+        by_source[source] = by_source.get(source, 0) + 1
 
     total = sum(by_status.values())
     injected = by_status.get("injected", 0)

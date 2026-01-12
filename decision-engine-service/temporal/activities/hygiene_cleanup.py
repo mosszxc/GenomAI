@@ -19,6 +19,7 @@ from typing import Dict
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 import httpx
+from src.core.http_client import get_http_client
 
 
 SCHEMA = "genomai"
@@ -68,27 +69,27 @@ async def cleanup_expired_import_queue(retention_days: int = 7) -> int:
 
     activity.logger.info(f"Cleaning historical_import_queue older than {cutoff_iso}")
 
-    async with httpx.AsyncClient() as client:
-        # Delete expired entries
-        response = await client.delete(
-            f"{rest_url}/historical_import_queue"
-            f"?status=in.(expired,pending_video)"
-            f"&created_at=lt.{cutoff_iso}",
-            headers=headers,
-        )
+    client = get_http_client()
+    # Delete expired entries
+    response = await client.delete(
+        f"{rest_url}/historical_import_queue"
+        f"?status=in.(expired,pending_video)"
+        f"&created_at=lt.{cutoff_iso}",
+        headers=headers,
+    )
 
-        if response.status_code == 404:
-            activity.logger.info("Table historical_import_queue not found")
-            return 0
+    if response.status_code == 404:
+        activity.logger.info("Table historical_import_queue not found")
+        return 0
 
-        if response.status_code not in (200, 204):
-            activity.logger.warning(f"Error cleaning import queue: {response.text}")
-            return 0
+    if response.status_code not in (200, 204):
+        activity.logger.warning(f"Error cleaning import queue: {response.text}")
+        return 0
 
-        # Extract count from content-range header
-        count = _extract_delete_count(response)
-        activity.logger.info(f"Deleted {count} expired import queue entries")
-        return count
+    # Extract count from content-range header
+    count = _extract_delete_count(response)
+    activity.logger.info(f"Deleted {count} expired import queue entries")
+    return count
 
 
 @activity.defn
@@ -110,25 +111,25 @@ async def cleanup_rejected_knowledge(retention_days: int = 30) -> int:
 
     activity.logger.info(f"Cleaning rejected knowledge older than {cutoff_iso}")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.delete(
-            f"{rest_url}/knowledge_extractions"
-            f"?status=eq.rejected"
-            f"&reviewed_at=lt.{cutoff_iso}",
-            headers=headers,
-        )
+    client = get_http_client()
+    response = await client.delete(
+        f"{rest_url}/knowledge_extractions"
+        f"?status=eq.rejected"
+        f"&reviewed_at=lt.{cutoff_iso}",
+        headers=headers,
+    )
 
-        if response.status_code == 404:
-            activity.logger.info("Table knowledge_extractions not found")
-            return 0
+    if response.status_code == 404:
+        activity.logger.info("Table knowledge_extractions not found")
+        return 0
 
-        if response.status_code not in (200, 204):
-            activity.logger.warning(f"Error cleaning knowledge: {response.text}")
-            return 0
+    if response.status_code not in (200, 204):
+        activity.logger.warning(f"Error cleaning knowledge: {response.text}")
+        return 0
 
-        count = _extract_delete_count(response)
-        activity.logger.info(f"Deleted {count} rejected knowledge extractions")
-        return count
+    count = _extract_delete_count(response)
+    activity.logger.info(f"Deleted {count} rejected knowledge extractions")
+    return count
 
 
 @activity.defn
@@ -144,72 +145,54 @@ async def cleanup_orphan_raw_metrics() -> int:
 
     activity.logger.info("Cleaning orphan raw_metrics_current entries")
 
-    async with httpx.AsyncClient() as client:
-        # First, get tracker_ids that exist in creatives
-        valid_response = await client.get(
-            f"{rest_url}/creatives?select=tracker_id",
-            headers=_get_headers(supabase_key),
+    client = get_http_client()
+    # First, get tracker_ids that exist in creatives
+    valid_response = await client.get(
+        f"{rest_url}/creatives?select=tracker_id",
+        headers=_get_headers(supabase_key),
+    )
+
+    if valid_response.status_code != 200:
+        activity.logger.warning("Could not fetch valid tracker_ids")
+        return 0
+
+    valid_trackers = {
+        r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")
+    }
+
+    # Get all metrics tracker_ids
+    metrics_response = await client.get(
+        f"{rest_url}/raw_metrics_current?select=tracker_id",
+        headers=_get_headers(supabase_key),
+    )
+
+    if metrics_response.status_code != 200:
+        activity.logger.warning("Could not fetch metrics tracker_ids")
+        return 0
+
+    metrics_trackers = {
+        r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")
+    }
+
+    # Find orphans
+    orphan_trackers = metrics_trackers - valid_trackers
+
+    if not orphan_trackers:
+        activity.logger.info("No orphan raw_metrics found")
+        return 0
+
+    # Delete orphans (batch by 50)
+    deleted = 0
+    for tracker_id in list(orphan_trackers)[:50]:  # Limit to 50 per run
+        del_response = await client.delete(
+            f"{rest_url}/raw_metrics_current?tracker_id=eq.{tracker_id}",
+            headers=headers,
         )
+        if del_response.status_code in (200, 204):
+            deleted += 1
 
-        if valid_response.status_code != 200:
-            activity.logger.warning("Could not fetch valid tracker_ids")
-            return 0
-
-        valid_trackers = {
-            r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")
-        }
-
-        # Get all metrics tracker_ids
-        metrics_response = await client.get(
-            f"{rest_url}/raw_metrics_current?select=tracker_id",
-            headers=_get_headers(supabase_key),
-        )
-
-        if metrics_response.status_code != 200:
-            activity.logger.warning("Could not fetch metrics tracker_ids")
-            return 0
-
-        metrics_trackers = {
-            r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")
-        }
-
-        # Find orphans
-        orphan_trackers = metrics_trackers - valid_trackers
-        total_orphans = len(orphan_trackers)
-
-        if not orphan_trackers:
-            activity.logger.info("No orphan raw_metrics found")
-            return 0
-
-        activity.logger.info(f"Found {total_orphans} orphan raw_metrics entries")
-
-        # Delete orphans (batch by 500)
-        deleted = 0
-        failed = 0
-        batch_size = 500
-
-        for tracker_id in list(orphan_trackers)[:batch_size]:
-            try:
-                del_response = await client.delete(
-                    f"{rest_url}/raw_metrics_current?tracker_id=eq.{tracker_id}",
-                    headers=headers,
-                )
-                if del_response.status_code in (200, 204):
-                    deleted += 1
-                else:
-                    failed += 1
-                    activity.logger.warning(
-                        f"Failed to delete orphan {tracker_id}: HTTP {del_response.status_code}"
-                    )
-            except Exception as e:
-                failed += 1
-                activity.logger.warning(f"Failed to delete orphan {tracker_id}: {e}")
-
-        activity.logger.info(
-            f"Orphan cleanup: deleted={deleted}, failed={failed}, "
-            f"remaining={max(0, total_orphans - batch_size)}"
-        )
-        return deleted
+    activity.logger.info(f"Deleted {deleted} orphan raw_metrics entries")
+    return deleted
 
 
 @activity.defn
@@ -231,23 +214,23 @@ async def cleanup_idle_buyer_states(retention_days: int = 30) -> int:
 
     activity.logger.info(f"Cleaning idle buyer_states older than {cutoff_iso}")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.delete(
-            f"{rest_url}/buyer_states?state=eq.idle&updated_at=lt.{cutoff_iso}",
-            headers=headers,
-        )
+    client = get_http_client()
+    response = await client.delete(
+        f"{rest_url}/buyer_states?state=eq.idle&updated_at=lt.{cutoff_iso}",
+        headers=headers,
+    )
 
-        if response.status_code == 404:
-            activity.logger.info("Table buyer_states not found")
-            return 0
+    if response.status_code == 404:
+        activity.logger.info("Table buyer_states not found")
+        return 0
 
-        if response.status_code not in (200, 204):
-            activity.logger.warning(f"Error cleaning buyer_states: {response.text}")
-            return 0
+    if response.status_code not in (200, 204):
+        activity.logger.warning(f"Error cleaning buyer_states: {response.text}")
+        return 0
 
-        count = _extract_delete_count(response)
-        activity.logger.info(f"Deleted {count} idle buyer states")
-        return count
+    count = _extract_delete_count(response)
+    activity.logger.info(f"Deleted {count} idle buyer states")
+    return count
 
 
 @activity.defn
@@ -269,23 +252,23 @@ async def archive_staleness_snapshots(retention_days: int = 90) -> int:
 
     activity.logger.info(f"Archiving staleness_snapshots older than {cutoff_iso}")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.delete(
-            f"{rest_url}/staleness_snapshots?created_at=lt.{cutoff_iso}",
-            headers=headers,
-        )
+    client = get_http_client()
+    response = await client.delete(
+        f"{rest_url}/staleness_snapshots?created_at=lt.{cutoff_iso}",
+        headers=headers,
+    )
 
-        if response.status_code == 404:
-            activity.logger.info("Table staleness_snapshots not found")
-            return 0
+    if response.status_code == 404:
+        activity.logger.info("Table staleness_snapshots not found")
+        return 0
 
-        if response.status_code not in (200, 204):
-            activity.logger.warning(f"Error archiving staleness: {response.text}")
-            return 0
+    if response.status_code not in (200, 204):
+        activity.logger.warning(f"Error archiving staleness: {response.text}")
+        return 0
 
-        count = _extract_delete_count(response)
-        activity.logger.info(f"Archived {count} staleness snapshots")
-        return count
+    count = _extract_delete_count(response)
+    activity.logger.info(f"Archived {count} staleness snapshots")
+    return count
 
 
 @activity.defn
@@ -406,133 +389,129 @@ async def retry_failed_hypotheses(
         f"Looking for failed/stuck hypotheses to retry (max_retries={max_retries})"
     )
 
-    async with httpx.AsyncClient() as client:
-        # Find failed hypotheses that haven't exceeded retry limit
-        # and either never retried or last retry was before cooldown
-        # Also include pending hypotheses that are stuck (> 5 min old)
-        response = await client.get(
-            f"{rest_url}/hypotheses"
-            f"?or=(status.eq.failed,and(status.eq.pending,created_at.lt.{stuck_cutoff_iso}))"
-            f"&retry_count=lt.{max_retries}"
-            f"&or=(last_retry_at.is.null,last_retry_at.lt.{cooldown_iso})"
-            f"&select=id,idea_id,content,buyer_id,retry_count,status"
-            f"&limit=10",  # Process max 10 per run
+    client = get_http_client()
+    # Find failed hypotheses that haven't exceeded retry limit
+    # and either never retried or last retry was before cooldown
+    # Also include pending hypotheses that are stuck (> 5 min old)
+    response = await client.get(
+        f"{rest_url}/hypotheses"
+        f"?or=(status.eq.failed,and(status.eq.pending,created_at.lt.{stuck_cutoff_iso}))"
+        f"&retry_count=lt.{max_retries}"
+        f"&or=(last_retry_at.is.null,last_retry_at.lt.{cooldown_iso})"
+        f"&select=id,idea_id,content,buyer_id,retry_count,status"
+        f"&limit=10",  # Process max 10 per run
+        headers=headers,
+    )
+
+    if response.status_code != 200:
+        activity.logger.warning(f"Error fetching failed hypotheses: {response.text}")
+        return stats
+
+    failed_hypotheses = response.json()
+
+    if not failed_hypotheses:
+        activity.logger.info("No failed hypotheses eligible for retry")
+        return stats
+
+    activity.logger.info(f"Found {len(failed_hypotheses)} hypotheses to retry")
+
+    # Get Telegram bot token
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        activity.logger.error("TELEGRAM_BOT_TOKEN not configured, skipping retries")
+        stats["skipped"] = len(failed_hypotheses)
+        return stats
+
+    for hypothesis in failed_hypotheses:
+        hypothesis_id = hypothesis["id"]
+        buyer_id = hypothesis.get("buyer_id")
+        content = hypothesis.get("content", "")
+
+        if not buyer_id or not content:
+            activity.logger.warning(
+                f"Hypothesis {hypothesis_id} missing buyer_id or content"
+            )
+            stats["skipped"] += 1
+            continue
+
+        # Get buyer's chat_id
+        buyer_response = await client.get(
+            f"{rest_url}/buyers?id=eq.{buyer_id}&select=telegram_id",
             headers=headers,
         )
 
-        if response.status_code != 200:
-            activity.logger.warning(
-                f"Error fetching failed hypotheses: {response.text}"
-            )
-            return stats
+        if buyer_response.status_code != 200:
+            activity.logger.warning(f"Error fetching buyer {buyer_id}")
+            stats["skipped"] += 1
+            continue
 
-        failed_hypotheses = response.json()
+        buyers = buyer_response.json()
+        if not buyers or not buyers[0].get("telegram_id"):
+            activity.logger.warning(f"Buyer {buyer_id} has no telegram_id")
+            stats["skipped"] += 1
+            continue
 
-        if not failed_hypotheses:
-            activity.logger.info("No failed hypotheses eligible for retry")
-            return stats
+        chat_id = buyers[0]["telegram_id"]
+        stats["retried"] += 1
 
-        activity.logger.info(f"Found {len(failed_hypotheses)} hypotheses to retry")
-
-        # Get Telegram bot token
-        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-        if not bot_token:
-            activity.logger.error("TELEGRAM_BOT_TOKEN not configured, skipping retries")
-            stats["skipped"] = len(failed_hypotheses)
-            return stats
-
-        for hypothesis in failed_hypotheses:
-            hypothesis_id = hypothesis["id"]
-            buyer_id = hypothesis.get("buyer_id")
-            content = hypothesis.get("content", "")
-
-            if not buyer_id or not content:
-                activity.logger.warning(
-                    f"Hypothesis {hypothesis_id} missing buyer_id or content"
-                )
-                stats["skipped"] += 1
-                continue
-
-            # Get buyer's chat_id
-            buyer_response = await client.get(
-                f"{rest_url}/buyers?id=eq.{buyer_id}&select=telegram_id",
-                headers=headers,
+        # Attempt delivery
+        try:
+            telegram_response = await client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": f"<b>Hypothesis (Retry)</b>\n\n{content}",
+                    "parse_mode": "HTML",
+                },
+                timeout=30.0,
             )
 
-            if buyer_response.status_code != 200:
-                activity.logger.warning(f"Error fetching buyer {buyer_id}")
-                stats["skipped"] += 1
-                continue
+            tg_data = telegram_response.json()
 
-            buyers = buyer_response.json()
-            if not buyers or not buyers[0].get("telegram_id"):
-                activity.logger.warning(f"Buyer {buyer_id} has no telegram_id")
-                stats["skipped"] += 1
-                continue
-
-            chat_id = buyers[0]["telegram_id"]
-            stats["retried"] += 1
-
-            # Attempt delivery
-            try:
-                telegram_response = await client.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            if tg_data.get("ok"):
+                # Success - update hypothesis
+                await client.patch(
+                    f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
+                    headers=write_headers,
                     json={
-                        "chat_id": chat_id,
-                        "text": f"<b>Hypothesis (Retry)</b>\n\n{content}",
-                        "parse_mode": "HTML",
+                        "status": "delivered",
+                        "retry_count": hypothesis["retry_count"] + 1,
+                        "last_retry_at": datetime.utcnow().isoformat(),
+                        "last_error": None,
                     },
-                    timeout=30.0,
                 )
-
-                tg_data = telegram_response.json()
-
-                if tg_data.get("ok"):
-                    # Success - update hypothesis
-                    await client.patch(
-                        f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
-                        headers=write_headers,
-                        json={
-                            "status": "delivered",
-                            "retry_count": hypothesis["retry_count"] + 1,
-                            "last_retry_at": datetime.utcnow().isoformat(),
-                            "last_error": None,
-                        },
-                    )
-                    stats["succeeded"] += 1
-                    activity.logger.info(
-                        f"Retry succeeded for hypothesis {hypothesis_id}"
-                    )
-                else:
-                    # Telegram error
-                    error_msg = tg_data.get("description", "Unknown Telegram error")
-                    await client.patch(
-                        f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
-                        headers=write_headers,
-                        json={
-                            "retry_count": hypothesis["retry_count"] + 1,
-                            "last_retry_at": datetime.utcnow().isoformat(),
-                            "last_error": error_msg,
-                        },
-                    )
-                    stats["failed"] += 1
-                    activity.logger.warning(
-                        f"Retry failed for {hypothesis_id}: {error_msg}"
-                    )
-
-            except Exception as e:
-                # Network error
+                stats["succeeded"] += 1
+                activity.logger.info(f"Retry succeeded for hypothesis {hypothesis_id}")
+            else:
+                # Telegram error
+                error_msg = tg_data.get("description", "Unknown Telegram error")
                 await client.patch(
                     f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
                     headers=write_headers,
                     json={
                         "retry_count": hypothesis["retry_count"] + 1,
                         "last_retry_at": datetime.utcnow().isoformat(),
-                        "last_error": str(e),
+                        "last_error": error_msg,
                     },
                 )
                 stats["failed"] += 1
-                activity.logger.warning(f"Retry error for {hypothesis_id}: {e}")
+                activity.logger.warning(
+                    f"Retry failed for {hypothesis_id}: {error_msg}"
+                )
+
+        except Exception as e:
+            # Network error
+            await client.patch(
+                f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
+                headers=write_headers,
+                json={
+                    "retry_count": hypothesis["retry_count"] + 1,
+                    "last_retry_at": datetime.utcnow().isoformat(),
+                    "last_error": str(e),
+                },
+            )
+            stats["failed"] += 1
+            activity.logger.warning(f"Retry error for {hypothesis_id}: {e}")
 
     total = stats["succeeded"] + stats["failed"] + stats["skipped"]
     activity.logger.info(
@@ -566,23 +545,21 @@ async def cleanup_exhausted_hypotheses(retention_days: int = 7) -> int:
         f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned"
     )
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/hypotheses"
-            f"?status=eq.failed"
-            f"&retry_count=gte.{MAX_HYPOTHESIS_RETRIES}"
-            f"&created_at=lt.{cutoff_iso}",
-            headers=headers,
-            json={"status": "abandoned"},
-        )
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/hypotheses"
+        f"?status=eq.failed"
+        f"&retry_count=gte.{MAX_HYPOTHESIS_RETRIES}"
+        f"&created_at=lt.{cutoff_iso}",
+        headers=headers,
+        json={"status": "abandoned"},
+    )
 
-        if response.status_code not in (200, 204):
-            activity.logger.warning(
-                f"Error marking hypotheses abandoned: {response.text}"
-            )
-            return 0
+    if response.status_code not in (200, 204):
+        activity.logger.warning(f"Error marking hypotheses abandoned: {response.text}")
+        return 0
 
-        count = _extract_delete_count(response)
-        if count > 0:
-            activity.logger.info(f"Marked {count} exhausted hypotheses as abandoned")
-        return count
+    count = _extract_delete_count(response)
+    if count > 0:
+        activity.logger.info(f"Marked {count} exhausted hypotheses as abandoned")
+    return count

@@ -15,7 +15,7 @@ Different from DailyRecommendationWorkflow:
 
 import os
 from dataclasses import dataclass, field
-import httpx
+from src.core.http_client import get_http_client
 
 from src.services.correlation_discovery import (
     discover_correlations,
@@ -130,18 +130,18 @@ async def get_component_learnings(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?component_type=eq.{component_type}"
-            f"&sample_size=gte.{min_samples}"
-            f"&select=component_value,win_rate,sample_size"
-            f"&order=win_rate.desc"
-            f"&limit=10",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?component_type=eq.{component_type}"
+        f"&sample_size=gte.{min_samples}"
+        f"&select=component_value,win_rate,sample_size"
+        f"&order=win_rate.desc"
+        f"&limit=10",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def get_recent_usage() -> dict[tuple[str, str], int]:
@@ -155,27 +155,27 @@ async def get_recent_usage() -> dict[tuple[str, str], int]:
 
     usage_counts: dict[tuple[str, str], int] = {}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Get recent decomposed creatives
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?created_at=gte.now()-interval'{FRESHNESS_WINDOW_DAYS} days'"
-            f"&select=payload",
-            headers=headers,
-        )
+    client = get_http_client()
+    # Get recent decomposed creatives
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives"
+        f"?created_at=gte.now()-interval'{FRESHNESS_WINDOW_DAYS} days'"
+        f"&select=payload",
+        headers=headers,
+    )
 
-        if response.status_code != 200:
-            return usage_counts
+    if response.status_code != 200:
+        return usage_counts
 
-        rows = response.json()
+    rows = response.json()
 
-        for row in rows:
-            payload = row.get("payload") or {}
-            for comp_type in RECOMMEND_COMPONENT_TYPES:
-                comp_value = payload.get(comp_type)
-                if comp_value:
-                    key = (comp_type, comp_value)
-                    usage_counts[key] = usage_counts.get(key, 0) + 1
+    for row in rows:
+        payload = row.get("payload") or {}
+        for comp_type in RECOMMEND_COMPONENT_TYPES:
+            comp_value = payload.get(comp_type)
+            if comp_value:
+                key = (comp_type, comp_value)
+                usage_counts[key] = usage_counts.get(key, 0) + 1
 
     return usage_counts
 

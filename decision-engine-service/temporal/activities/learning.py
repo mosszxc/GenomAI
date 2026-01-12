@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from temporalio import activity
 
 from temporal.config import settings
+from src.core.http_client import get_http_client
 
 
 @dataclass
@@ -347,8 +348,6 @@ async def emit_learning_event(input: EmitLearningEventInput) -> bool:
     """
     activity.logger.info(f"Emitting learning event: {input.event_type}")
 
-    import httpx
-
     SCHEMA = "genomai"
 
     headers = {
@@ -371,9 +370,9 @@ async def emit_learning_event(input: EmitLearningEventInput) -> bool:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+        client = get_http_client()
+        response = await client.post(url, headers=headers, json=payload, timeout=15.0)
+        response.raise_for_status()
 
         activity.logger.info(f"Learning event emitted: {input.event_type}")
         return True

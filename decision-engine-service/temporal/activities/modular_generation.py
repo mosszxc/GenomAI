@@ -20,6 +20,7 @@ from temporalio.exceptions import ApplicationError
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+from src.core.http_client import get_http_client
 from services.module_selector import (
     check_modular_generation_ready,
     select_top_combinations,
@@ -277,7 +278,6 @@ async def save_modular_hypothesis(
     Returns:
         Created hypothesis record
     """
-    import httpx
 
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
@@ -301,24 +301,24 @@ async def save_modular_hypothesis(
     if buyer_id:
         hypothesis["buyer_id"] = buyer_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/hypotheses",
-            headers=headers,
-            json=hypothesis,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/hypotheses",
+        headers=headers,
+        json=hypothesis,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise ApplicationError("Failed to insert hypothesis: no data returned")
+    if not data:
+        raise ApplicationError("Failed to insert hypothesis: no data returned")
 
-        activity.logger.info(
-            f"Saved modular hypothesis {data[0]['id']} "
-            f"(hook={hook_module_id}, promise={promise_module_id}, proof={proof_module_id})"
-        )
+    activity.logger.info(
+        f"Saved modular hypothesis {data[0]['id']} "
+        f"(hook={hook_module_id}, promise={promise_module_id}, proof={proof_module_id})"
+    )
 
-        return data[0]
+    return data[0]
 
 
 @activity.defn

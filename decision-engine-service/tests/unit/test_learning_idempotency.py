@@ -33,15 +33,15 @@ class TestIsOutcomeAlreadyProcessed:
         mock_response.json.return_value = [{"id": "existing-version-id"}]
         mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_instance = AsyncMock()
-            mock_instance.get.return_value = mock_response
-            mock_client.return_value.__aenter__.return_value = mock_instance
+        with patch("src.services.learning_loop.get_http_client") as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
 
             result = await is_outcome_already_processed("test-outcome-id")
 
             assert result is True
-            mock_instance.get.assert_called_once()
+            mock_client.get.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_returns_false_when_no_confidence_version(self, mock_env):
@@ -52,10 +52,10 @@ class TestIsOutcomeAlreadyProcessed:
         mock_response.json.return_value = []
         mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_instance = AsyncMock()
-            mock_instance.get.return_value = mock_response
-            mock_client.return_value.__aenter__.return_value = mock_instance
+        with patch("src.services.learning_loop.get_http_client") as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
 
             result = await is_outcome_already_processed("test-outcome-id")
 

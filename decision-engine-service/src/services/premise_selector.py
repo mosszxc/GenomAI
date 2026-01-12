@@ -10,7 +10,7 @@ Pattern: recommendation.py, exploration.py
 
 import os
 import random
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass
 from numpy.random import beta as beta_sample
@@ -112,15 +112,15 @@ async def get_active_premises(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/premises?{filter_str}"
-            f"&select=id,premise_type,name,origin_story,mechanism_claim"
-            f"&limit={limit}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/premises?{filter_str}"
+        f"&select=id,premise_type,name,origin_story,mechanism_claim"
+        f"&limit={limit}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def get_premise_learnings(
@@ -144,16 +144,16 @@ async def get_premise_learnings(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/premise_learnings?{filter_str}", headers=headers
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/premise_learnings?{filter_str}", headers=headers
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0]
-        return None
+    if data:
+        return data[0]
+    return None
 
 
 async def get_top_premises(
@@ -179,16 +179,16 @@ async def get_top_premises(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/premise_learnings?{filter_str}"
-            f"&select=premise_id,premise_type,win_rate,sample_size,win_count,loss_count"
-            f"&order=win_rate.desc"
-            f"&limit={limit}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/premise_learnings?{filter_str}"
+        f"&select=premise_id,premise_type,win_rate,sample_size,win_count,loss_count"
+        f"&order=win_rate.desc"
+        f"&limit={limit}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def get_undersampled_premises(
@@ -252,18 +252,18 @@ async def select_best_premise(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/premises?id=eq.{premise_id}"
-            f"&select=id,premise_type,name,origin_story,mechanism_claim",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/premises?id=eq.{premise_id}"
+        f"&select=id,premise_type,name,origin_story,mechanism_claim",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0]
-        return None
+    if data:
+        return data[0]
+    return None
 
 
 async def select_exploration_premise(

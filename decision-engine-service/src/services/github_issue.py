@@ -12,6 +12,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 import httpx
+from src.core.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -84,26 +85,26 @@ async def create_feedback_issue(
     }
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{GITHUB_API_URL}/repos/{GITHUB_REPO}/issues",
-                headers=headers,
-                json=payload,
-                timeout=30.0,
-            )
+        client = get_http_client()
+        response = await client.post(
+            f"{GITHUB_API_URL}/repos/{GITHUB_REPO}/issues",
+            headers=headers,
+            json=payload,
+            timeout=30.0,
+        )
 
-            if response.status_code == 201:
-                data = response.json()
-                logger.info(f"Created feedback issue #{data['number']}: {title}")
-                return IssueResult(
-                    success=True,
-                    issue_number=data["number"],
-                    issue_url=data["html_url"],
-                )
-            else:
-                error_msg = response.json().get("message", "Unknown error")
-                logger.error(f"GitHub API error: {response.status_code} - {error_msg}")
-                return IssueResult(success=False, error=error_msg)
+        if response.status_code == 201:
+            data = response.json()
+            logger.info(f"Created feedback issue #{data['number']}: {title}")
+            return IssueResult(
+                success=True,
+                issue_number=data["number"],
+                issue_url=data["html_url"],
+            )
+        else:
+            error_msg = response.json().get("message", "Unknown error")
+            logger.error(f"GitHub API error: {response.status_code} - {error_msg}")
+            return IssueResult(success=False, error=error_msg)
 
     except httpx.TimeoutException:
         logger.error("GitHub API timeout")

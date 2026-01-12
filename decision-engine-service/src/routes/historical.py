@@ -11,6 +11,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from src.core.http_client import get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,6 @@ async def get_pending_imports(buyer_id: str):
     Returns:
         List of pending import records
     """
-    import httpx
     import os
 
     supabase_url = os.getenv("SUPABASE_URL")
@@ -200,24 +200,24 @@ async def get_pending_imports(buyer_id: str):
     }
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{supabase_url}/rest/v1/historical_import_queue"
-                f"?buyer_id=eq.{buyer_id}"
-                f"&status=in.(pending_video,ready,processing)"
-                f"&order=created_at.asc"
-                f"&limit=50",
-                headers=headers,
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            data = response.json()
+        client = get_http_client()
+        response = await client.get(
+            f"{supabase_url}/rest/v1/historical_import_queue"
+            f"?buyer_id=eq.{buyer_id}"
+            f"&status=in.(pending_video,ready,processing)"
+            f"&order=created_at.asc"
+            f"&limit=50",
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
 
-            return {
-                "success": True,
-                "count": len(data),
-                "imports": data,
-            }
+        return {
+            "success": True,
+            "count": len(data),
+            "imports": data,
+        }
 
     except Exception as e:
         logger.error(f"Failed to get pending imports: {e}")

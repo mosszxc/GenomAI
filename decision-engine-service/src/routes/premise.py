@@ -5,7 +5,7 @@ Issue: #169
 """
 
 import os
-import httpx
+from src.core.http_client import get_http_client
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -266,35 +266,35 @@ async def create_premise(
             "Prefer": "return=representation",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{rest_url}/premises",
-                headers=headers,
-                json={
-                    "premise_type": request.premise_type,
-                    "name": request.name,
-                    "description": request.description,
-                    "origin_story": request.origin_story,
-                    "mechanism_claim": request.mechanism_claim,
-                    "source": request.source,
-                    "vertical": request.vertical,
-                    "geo": request.geo,
-                    "status": "emerging",
-                },
+        client = get_http_client()
+        response = await client.post(
+            f"{rest_url}/premises",
+            headers=headers,
+            json={
+                "premise_type": request.premise_type,
+                "name": request.name,
+                "description": request.description,
+                "origin_story": request.origin_story,
+                "mechanism_claim": request.mechanism_claim,
+                "source": request.source,
+                "vertical": request.vertical,
+                "geo": request.geo,
+                "status": "emerging",
+            },
+        )
+
+        if response.status_code == 409:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Premise with name '{request.name}' already exists for this vertical",
             )
 
-            if response.status_code == 409:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Premise with name '{request.name}' already exists for this vertical",
-                )
+        response.raise_for_status()
+        data = response.json()
 
-            response.raise_for_status()
-            data = response.json()
-
-            if data:
-                return PremiseResponse(**data[0])
-            raise HTTPException(status_code=500, detail="Failed to create premise")
+        if data:
+            return PremiseResponse(**data[0])
+        raise HTTPException(status_code=500, detail="Failed to create premise")
 
     except HTTPException:
         raise
@@ -324,17 +324,17 @@ async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{rest_url}/premises?id=eq.{premise_id}", headers=headers
-            )
-            response.raise_for_status()
-            data = response.json()
+        client = get_http_client()
+        response = await client.get(
+            f"{rest_url}/premises?id=eq.{premise_id}", headers=headers
+        )
+        response.raise_for_status()
+        data = response.json()
 
-            if not data:
-                raise HTTPException(status_code=404, detail="Premise not found")
+        if not data:
+            raise HTTPException(status_code=404, detail="Premise not found")
 
-            return data[0]
+        return data[0]
 
     except HTTPException:
         raise

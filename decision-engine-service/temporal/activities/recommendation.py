@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 import httpx
+from src.core.http_client import get_http_client
 
 
 SCHEMA = "genomai"
@@ -85,15 +86,13 @@ async def get_active_buyers() -> List[dict]:
 
     activity.logger.info("Fetching active buyers for recommendations")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/buyers"
-            "?status=eq.active"
-            "&select=id,telegram_id,name,geos,verticals",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/buyers?status=eq.active&select=id,telegram_id,name,geos,verticals",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     activity.logger.info(f"Found {len(data)} active buyers")
     return data
@@ -126,44 +125,44 @@ async def generate_recommendation_for_buyer(
     activity.logger.info(f"Generating recommendation for buyer {buyer_id}")
 
     # Call the recommendation API
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_url}/recommendations/generate",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "buyer_id": buyer_id,
-                "geo": geo,
-                "vertical": vertical,
-            },
-            timeout=30.0,
+    client = get_http_client()
+    response = await client.post(
+        f"{api_url}/recommendations/generate",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "buyer_id": buyer_id,
+            "geo": geo,
+            "vertical": vertical,
+        },
+        timeout=30.0,
+    )
+
+    if response.status_code != 200:
+        error_detail = response.text
+        activity.logger.error(f"Failed to generate recommendation: {error_detail}")
+        raise ApplicationError(
+            f"Recommendation generation failed: {error_detail}",
+            type="RECOMMENDATION_ERROR",
         )
 
-        if response.status_code != 200:
-            error_detail = response.text
-            activity.logger.error(f"Failed to generate recommendation: {error_detail}")
-            raise ApplicationError(
-                f"Recommendation generation failed: {error_detail}",
-                type="RECOMMENDATION_ERROR",
-            )
+    data = response.json()
 
-        data = response.json()
-
-        if not data.get("success"):
-            raise ApplicationError(
-                f"Recommendation failed: {data.get('error')}",
-                type="RECOMMENDATION_ERROR",
-            )
-
-        result = data["data"]
-        activity.logger.info(
-            f"Generated recommendation {result['id']} for buyer {buyer_id} "
-            f"(mode={result['mode']}, confidence={result['avg_confidence']:.2f})"
+    if not data.get("success"):
+        raise ApplicationError(
+            f"Recommendation failed: {data.get('error')}",
+            type="RECOMMENDATION_ERROR",
         )
 
-        return result
+    result = data["data"]
+    activity.logger.info(
+        f"Generated recommendation {result['id']} for buyer {buyer_id} "
+        f"(mode={result['mode']}, confidence={result['avg_confidence']:.2f})"
+    )
+
+    return result
 
 
 @activity.defn
@@ -209,53 +208,53 @@ async def send_recommendation_to_telegram(
         components=components,
     )
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage",
-                json={
-                    "chat_id": buyer_telegram_id,
-                    "text": message,
-                    "parse_mode": "HTML",
-                },
-                timeout=30.0,
-            )
-
-            data = response.json()
-
-            if not data.get("ok"):
-                error_desc = data.get("description", "Unknown Telegram error")
-                activity.logger.error(f"Telegram API error: {error_desc}")
-                raise ApplicationError(
-                    f"Telegram API error: {error_desc}",
-                    type="TELEGRAM_ERROR",
-                )
-
-            result = data.get("result", {})
-            message_id = result.get("message_id")
-
-            activity.logger.info(
-                f"Recommendation sent successfully: message_id={message_id}"
-            )
-
-            return {
-                "recommendation_id": recommendation_id,
-                "message_id": message_id,
+    client = get_http_client()
+    try:
+        response = await client.post(
+            f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage",
+            json={
                 "chat_id": buyer_telegram_id,
-                "status": "delivered",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+                "text": message,
+                "parse_mode": "HTML",
+            },
+            timeout=30.0,
+        )
 
-        except httpx.TimeoutException:
+        data = response.json()
+
+        if not data.get("ok"):
+            error_desc = data.get("description", "Unknown Telegram error")
+            activity.logger.error(f"Telegram API error: {error_desc}")
             raise ApplicationError(
-                "Telegram API timeout",
-                type="TELEGRAM_TIMEOUT",
+                f"Telegram API error: {error_desc}",
+                type="TELEGRAM_ERROR",
             )
-        except httpx.RequestError as e:
-            raise ApplicationError(
-                f"Telegram request error: {e}",
-                type="TELEGRAM_REQUEST_ERROR",
-            )
+
+        result = data.get("result", {})
+        message_id = result.get("message_id")
+
+        activity.logger.info(
+            f"Recommendation sent successfully: message_id={message_id}"
+        )
+
+        return {
+            "recommendation_id": recommendation_id,
+            "message_id": message_id,
+            "chat_id": buyer_telegram_id,
+            "status": "delivered",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    except httpx.TimeoutException:
+        raise ApplicationError(
+            "Telegram API timeout",
+            type="TELEGRAM_TIMEOUT",
+        )
+    except httpx.RequestError as e:
+        raise ApplicationError(
+            f"Telegram request error: {e}",
+            type="TELEGRAM_REQUEST_ERROR",
+        )
 
 
 def _format_recommendation_message(
@@ -353,13 +352,13 @@ async def update_recommendation_delivery(
     if status == "delivered":
         update_data["accepted_at"] = datetime.utcnow().isoformat()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/recommendations?id=eq.{recommendation_id}",
-            headers=headers,
-            json=update_data,
-        )
-        response.raise_for_status()
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/recommendations?id=eq.{recommendation_id}",
+        headers=headers,
+        json=update_data,
+    )
+    response.raise_for_status()
 
     activity.logger.info(f"Updated recommendation {recommendation_id}: status={status}")
 
@@ -399,16 +398,16 @@ async def emit_recommendation_event(
         "occurred_at": datetime.utcnow().isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/event_log",
-            headers=headers,
-            json=event,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/event_log",
+        headers=headers,
+        json=event,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return data[0] if data else event
+    return data[0] if data else event
 
 
 @activity.defn
@@ -425,15 +424,15 @@ async def get_recommendation_by_id(recommendation_id: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/recommendations?id=eq.{recommendation_id}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/recommendations?id=eq.{recommendation_id}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return data[0] if data else None
+    return data[0] if data else None
 
 
 @activity.defn
@@ -452,18 +451,18 @@ async def check_existing_daily_recommendation(buyer_id: str) -> Optional[str]:
 
     today = datetime.utcnow().date().isoformat()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/recommendations"
-            f"?buyer_id=eq.{buyer_id}"
-            f"&created_at=gte.{today}"
-            "&select=id"
-            "&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/recommendations"
+        f"?buyer_id=eq.{buyer_id}"
+        f"&created_at=gte.{today}"
+        "&select=id"
+        "&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0]["id"]
-        return None
+    if data:
+        return data[0]["id"]
+    return None

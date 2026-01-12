@@ -10,7 +10,7 @@ Issue: #304
 import os
 from typing import Optional
 from dataclasses import dataclass
-import httpx
+from src.core.http_client import get_http_client
 
 from src.utils.errors import SupabaseError
 
@@ -97,16 +97,16 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
 
     # Use RPC to execute complex SQL
     # First, get decomposed creatives with components
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?select=id,idea_id,payload"
-            f"&idea_id=not.is.null"
-            f"&limit=1000",
-            headers=headers,
-        )
-        response.raise_for_status()
-        decomposed = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives"
+        f"?select=id,idea_id,payload"
+        f"&idea_id=not.is.null"
+        f"&limit=1000",
+        headers=headers,
+    )
+    response.raise_for_status()
+    decomposed = response.json()
 
     if not decomposed:
         return {}
@@ -138,13 +138,13 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
         batch_ids = idea_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{rest_url}/decisions?idea_id=in.({ids_param})&select=id,idea_id",
-                headers=headers,
-            )
-            response.raise_for_status()
-            all_decisions.extend(response.json())
+        client = get_http_client()
+        response = await client.get(
+            f"{rest_url}/decisions?idea_id=in.({ids_param})&select=id,idea_id",
+            headers=headers,
+        )
+        response.raise_for_status()
+        all_decisions.extend(response.json())
 
     if not all_decisions:
         return {}
@@ -159,16 +159,16 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
         batch_ids = decision_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{rest_url}/outcome_aggregates"
-                f"?decision_id=in.({ids_param})"
-                f"&cpa=not.is.null"
-                f"&select=decision_id,cpa",
-                headers=headers,
-            )
-            response.raise_for_status()
-            all_outcomes.extend(response.json())
+        client = get_http_client()
+        response = await client.get(
+            f"{rest_url}/outcome_aggregates"
+            f"?decision_id=in.({ids_param})"
+            f"&cpa=not.is.null"
+            f"&select=decision_id,cpa",
+            headers=headers,
+        )
+        response.raise_for_status()
+        all_outcomes.extend(response.json())
 
     if not all_outcomes:
         return {}
@@ -253,16 +253,13 @@ async def compute_pair_winrate_for_idea(idea_id: str) -> Optional[float]:
     headers = _get_headers(supabase_key)
 
     # Get decomposed creative for this idea
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?idea_id=eq.{idea_id}"
-            f"&select=payload"
-            f"&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        decomposed = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives?idea_id=eq.{idea_id}&select=payload&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    decomposed = response.json()
 
     if not decomposed:
         return None

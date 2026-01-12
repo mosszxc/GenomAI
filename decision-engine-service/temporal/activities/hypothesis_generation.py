@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Optional, List
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
+from src.core.http_client import get_http_client
 
 # Fixed prompt version for reproducibility
 # v4: Added variables denormalization from decomposed_creatives
@@ -223,7 +224,6 @@ async def save_hypotheses(
     Returns:
         List of created hypothesis records
     """
-    import httpx
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -244,30 +244,30 @@ async def save_hypotheses(
     created_hypotheses = []
     now = datetime.utcnow().isoformat()
 
-    async with httpx.AsyncClient() as client:
-        for content in hypotheses:
-            hypothesis = {
-                "id": str(uuid.uuid4()),
-                "idea_id": idea_id,
-                "decision_id": decision_id,
-                "prompt_version": prompt_version,
-                "content": content,
-                "created_at": now,
-                "variables": variables,
-                "buyer_id": buyer_id,
-                "premise_id": premise_id,
-            }
+    client = get_http_client()
+    for content in hypotheses:
+        hypothesis = {
+            "id": str(uuid.uuid4()),
+            "idea_id": idea_id,
+            "decision_id": decision_id,
+            "prompt_version": prompt_version,
+            "content": content,
+            "created_at": now,
+            "variables": variables,
+            "buyer_id": buyer_id,
+            "premise_id": premise_id,
+        }
 
-            response = await client.post(
-                f"{rest_url}/hypotheses",
-                headers=headers,
-                json=hypothesis,
-            )
-            response.raise_for_status()
-            data = response.json()
+        response = await client.post(
+            f"{rest_url}/hypotheses",
+            headers=headers,
+            json=hypothesis,
+        )
+        response.raise_for_status()
+        data = response.json()
 
-            if data:
-                created_hypotheses.append(data[0])
+        if data:
+            created_hypotheses.append(data[0])
 
     activity.logger.info(
         f"Saved {len(created_hypotheses)} hypotheses for idea={idea_id}"
