@@ -127,8 +127,17 @@ gh release create "$NEW_VERSION" \
     --notes "$RELEASE_NOTES" \
     --latest
 
+# Sync develop with main (so new feature branches start from latest)
 echo ""
-echo "=== Deploy started ==="
+echo "Syncing develop with main..."
+git checkout develop
+git pull origin develop
+git merge main --no-edit
+git push origin develop
+git checkout main
+
+echo ""
+echo "=== Deploy complete ==="
 echo "Version: $NEW_VERSION"
 echo "Render will auto-deploy in ~3 minutes."
 echo ""
