@@ -39,6 +39,7 @@ class LearningResult:
     """Result of learning loop batch processing"""
 
     processed_count: int = 0
+    skipped_count: int = 0  # Issue #473: idempotency - already processed outcomes
     updated_ideas: list = None
     new_deaths: list = None
     component_updates: int = 0
@@ -54,6 +55,7 @@ class LearningResult:
     def to_dict(self) -> dict:
         return {
             "processed_count": self.processed_count,
+            "skipped_count": self.skipped_count,
             "updated_ideas": self.updated_ideas,
             "new_deaths": self.new_deaths,
             "component_updates": self.component_updates,
@@ -399,6 +401,31 @@ async def mark_outcome_processed(outcome_id: str) -> None:
         response.raise_for_status()
 
 
+async def is_outcome_already_processed(outcome_id: str) -> bool:
+    """
+    Check if outcome was already processed by learning loop.
+
+    Idempotency check: looks for existing confidence_version with this source_outcome_id.
+    This prevents duplicate processing on Temporal activity retries.
+
+    Issue #473: Learning Loop idempotency fix.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{rest_url}/idea_confidence_versions"
+            f"?source_outcome_id=eq.{outcome_id}"
+            f"&select=id"
+            f"&limit=1",
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return len(data) > 0
+
+
 async def emit_learning_event(
     idea_id: str,
     outcome_id: str,
@@ -438,6 +465,11 @@ async def process_single_outcome(outcome: dict) -> dict:
     """
     Process a single outcome and apply learning.
 
+    Idempotent - safe to retry. If outcome was already processed,
+    returns early with skipped=True.
+
+    Issue #473: Learning Loop idempotency fix.
+
     Returns dict with result info or error
     """
     outcome_id = outcome["id"]
@@ -446,6 +478,16 @@ async def process_single_outcome(outcome: dict) -> dict:
     spend = float(outcome.get("spend") or 0)
     env_ctx = outcome.get("environment_ctx")
     window_end = outcome.get("window_end", datetime.now().isoformat())
+
+    # Idempotency check: skip if already processed (issue #473)
+    if await is_outcome_already_processed(outcome_id):
+        # Mark as processed in case learning_applied flag wasn't set
+        await mark_outcome_processed(outcome_id)
+        return {
+            "skipped": True,
+            "reason": "already_processed",
+            "outcome_id": outcome_id,
+        }
 
     # Resolve idea
     idea_id = await resolve_idea_for_outcome(outcome)
@@ -566,6 +608,9 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
 
                 if "error" in learn_result:
                     result.errors.append(learn_result["error"])
+                elif learn_result.get("skipped"):
+                    # Already processed - idempotency check (issue #473)
+                    result.skipped_count += 1
                 else:
                     result.processed_count += 1
                     result.updated_ideas.append(learn_result["idea_id"])
