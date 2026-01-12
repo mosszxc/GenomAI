@@ -38,6 +38,8 @@ with workflow.unsafe.imports_passed_through():
         get_pending_video_campaigns,
         UpdateImportVideoInput,
         update_import_with_video,
+        log_buyer_interaction,
+        LogInteractionInput,
     )
     from temporal.activities.keitaro import (
         get_campaigns_by_source,
@@ -187,6 +189,36 @@ class BuyerOnboardingWorkflow:
         self._videos_count: int = 0
         self._error: Optional[str] = None
 
+    async def _log_outgoing(self, message: str, step: str) -> None:
+        """Log outgoing bot message."""
+        await workflow.execute_activity(
+            log_buyer_interaction,
+            LogInteractionInput(
+                telegram_id=self._telegram_id,
+                direction="out",
+                message_type="bot",
+                content=message,
+                context={"step": step, "state": self._state.value},
+                buyer_id=self._buyer_id,
+            ),
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+
+    async def _log_incoming(self, message: str, step: str) -> None:
+        """Log incoming user message."""
+        await workflow.execute_activity(
+            log_buyer_interaction,
+            LogInteractionInput(
+                telegram_id=self._telegram_id,
+                direction="in",
+                message_type="user",
+                content=message,
+                context={"step": step, "state": self._state.value},
+                buyer_id=self._buyer_id,
+            ),
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+
     @workflow.run
     async def run(self, input: BuyerOnboardingInput) -> BuyerOnboardingResult:
         """
@@ -238,15 +270,14 @@ class BuyerOnboardingWorkflow:
                     self._keitaro_source = existing_buyer.keitaro_source
                 self._state = OnboardingState.COMPLETED
 
+                welcome_back_msg = f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."
                 await workflow.execute_activity(
                     send_telegram_message,
-                    args=[
-                        self._chat_id,
-                        f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up.",
-                    ],
+                    args=[self._chat_id, welcome_back_msg],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
+                await self._log_outgoing(welcome_back_msg, "welcome_back")
 
                 return self._build_result()
 
@@ -258,6 +289,7 @@ class BuyerOnboardingWorkflow:
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
+            await self._log_outgoing(MESSAGES["welcome"], "welcome")
 
             # Wait for name
             # Note: wait_condition may return None when signal arrives during wait,
@@ -272,16 +304,19 @@ class BuyerOnboardingWorkflow:
                 return await self._handle_timeout()
 
             self._name = self._pending_message.text.strip()
+            await self._log_incoming(self._name, "name_input")
             self._pending_message = None
 
             # Step 2: Ask for GEOs
             self._state = OnboardingState.AWAITING_GEO
+            ask_geo_msg = MESSAGES["ask_geo"].format(name=self._name)
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[self._chat_id, MESSAGES["ask_geo"].format(name=self._name)],
+                args=[self._chat_id, ask_geo_msg],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
+            await self._log_outgoing(ask_geo_msg, "ask_geo")
 
             # Wait for valid GEOs
             while True:
@@ -292,9 +327,9 @@ class BuyerOnboardingWorkflow:
                 if self._pending_message is None:
                     return await self._handle_timeout()
 
-                geos_input = (
-                    self._pending_message.text.upper().replace(" ", "").split(",")
-                )
+                raw_geo_input = self._pending_message.text
+                await self._log_incoming(raw_geo_input, "geo_input")
+                geos_input = raw_geo_input.upper().replace(" ", "").split(",")
                 self._pending_message = None
 
                 # Validate GEOs
@@ -310,18 +345,20 @@ class BuyerOnboardingWorkflow:
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
+                await self._log_outgoing(MESSAGES["invalid_geo"], "invalid_geo")
 
             # Step 3: Ask for verticals
             self._state = OnboardingState.AWAITING_VERTICAL
+            ask_vertical_msg = MESSAGES["ask_vertical"].format(
+                geos=", ".join(self._geos)
+            )
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[
-                    self._chat_id,
-                    MESSAGES["ask_vertical"].format(geos=", ".join(self._geos)),
-                ],
+                args=[self._chat_id, ask_vertical_msg],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
+            await self._log_outgoing(ask_vertical_msg, "ask_vertical")
 
             # Wait for valid verticals
             while True:
@@ -332,9 +369,9 @@ class BuyerOnboardingWorkflow:
                 if self._pending_message is None:
                     return await self._handle_timeout()
 
-                verticals_input = (
-                    self._pending_message.text.lower().replace(" ", "").split(",")
-                )
+                raw_vertical_input = self._pending_message.text
+                await self._log_incoming(raw_vertical_input, "vertical_input")
+                verticals_input = raw_vertical_input.lower().replace(" ", "").split(",")
                 self._pending_message = None
 
                 # Validate verticals
@@ -350,20 +387,22 @@ class BuyerOnboardingWorkflow:
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
+                await self._log_outgoing(
+                    MESSAGES["invalid_vertical"], "invalid_vertical"
+                )
 
             # Step 4: Ask for Keitaro source with validation
             self._state = OnboardingState.AWAITING_KEITARO
+            ask_keitaro_msg = MESSAGES["ask_keitaro"].format(
+                verticals=", ".join(self._verticals)
+            )
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[
-                    self._chat_id,
-                    MESSAGES["ask_keitaro"].format(
-                        verticals=", ".join(self._verticals)
-                    ),
-                ],
+                args=[self._chat_id, ask_keitaro_msg],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
+            await self._log_outgoing(ask_keitaro_msg, "ask_keitaro")
 
             # Wait for valid Keitaro source (with retry)
             sub10_attempts = 0
@@ -376,18 +415,18 @@ class BuyerOnboardingWorkflow:
                     return await self._handle_timeout()
 
                 sub10_input = self._pending_message.text.strip()
+                await self._log_incoming(sub10_input, "sub10_input")
                 self._pending_message = None
 
                 # Validate sub10 by checking campaigns in Keitaro
+                validating_msg = MESSAGES["validating_sub10"].format(sub10=sub10_input)
                 await workflow.execute_activity(
                     send_telegram_message,
-                    args=[
-                        self._chat_id,
-                        MESSAGES["validating_sub10"].format(sub10=sub10_input),
-                    ],
+                    args=[self._chat_id, validating_msg],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
+                await self._log_outgoing(validating_msg, "validating_sub10")
 
                 campaigns_result = await workflow.execute_activity(
                     get_campaigns_by_source,
@@ -399,18 +438,17 @@ class BuyerOnboardingWorkflow:
                 if campaigns_result.total > 0:
                     # Valid sub10 found
                     self._keitaro_source = sub10_input
+                    sub10_found_msg = MESSAGES["sub10_found"].format(
+                        count=campaigns_result.total,
+                        sub10=sub10_input,
+                    )
                     await workflow.execute_activity(
                         send_telegram_message,
-                        args=[
-                            self._chat_id,
-                            MESSAGES["sub10_found"].format(
-                                count=campaigns_result.total,
-                                sub10=sub10_input,
-                            ),
-                        ],
+                        args=[self._chat_id, sub10_found_msg],
                         start_to_close_timeout=timedelta(seconds=30),
                         retry_policy=default_retry,
                     )
+                    await self._log_outgoing(sub10_found_msg, "sub10_found")
                     break
 
                 # Invalid sub10, ask again
@@ -418,18 +456,17 @@ class BuyerOnboardingWorkflow:
                 remaining = MAX_SUB10_RETRY_ATTEMPTS - sub10_attempts
 
                 if remaining > 0:
+                    sub10_not_found_msg = MESSAGES["sub10_not_found"].format(
+                        sub10=sub10_input,
+                        remaining=remaining,
+                    )
                     await workflow.execute_activity(
                         send_telegram_message,
-                        args=[
-                            self._chat_id,
-                            MESSAGES["sub10_not_found"].format(
-                                sub10=sub10_input,
-                                remaining=remaining,
-                            ),
-                        ],
+                        args=[self._chat_id, sub10_not_found_msg],
                         start_to_close_timeout=timedelta(seconds=30),
                         retry_policy=default_retry,
                     )
+                    await self._log_outgoing(sub10_not_found_msg, "sub10_not_found")
                 else:
                     # Retries exhausted
                     await workflow.execute_activity(
@@ -438,23 +475,25 @@ class BuyerOnboardingWorkflow:
                         start_to_close_timeout=timedelta(seconds=30),
                         retry_policy=default_retry,
                     )
+                    await self._log_outgoing(
+                        MESSAGES["sub10_retries_exhausted"], "sub10_retries_exhausted"
+                    )
                     self._state = OnboardingState.CANCELLED
                     self._error = "sub10 validation failed after max retries"
                     return self._build_result()
 
             # Step 5: Create buyer and load history
             self._state = OnboardingState.LOADING_HISTORY
+            loading_msg = MESSAGES["loading_history"].format(
+                keitaro_source=self._keitaro_source
+            )
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[
-                    self._chat_id,
-                    MESSAGES["loading_history"].format(
-                        keitaro_source=self._keitaro_source
-                    ),
-                ],
+                args=[self._chat_id, loading_msg],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
+            await self._log_outgoing(loading_msg, "loading_history")
 
             # Create buyer record
             buyer = await workflow.execute_activity(
@@ -510,15 +549,16 @@ class BuyerOnboardingWorkflow:
                 total_campaigns = len(pending_campaigns)
 
                 # Send intro message
+                ask_videos_intro_msg = MESSAGES["ask_videos_intro"].format(
+                    total=total_campaigns
+                )
                 await workflow.execute_activity(
                     send_telegram_message,
-                    args=[
-                        self._chat_id,
-                        MESSAGES["ask_videos_intro"].format(total=total_campaigns),
-                    ],
+                    args=[self._chat_id, ask_videos_intro_msg],
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
+                await self._log_outgoing(ask_videos_intro_msg, "ask_videos_intro")
 
                 # Import CreativeRegistrationWorkflow for video processing
                 with workflow.unsafe.imports_passed_through():
@@ -536,21 +576,20 @@ class BuyerOnboardingWorkflow:
                     conversions = metrics.get("conversions", 0)
 
                     # Ask for video for this campaign
+                    ask_video_msg = MESSAGES["ask_campaign_video"].format(
+                        num=i,
+                        name=campaign_name,
+                        campaign_id=campaign["campaign_id"],
+                        clicks=clicks,
+                        conversions=conversions,
+                    )
                     await workflow.execute_activity(
                         send_telegram_message,
-                        args=[
-                            self._chat_id,
-                            MESSAGES["ask_campaign_video"].format(
-                                num=i,
-                                name=campaign_name,
-                                campaign_id=campaign["campaign_id"],
-                                clicks=clicks,
-                                conversions=conversions,
-                            ),
-                        ],
+                        args=[self._chat_id, ask_video_msg],
                         start_to_close_timeout=timedelta(seconds=30),
                         retry_policy=default_retry,
                     )
+                    await self._log_outgoing(ask_video_msg, f"ask_campaign_video_{i}")
 
                     # Wait for valid video URL
                     while True:
@@ -562,6 +601,7 @@ class BuyerOnboardingWorkflow:
                             return await self._handle_timeout()
 
                         text = self._pending_message.text.strip()
+                        await self._log_incoming(text, f"video_input_{i}")
                         self._pending_message = None
 
                         if is_video_url(text):
@@ -599,6 +639,9 @@ class BuyerOnboardingWorkflow:
                                 start_to_close_timeout=timedelta(seconds=30),
                                 retry_policy=default_retry,
                             )
+                            await self._log_outgoing(
+                                MESSAGES["video_received"], f"video_received_{i}"
+                            )
                             break  # Move to next campaign
                         else:
                             # Invalid URL, ask again
@@ -608,6 +651,9 @@ class BuyerOnboardingWorkflow:
                                 start_to_close_timeout=timedelta(seconds=30),
                                 retry_policy=default_retry,
                             )
+                            await self._log_outgoing(
+                                MESSAGES["invalid_video_url"], f"invalid_video_url_{i}"
+                            )
             else:
                 # No campaigns to process
                 await workflow.execute_activity(
@@ -616,25 +662,25 @@ class BuyerOnboardingWorkflow:
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
+                await self._log_outgoing(MESSAGES["no_campaigns"], "no_campaigns")
 
             # Step 7: Completed
             self._state = OnboardingState.COMPLETED
+            completed_msg = MESSAGES["completed"].format(
+                name=self._name,
+                geos=", ".join(self._geos),
+                verticals=", ".join(self._verticals),
+                keitaro_source=self._keitaro_source,
+                campaigns_count=self._campaigns_count,
+                videos_count=self._videos_count,
+            )
             await workflow.execute_activity(
                 send_telegram_message,
-                args=[
-                    self._chat_id,
-                    MESSAGES["completed"].format(
-                        name=self._name,
-                        geos=", ".join(self._geos),
-                        verticals=", ".join(self._verticals),
-                        keitaro_source=self._keitaro_source,
-                        campaigns_count=self._campaigns_count,
-                        videos_count=self._videos_count,
-                    ),
-                ],
+                args=[self._chat_id, completed_msg],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
+            await self._log_outgoing(completed_msg, "completed")
 
             return self._build_result()
 
@@ -653,6 +699,7 @@ class BuyerOnboardingWorkflow:
             args=[self._chat_id, MESSAGES["timeout"]],
             start_to_close_timeout=timedelta(seconds=30),
         )
+        await self._log_outgoing(MESSAGES["timeout"], "timeout")
 
         return self._build_result()
 
