@@ -318,6 +318,71 @@ async def send_telegram_message(
 
 
 @dataclass
+class LogInteractionInput:
+    """Input for log_buyer_interaction activity."""
+
+    telegram_id: str
+    direction: str  # "in" or "out"
+    message_type: str  # "bot", "user", "system", "command"
+    content: str
+    context: Optional[dict] = None
+    buyer_id: Optional[str] = None
+
+
+@activity.defn
+async def log_buyer_interaction(input: LogInteractionInput) -> str:
+    """
+    Log interaction to buyer_interactions table.
+
+    Args:
+        input: LogInteractionInput with message data
+
+    Returns:
+        Created interaction ID
+    """
+    activity.logger.info(
+        f"Logging interaction: {input.direction} {input.message_type} "
+        f"for telegram_id={input.telegram_id}"
+    )
+
+    headers = _get_supabase_headers()
+    base_url = _get_supabase_url()
+
+    interaction_id = str(uuid.uuid4())
+    payload = {
+        "id": interaction_id,
+        "telegram_id": input.telegram_id,
+        "direction": input.direction,
+        "message_type": input.message_type,
+        "content": input.content[:2000]
+        if input.content
+        else "",  # Truncate long messages
+        "context": input.context or {},
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    if input.buyer_id:
+        payload["buyer_id"] = input.buyer_id
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{base_url}/buyer_interactions",
+            headers=headers,
+            json=payload,
+            timeout=10.0,
+        )
+        # Don't fail workflow if logging fails
+        if response.status_code >= 400:
+            activity.logger.warning(
+                f"Failed to log interaction: {response.status_code} {response.text}"
+            )
+            return ""
+
+    activity.logger.info(f"Logged interaction: {interaction_id}")
+    return interaction_id
+
+
+@dataclass
 class QueueHistoricalImportInput:
     """Input for queue_historical_import activity."""
 

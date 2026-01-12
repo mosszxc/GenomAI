@@ -123,6 +123,7 @@ from temporal.activities.buyer import (
     update_import_status,
     get_import_by_campaign_id,
     update_import_with_video,
+    log_buyer_interaction,
 )
 
 # Import activities - Metrics
@@ -459,6 +460,7 @@ async def run_all_workers():
             update_import_status,
             get_import_by_campaign_id,
             update_import_with_video,
+            log_buyer_interaction,
             # Keitaro activities for historical import
             get_campaigns_by_source,
             get_campaign_creatives,
