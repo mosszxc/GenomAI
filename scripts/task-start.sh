@@ -99,9 +99,9 @@ if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
         git worktree add "$WORKTREE_PATH" "$BRANCH_NAME"
     fi
 else
-    # Create new branch and worktree from main
-    git fetch origin main
-    git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" origin/main
+    # Create new branch and worktree from develop
+    git fetch origin develop
+    git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" origin/develop
 fi
 
 echo ""
