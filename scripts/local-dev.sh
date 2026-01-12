@@ -36,15 +36,24 @@ trap cleanup EXIT
 
 cd "$(dirname "$0")/../decision-engine-service"
 
-# Определить Python 3.10+
+# Определить Python 3.11+ (требуется по pyproject.toml)
 if command -v python3.12 &>/dev/null; then
     PYTHON_BIN="python3.12"
 elif command -v python3.11 &>/dev/null; then
     PYTHON_BIN="python3.11"
-elif command -v python3.10 &>/dev/null; then
-    PYTHON_BIN="python3.10"
 else
     PYTHON_BIN="python3"
+fi
+
+# Проверить минимальную версию Python (3.11+)
+PY_VERSION=$($PYTHON_BIN -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PY_MAJOR=$($PYTHON_BIN -c "import sys; print(sys.version_info.major)")
+PY_MINOR=$($PYTHON_BIN -c "import sys; print(sys.version_info.minor)")
+if [ "$PY_MAJOR" -lt 3 ] || ([ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 11 ]); then
+    echo "Error: Python 3.11+ required, found $PY_VERSION"
+    echo "Install Python 3.11 or 3.12: brew install python@3.12"
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    exit 1
 fi
 
 # Создать venv если не существует
