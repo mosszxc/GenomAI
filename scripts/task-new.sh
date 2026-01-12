@@ -26,9 +26,9 @@ fi
 
 # Create issue
 if [ -n "$DESCRIPTION" ]; then
-    ISSUE_URL=$(gh issue create --title "$TITLE" --body "$DESCRIPTION" --label "$LABEL")
+    ISSUE_URL=$(gh issue create --title "$TITLE" --body "$DESCRIPTION" --label "$LABEL" --label "status:ready")
 else
-    ISSUE_URL=$(gh issue create --title "$TITLE" --body "Created via task-new" --label "$LABEL")
+    ISSUE_URL=$(gh issue create --title "$TITLE" --body "Created via task-new" --label "$LABEL" --label "status:ready")
 fi
 
 # Extract issue number from URL
