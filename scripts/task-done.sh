@@ -70,14 +70,23 @@ fi
 
 # Run tests unless skipped
 if [ "$SKIP_TESTS" != "true" ]; then
+    # Local test first
     echo ""
-    echo "Running tests (make ci)..."
+    echo "Running local test..."
     cd "$PROJECT_ROOT"
-    if ! make ci; then
-        echo "Tests failed. Fix issues and re-run."
+    if ! ./scripts/test-local.sh "$ISSUE_NUM"; then
+        echo "Local test failed. Fix issues and re-run."
         exit 1
     fi
-    echo "✓ Tests passed"
+
+    # Then unit tests
+    echo ""
+    echo "Running unit tests (make ci)..."
+    if ! make ci; then
+        echo "Unit tests failed. Fix issues and re-run."
+        exit 1
+    fi
+    echo "✓ All tests passed"
     cd "$WORKTREE_PATH"
 fi
 
