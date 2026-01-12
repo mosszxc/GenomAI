@@ -11,7 +11,6 @@ import logging
 from src.services.staleness_detector import (
     calculate_staleness_metrics,
     StalenessMetrics,
-    DAYS_STALE_THRESHOLD,
 )
 
 
