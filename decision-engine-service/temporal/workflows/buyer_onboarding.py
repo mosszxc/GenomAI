@@ -97,6 +97,9 @@ MESSAGES = {
         "• /help — список команд"
     ),
     "timeout": ("⏰ Сессия истекла.\n\nОтправь /start чтобы начать заново."),
+    "invalid_name": (
+        "❌ Имя должно быть не менее 2 символов.\n\n<i>Попробуй ещё раз:</i>"
+    ),
     "invalid_geo": (
         "❌ Неверные коды стран.\n"
         "Примеры: US, UK, DE, FR, IT, ES\n\n"
@@ -352,21 +355,36 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(MESSAGES["welcome"], "welcome")
 
-            # Wait for name
+            # Wait for valid name (min 2 characters)
             # Note: wait_condition may return None when signal arrives during wait,
             # so we check the actual _pending_message state instead of the return value
-            await workflow.wait_condition(
-                lambda: self._pending_message is not None,
-                timeout=step_timeout,
-            )
+            while True:
+                await workflow.wait_condition(
+                    lambda: self._pending_message is not None,
+                    timeout=step_timeout,
+                )
 
-            if self._pending_message is None:
-                # Genuine timeout - no message received
-                return await self._handle_timeout()
+                if self._pending_message is None:
+                    # Genuine timeout - no message received
+                    return await self._handle_timeout()
 
-            self._name = self._pending_message.text.strip()
-            await self._log_incoming(self._name, "name_input")
-            self._pending_message = None
+                name_input = self._pending_message.text.strip()
+                await self._log_incoming(name_input, "name_input")
+                self._pending_message = None
+
+                # Validate name length (min 2 characters)
+                if len(name_input) >= 2:
+                    self._name = name_input
+                    break
+
+                # Invalid name, ask again
+                await workflow.execute_activity(
+                    send_telegram_message,
+                    args=[self._chat_id, MESSAGES["invalid_name"]],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+                await self._log_outgoing(MESSAGES["invalid_name"], "invalid_name")
 
             # Step 2: Ask for GEOs
             self._set_state(OnboardingState.AWAITING_GEO)
@@ -390,7 +408,10 @@ class BuyerOnboardingWorkflow:
 
                 raw_geo_input = self._pending_message.text
                 await self._log_incoming(raw_geo_input, "geo_input")
-                geos_input = raw_geo_input.upper().replace(" ", "").split(",")
+                # Filter empty strings after split (fix #534)
+                geos_input = [
+                    g for g in raw_geo_input.upper().replace(" ", "").split(",") if g
+                ]
                 self._pending_message = None
 
                 # Validate GEOs
@@ -432,7 +453,12 @@ class BuyerOnboardingWorkflow:
 
                 raw_vertical_input = self._pending_message.text
                 await self._log_incoming(raw_vertical_input, "vertical_input")
-                verticals_input = raw_vertical_input.lower().replace(" ", "").split(",")
+                # Filter empty strings after split (fix #534)
+                verticals_input = [
+                    v
+                    for v in raw_vertical_input.lower().replace(" ", "").split(",")
+                    if v
+                ]
                 self._pending_message = None
 
                 # Validate verticals
