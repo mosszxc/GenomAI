@@ -149,10 +149,9 @@ issues:
 	@echo ""
 	@echo "⚪ BACKLOG (no status): gh issue list"
 
-# Start working on an issue
+# Start working on an issue (label set automatically by task-start.sh)
 issue-start:
 	@if [ -z "$(N)" ]; then echo "Usage: make issue-start N=123"; exit 1; fi
-	gh issue edit $(N) --add-label "status:in-progress" --remove-label "status:ready" --remove-label "status:blocked"
 	./scripts/task-start.sh $(N)
 
 # Mark issue as blocked

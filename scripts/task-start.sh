@@ -49,6 +49,12 @@ else
     git worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" origin/main
 fi
 
+# Mark issue as in-progress
+echo ""
+echo "=== Updating issue status ==="
+gh issue edit "$ISSUE_NUM" --add-label "status:in-progress" --remove-label "status:ready" --remove-label "status:blocked" 2>/dev/null || true
+echo "Issue #$ISSUE_NUM marked as in-progress"
+
 echo ""
 echo "=== Starting local dev server ==="
 # Запускаем локальный сервер в фоне
