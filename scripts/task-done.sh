@@ -124,16 +124,6 @@ if [ "$NO_PR" != "true" ]; then
     fi
 fi
 
-# Stop local dev server
-echo ""
-echo "Stopping local dev server..."
-for pf in /tmp/genomai-dev/server-*.pid; do
-    [ -f "$pf" ] || continue
-    pid=$(cat "$pf")
-    kill "$pid" 2>/dev/null && echo "Server stopped (PID: $pid)" || true
-    rm -f "$pf"
-done
-
 cd "$PROJECT_ROOT"
 echo ""
 echo "=== Done ==="

@@ -51,35 +51,12 @@ fi
 
 # Mark issue as in-progress
 echo ""
-echo "=== Updating issue status ==="
 gh issue edit "$ISSUE_NUM" --add-label "status:in-progress" --remove-label "status:ready" 2>/dev/null || true
-echo "Issue #$ISSUE_NUM marked as in-progress"
-
-echo ""
-echo "=== Starting local dev server ==="
-# Запускаем локальный сервер в фоне
-"$PROJECT_ROOT/scripts/local-dev.sh" &
-DEV_PID=$!
-sleep 5
-
-# Проверяем что сервер запустился
-if [ -f /tmp/genomai-dev/server-*.pid ]; then
-    PORT=$(basename /tmp/genomai-dev/server-*.pid .pid | sed 's/server-//')
-    echo "Local server running on http://localhost:$PORT"
-else
-    echo "Warning: Server may not have started correctly"
-fi
 
 echo ""
 echo "=== Ready ==="
 echo "Worktree: $WORKTREE_PATH"
-echo "Server: http://localhost:$PORT"
 echo ""
-echo "To work in this worktree:"
-echo "  cd $WORKTREE_PATH"
+echo "cd $WORKTREE_PATH"
 echo ""
-echo "Or open in Cursor:"
-echo "  cursor $WORKTREE_PATH"
-echo ""
-echo "When done, run:"
-echo "  ./scripts/task-done.sh $ISSUE_NUM"
+echo "When done: ./scripts/task-done.sh $ISSUE_NUM"
