@@ -514,6 +514,11 @@ async def get_import_by_campaign_id(
     """
     Get historical import queue record by campaign ID and buyer ID.
 
+    Search strategy:
+    1. Try exact match (campaign_id + buyer_id)
+    2. If not found, try campaign_id only (may have different buyer_id)
+    3. Log detailed info for debugging
+
     Args:
         campaign_id: Keitaro campaign ID
         buyer_id: Buyer UUID
@@ -529,6 +534,7 @@ async def get_import_by_campaign_id(
     base_url = _get_supabase_url()
 
     async with httpx.AsyncClient() as client:
+        # Step 1: Try exact match (campaign_id + buyer_id)
         response = await client.get(
             f"{base_url}/historical_import_queue"
             f"?campaign_id=eq.{campaign_id}"
@@ -540,11 +546,38 @@ async def get_import_by_campaign_id(
         response.raise_for_status()
         data = response.json()
 
-        if not data:
-            activity.logger.info(f"Import not found: {campaign_id}")
-            return None
+        if data:
+            activity.logger.info(f"Found import by exact match: {campaign_id}")
+            return ImportQueueRecord.from_dict(data[0])
 
-        return ImportQueueRecord.from_dict(data[0])
+        # Step 2: Try campaign_id only (buyer_id mismatch scenario)
+        activity.logger.info(
+            f"Exact match not found, trying campaign_id only: {campaign_id}"
+        )
+        response = await client.get(
+            f"{base_url}/historical_import_queue?campaign_id=eq.{campaign_id}&limit=1",
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data:
+            record = data[0]
+            actual_buyer_id = record.get("buyer_id")
+            activity.logger.warning(
+                f"Found import with different buyer_id: "
+                f"campaign={campaign_id}, expected_buyer={buyer_id}, "
+                f"actual_buyer={actual_buyer_id}"
+            )
+            # Return the record anyway - workflow can decide how to handle
+            return ImportQueueRecord.from_dict(record)
+
+        activity.logger.warning(
+            f"Import queue record not found for campaign: {campaign_id} "
+            f"(checked buyer_id={buyer_id} and campaign_id only)"
+        )
+        return None
 
 
 @dataclass
