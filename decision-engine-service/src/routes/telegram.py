@@ -13,12 +13,19 @@ Routes:
 import os
 import re
 import logging
+import asyncio
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+# Retry configuration for Telegram API
+TELEGRAM_MAX_RETRIES = 3
+TELEGRAM_BASE_DELAY = 1.0  # seconds
+TELEGRAM_MAX_DELAY = 10.0  # seconds
 
 router = APIRouter()
 
@@ -69,10 +76,37 @@ async def get_temporal_client():
     return await get_client()
 
 
+def _should_retry(status_code: int, error_code: int | None = None) -> bool:
+    """Check if request should be retried based on status code."""
+    # Retry on rate limit (429) or server errors (5xx)
+    if status_code == 429:
+        return True
+    if 500 <= status_code < 600:
+        return True
+    return False
+
+
+def _get_retry_delay(attempt: int, retry_after: int | None = None) -> float:
+    """Calculate delay before next retry with exponential backoff."""
+    if retry_after:
+        return min(float(retry_after), TELEGRAM_MAX_DELAY)
+    # Exponential backoff: 1s, 2s, 4s, ...
+    delay = TELEGRAM_BASE_DELAY * (2**attempt)
+    return min(delay, TELEGRAM_MAX_DELAY)
+
+
 async def send_telegram_message(
     chat_id: str, text: str, reply_markup: dict | None = None
 ) -> bool:
-    """Send a message to Telegram chat."""
+    """
+    Send a message to Telegram chat with retry on transient errors.
+
+    Retries on:
+    - 429 (rate limit) - respects Retry-After header
+    - 5xx (server errors) - exponential backoff
+
+    Max 3 attempts with exponential backoff (1s, 2s, 4s).
+    """
     import httpx
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -88,23 +122,84 @@ async def send_telegram_message(
     if reply_markup:
         payload["reply_markup"] = reply_markup
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json=payload,
-            timeout=30.0,
-        )
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    last_error = None
 
-        data = response.json()
-        if not data.get("ok"):
-            logger.error(f"Telegram error: {data.get('description')}")
+    for attempt in range(TELEGRAM_MAX_RETRIES):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, timeout=30.0)
+
+            data = response.json()
+
+            if data.get("ok"):
+                return True
+
+            # Check if we should retry
+            error_code = data.get("error_code")
+            if _should_retry(response.status_code, error_code):
+                # Get retry delay (respect Retry-After for 429)
+                retry_after = data.get("parameters", {}).get("retry_after")
+                delay = _get_retry_delay(attempt, retry_after)
+
+                logger.warning(
+                    f"Telegram sendMessage failed (attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                    f"status={response.status_code}, error={data.get('description')}. "
+                    f"Retrying in {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            # Non-retryable error
+            logger.error(
+                f"Telegram sendMessage failed (non-retryable): "
+                f"chat_id={chat_id}, error={data.get('description')}"
+            )
             return False
 
-        return True
+        except httpx.TimeoutException as e:
+            last_error = str(e)
+            delay = _get_retry_delay(attempt)
+            logger.warning(
+                f"Telegram sendMessage timeout (attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                f"chat_id={chat_id}. Retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
+
+        except httpx.HTTPError as e:
+            last_error = str(e)
+            delay = _get_retry_delay(attempt)
+            logger.warning(
+                f"Telegram sendMessage HTTP error (attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                f"chat_id={chat_id}, error={e}. Retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
+
+        except Exception as e:
+            # Unexpected error - don't retry
+            logger.error(
+                f"Telegram sendMessage unexpected error: chat_id={chat_id}, error={e}"
+            )
+            return False
+
+    # All retries exhausted
+    logger.error(
+        f"Telegram sendMessage failed after {TELEGRAM_MAX_RETRIES} attempts: "
+        f"chat_id={chat_id}, last_error={last_error}"
+    )
+    return False
 
 
 async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -> bool:
-    """Send a photo to Telegram chat by URL."""
+    """
+    Send a photo to Telegram chat by URL with retry on transient errors.
+
+    Retries on:
+    - 429 (rate limit) - respects Retry-After header
+    - 5xx (server errors) - exponential backoff
+
+    Max 3 attempts with exponential backoff (1s, 2s, 4s).
+    """
     import httpx
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -112,24 +207,79 @@ async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -
         logger.error("TELEGRAM_BOT_TOKEN not configured")
         return False
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"https://api.telegram.org/bot{bot_token}/sendPhoto",
-            json={
-                "chat_id": chat_id,
-                "photo": photo_url,
-                "caption": caption,
-                "parse_mode": "HTML",
-            },
-            timeout=30.0,
-        )
+    payload = {
+        "chat_id": chat_id,
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "HTML",
+    }
 
-        data = response.json()
-        if not data.get("ok"):
-            logger.error(f"Telegram sendPhoto error: {data.get('description')}")
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    last_error = None
+
+    for attempt in range(TELEGRAM_MAX_RETRIES):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, timeout=30.0)
+
+            data = response.json()
+
+            if data.get("ok"):
+                return True
+
+            # Check if we should retry
+            error_code = data.get("error_code")
+            if _should_retry(response.status_code, error_code):
+                # Get retry delay (respect Retry-After for 429)
+                retry_after = data.get("parameters", {}).get("retry_after")
+                delay = _get_retry_delay(attempt, retry_after)
+
+                logger.warning(
+                    f"Telegram sendPhoto failed (attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                    f"status={response.status_code}, error={data.get('description')}. "
+                    f"Retrying in {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            # Non-retryable error
+            logger.error(
+                f"Telegram sendPhoto failed (non-retryable): "
+                f"chat_id={chat_id}, error={data.get('description')}"
+            )
             return False
 
-        return True
+        except httpx.TimeoutException as e:
+            last_error = str(e)
+            delay = _get_retry_delay(attempt)
+            logger.warning(
+                f"Telegram sendPhoto timeout (attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                f"chat_id={chat_id}. Retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
+
+        except httpx.HTTPError as e:
+            last_error = str(e)
+            delay = _get_retry_delay(attempt)
+            logger.warning(
+                f"Telegram sendPhoto HTTP error (attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                f"chat_id={chat_id}, error={e}. Retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
+
+        except Exception as e:
+            # Unexpected error - don't retry
+            logger.error(
+                f"Telegram sendPhoto unexpected error: chat_id={chat_id}, error={e}"
+            )
+            return False
+
+    # All retries exhausted
+    logger.error(
+        f"Telegram sendPhoto failed after {TELEGRAM_MAX_RETRIES} attempts: "
+        f"chat_id={chat_id}, last_error={last_error}"
+    )
+    return False
 
 
 async def check_active_onboarding(telegram_id: str) -> Optional[str]:
