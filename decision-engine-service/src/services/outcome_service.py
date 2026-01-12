@@ -63,6 +63,7 @@ class AggregateResult:
     success: bool
     outcome: Optional[OutcomeAggregate] = None
     learning_triggered: bool = False
+    skipped: bool = False  # True when tracker has no linked idea (expected case)
     error_code: Optional[str] = None
     error_message: Optional[str] = None
 
@@ -298,8 +299,13 @@ class OutcomeService:
 
             return cpa_values
 
-    async def insert_outcome(self, outcome: OutcomeAggregate) -> dict:
-        """Insert outcome aggregate into database"""
+    async def upsert_outcome(self, outcome: OutcomeAggregate) -> dict:
+        """
+        Upsert outcome aggregate into database.
+
+        Uses ON CONFLICT (creative_id, window_start, window_end) DO UPDATE
+        to handle duplicate key constraint gracefully.
+        """
         payload = {
             "creative_id": outcome.creative_id,
             "decision_id": outcome.decision_id,
@@ -315,10 +321,14 @@ class OutcomeService:
             "learning_applied": outcome.learning_applied,
         }
 
+        headers = self._get_headers(for_write=True)
+        # Use resolution=merge-duplicates for UPSERT behavior
+        headers["Prefer"] = "return=representation,resolution=merge-duplicates"
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.rest_url}/outcome_aggregates",
-                headers=self._get_headers(for_write=True),
+                headers=headers,
                 json=payload,
             )
             response.raise_for_status()
@@ -421,8 +431,11 @@ class OutcomeService:
             # 2. Find idea via lookup
             idea_lookup = await self.get_idea_by_tracker(tracker_id)
             if not idea_lookup or not idea_lookup.get("idea_id"):
+                # Tracker without linked idea is expected case (e.g., test campaigns)
+                # Return success=True with skipped=True to avoid polluting error logs
                 return AggregateResult(
-                    success=False,
+                    success=True,
+                    skipped=True,
                     error_code="IDEA_NOT_FOUND",
                     error_message=f"No idea found for tracker {tracker_id}",
                 )
@@ -488,7 +501,7 @@ class OutcomeService:
                 learning_applied=False,
             )
 
-            inserted = await self.insert_outcome(outcome)
+            inserted = await self.upsert_outcome(outcome)
             outcome.id = inserted.get("id")
 
             # 7. Emit event
