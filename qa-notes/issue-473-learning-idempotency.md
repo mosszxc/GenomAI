@@ -58,7 +58,7 @@ ON fatigue_state_versions(source_outcome_id);
 ## Test
 
 ```bash
-cd /Users/mosszxc/Documents/Проэкты/GenomAI/.worktrees/issue-473-arch-critical-learning-loop-не-идемпотен/decision-engine-service && python -m pytest tests/unit/test_learning_idempotency.py -v
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/.worktrees/issue-473-arch-critical-learning-loop-не-идемпотен/decision-engine-service && python3 -m pytest tests/unit/test_learning_idempotency.py -v
 ```
 
 ## Проверка дубликатов в БД
