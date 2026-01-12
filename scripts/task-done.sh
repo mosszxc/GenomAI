@@ -282,6 +282,16 @@ if [ -f "$LOCK_FILE" ]; then
     echo "🔓 Lock released for issue #$ISSUE_NUM"
 fi
 
+# Stop local dev server
+echo ""
+echo "Stopping local dev server..."
+for pf in /tmp/genomai-dev/server-*.pid; do
+    [ -f "$pf" ] || continue
+    pid=$(cat "$pf")
+    kill "$pid" 2>/dev/null && echo "Server stopped (PID: $pid)" || true
+    rm -f "$pf"
+done
+
 echo ""
 echo "=== Done ==="
 echo "Task #$ISSUE_NUM completed"

@@ -31,6 +31,47 @@ cd decision-engine-service && python -m temporal.schedules create
 cd decision-engine-service && python -m temporal.schedules trigger <schedule-id>
 ```
 
+## Локальная разработка (АВТОМАТИЧЕСКИ)
+
+### Автоматический workflow
+```bash
+./scripts/task-start.sh 123   # Создаёт worktree + ЗАПУСКАЕТ сервер
+# ... работа над issue ...
+./scripts/task-done.sh 123    # PR + merge + ОСТАНАВЛИВАЕТ сервер
+```
+
+**Всё автоматически:**
+- `task-start.sh` → поднимает локальный сервер на случайном порту
+- `task-done.sh` → останавливает сервер при завершении
+
+### Ручное управление (если нужно)
+```bash
+make dev              # Запустить сервер вручную
+make dev-stop         # Остановить все серверы
+make dev-cleanup      # Cleanup zombie PID файлов
+```
+
+### Тестирование
+Сервер доступен на `localhost:{PORT}`. Порт выводится при старте:
+```
+Local server running on http://localhost:54321
+```
+
+Тестируй локально:
+```bash
+curl http://localhost:54321/health
+curl -X POST http://localhost:54321/api/decision/ -d '...'
+```
+
+### Защита от проблем
+- **Race condition:** mkdir-lock предотвращает конфликт портов
+- **Health check:** скрипт ждёт пока сервер поднимется (до 30 сек)
+- **Auto-cleanup:** PID файлы старше 15 минут удаляются автоматически
+
+### Требования
+- Python 3.10+ (автоматически используется python3.12 если установлен)
+- `.venv` создаётся автоматически при первом запуске
+
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `infrastructure/schemas/` `docs/`
 

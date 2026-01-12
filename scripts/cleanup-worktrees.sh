@@ -4,6 +4,22 @@
 
 set -e
 
+# === Cleanup local dev servers ===
+PID_DIR="/tmp/genomai-dev"
+if [ -d "$PID_DIR" ]; then
+    for pid_file in "$PID_DIR"/*.pid; do
+        [ -f "$pid_file" ] || continue
+        pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "Stopping dev server (PID: $pid)"
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$pid_file"
+    done
+    # Cleanup старых PID файлов (>15 минут)
+    find "$PID_DIR" -name "*.pid" -mmin +15 -exec rm -f {} \; 2>/dev/null || true
+fi
+
 DRY_RUN=""
 FORCE_CLEAN=""
 TTL_DAYS=7  # Default: keep worktrees for 7 days after merge

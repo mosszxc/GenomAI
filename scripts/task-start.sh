@@ -105,8 +105,24 @@ else
 fi
 
 echo ""
+echo "=== Starting local dev server ==="
+# Запускаем локальный сервер в фоне
+"$PROJECT_ROOT/scripts/local-dev.sh" &
+DEV_PID=$!
+sleep 5
+
+# Проверяем что сервер запустился
+if [ -f /tmp/genomai-dev/server-*.pid ]; then
+    PORT=$(basename /tmp/genomai-dev/server-*.pid .pid | sed 's/server-//')
+    echo "Local server running on http://localhost:$PORT"
+else
+    echo "Warning: Server may not have started correctly"
+fi
+
+echo ""
 echo "=== Ready ==="
-echo "Worktree created at: $WORKTREE_PATH"
+echo "Worktree: $WORKTREE_PATH"
+echo "Server: http://localhost:$PORT"
 echo ""
 echo "To work in this worktree:"
 echo "  cd $WORKTREE_PATH"
