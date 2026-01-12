@@ -7,7 +7,7 @@ Models for buyer onboarding and historical import workflows.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Union
 
 
 class OnboardingState(str, Enum):
@@ -26,13 +26,19 @@ class OnboardingState(str, Enum):
 
 @dataclass
 class BuyerOnboardingInput:
-    """Input for BuyerOnboardingWorkflow."""
+    """Input for BuyerOnboardingWorkflow.
 
-    telegram_id: str
+    Note: telegram_id accepts Union[str, int] for backward compatibility.
+    Old workflows may have int, new workflows use str.
+    """
+
+    telegram_id: Union[str, int]
     telegram_username: Optional[str] = None
     chat_id: str = ""
 
     def __post_init__(self):
+        # Normalize telegram_id to str for consistent usage
+        self.telegram_id = str(self.telegram_id)
         if not self.chat_id:
             self.chat_id = self.telegram_id
 

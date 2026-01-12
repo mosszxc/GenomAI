@@ -26,6 +26,7 @@
 | L021 | #210 | Render | Cold start = 50-90 sec, use keep_alive |
 | L022 | — | Temporal | Activities must be in separate file from workflow |
 | L023 | #256 | Temporal | No `datetime.utcnow()` in workflows — use `workflow.now()` |
+| L024 | #499 | Temporal | Dataclass type changes break running workflows — use `Union[old, new]` for backward compat |
 
 ## Anti-Patterns
 
@@ -56,6 +57,7 @@
 | "activity not registered" / sandbox error | L020, L022 |
 | Service unavailable after deploy | L021 |
 | "RestrictedWorkflowAccessError" / "cannot access datetime" | L023 |
+| "Failed converting field" / "Failed decoding arguments" | L024 |
 
 ---
 
