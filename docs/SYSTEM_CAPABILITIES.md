@@ -1,488 +1,324 @@
-# GenomAI System Capabilities
+# GenomAI System Capabilities v2.0
 
-Полный список функциональных возможностей системы для тестирования.
+Полный список функциональных возможностей системы.
 
-**Последнее обновление**: 2025-12-26
+**Последнее обновление**: 2026-01-12
 
 ---
 
-## 1. VIDEO INGESTION (sphere:ingestion)
+## 1. VIDEO INGESTION
 
 ### 1.1 Приём видео
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| ING-01 | Buyer отправляет видео в Telegram | Видео сохраняется в `creatives` | MVP |
-| ING-02 | Buyer отправляет ссылку на видео в Telegram | URL парсится, видео скачивается | MVP |
-| ING-03 | Создание записи creative с buyer_id | `creatives.buyer_id` заполнен | MVP |
-| ING-04 | Дедупликация по video_url | Повторная ссылка не создаёт дубликат | MVP |
-| ING-05 | Event: CreativeReceived | Запись в `event_log` | MVP |
+| ING-01 | Buyer отправляет видео в Telegram | Видео сохраняется в `creatives` | ✅ |
+| ING-02 | Buyer отправляет ссылку на видео | URL парсится, видео скачивается | ✅ |
+| ING-03 | Google Drive / Dropbox auto-convert | Ссылки конвертируются в direct URL | ✅ |
+| ING-04 | Создание записи creative с buyer_id | `creatives.buyer_id` заполнен | ✅ |
+| ING-05 | Дедупликация по video_url | Повторная ссылка не создаёт дубликат | ✅ |
 
 ### 1.2 Транскрипция
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| ING-10 | Транскрипция через AssemblyAI | `transcripts` запись создана | MVP |
-| ING-11 | Связь transcript → creative | `transcripts.creative_id` = creative.id | MVP |
-| ING-12 | Event: TranscriptCreated | Запись в `event_log` | MVP |
-| ING-13 | Ошибка транскрипции | Статус creative обновляется, уведомление | MVP |
+| ING-10 | Транскрипция через AssemblyAI | `transcripts` запись создана | ✅ |
+| ING-11 | Transcript persistence | Сохранение перед decomposition | ✅ |
+| ING-12 | Stuck transcription monitoring | MaintenanceWorkflow детектит | ✅ |
 
-### 1.3 Workflows
-- `Creative Transcription` (WMnFHqsFh8i7ddjV)
-- `Buyer Creative Registration` (d5i9dB2GNqsbfmSD)
+### 1.3 Temporal Workflows
+- `CreativePipelineWorkflow` (creative-pipeline queue)
+- `CreativeRegistrationWorkflow` (telegram queue)
+- `HistoricalVideoHandlerWorkflow` (telegram queue)
 
 ---
 
-## 2. DECOMPOSITION (sphere:decomposition)
+## 2. DECOMPOSITION
 
 ### 2.1 LLM-разбор
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| DEC-01 | LLM извлекает 14 полей из транскрипта | Все required fields в payload | MVP |
-| DEC-02 | Валидация output против JSON Schema | `/api/schema/validate` возвращает valid:true | MVP |
-| DEC-03 | Создание decomposed_creative | Запись в `decomposed_creatives` | MVP |
-| DEC-04 | Связь с creative и idea | FK заполнены корректно | MVP |
-| DEC-05 | Event: CreativeDecomposed | Запись в `event_log` | MVP |
+| DEC-01 | LLM извлекает canonical fields | Все required fields в payload | ✅ |
+| DEC-02 | Валидация output против JSON Schema | valid:true | ✅ |
+| DEC-03 | Создание decomposed_creative | Запись в `decomposed_creatives` | ✅ |
+| DEC-04 | Module extraction | Модули в `module_bank` | ✅ |
 
-### 2.2 Schema Validation
+### 2.2 Modular Creative System
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| DEC-10 | Валидация v1 schema (14 fields) | MISSING_REQUIRED_FIELD при пропуске | MVP |
-| DEC-11 | Валидация enum values | INVALID_ENUM_VALUE при неверном значении | MVP |
-| DEC-12 | Поддержка v2 schema | v2 принимается с optional fields | MVP |
-
-### 2.3 Canonical Fields (v1)
-```
-angle_type, core_belief, promise_type, emotion_primary,
-emotion_intensity, message_structure, opening_type,
-state_before, state_after, context_frame, source_type,
-risk_level, horizon, schema_version
-```
-
-### 2.4 Workflows
-- `creative_decomposition_llm` (mv6diVtqnuwr7qev)
+| MOD-01 | Module extraction из креативов | Записи в `module_bank` | ✅ |
+| MOD-02 | Module learning на outcomes | `module_learnings` обновляется | ✅ |
+| MOD-03 | Module reuse в hypothesis | Модули переиспользуются | ✅ |
 
 ---
 
-## 3. IDEA REGISTRY (sphere:idea-registry)
+## 3. IDEA REGISTRY
 
 ### 3.1 Создание идей
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| IDR-01 | Создание idea из decomposed_creative | Запись в `ideas` | MVP |
-| IDR-02 | Генерация canonical_hash | Уникальный hash в `ideas.canonical_hash` | MVP |
-| IDR-03 | Идемпотентность по hash | Повторный payload не создаёт дубликат | MVP |
-| IDR-04 | Начальный статус = 'active' | `ideas.status = 'active'` | MVP |
-| IDR-05 | death_state = 'alive' | `ideas.death_state = 'alive'` | MVP |
-| IDR-06 | Event: IdeaCreated | Запись в `event_log` | MVP |
-
-### 3.2 API
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| IDR-10 | POST /api/idea-registry/register | Возвращает idea_id, canonical_hash | MVP |
-| IDR-11 | Связь idea → avatar | avatar_id заполнен если определён | MVP |
-
-### 3.3 Workflows
-- `idea_registry_create` (cGSyJPROrkqLVHZP)
+| IDR-01 | Создание idea из decomposed_creative | Запись в `ideas` | ✅ |
+| IDR-02 | Генерация canonical_hash | Уникальный hash | ✅ |
+| IDR-03 | Идемпотентность по hash | Нет дубликатов | ✅ |
+| IDR-04 | Avatar association | avatar_id заполнен | ✅ |
 
 ---
 
-## 4. DECISION ENGINE (sphere:decision-engine)
+## 4. DECISION ENGINE
 
 ### 4.1 Decision Flow
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| DE-01 | POST /api/decision/ принимает idea_id | Возвращает decision + trace | MVP |
-| DE-02 | 4 проверки выполняются последовательно | trace.checks содержит 4 записи | MVP |
-| DE-03 | Первый failed check останавливает цепочку | Остальные checks не выполняются | MVP |
-| DE-04 | Decision сохраняется в `decisions` | Append-only запись | MVP |
-| DE-05 | Trace сохраняется в `decision_traces` | Детали всех checks | MVP |
-| DE-06 | Event: DecisionMade | Запись в `event_log` | MVP |
+| DE-01 | POST /api/decision/ | Возвращает decision + trace | ✅ |
+| DE-02 | 4 checks последовательно | trace.checks содержит 4 записи | ✅ |
+| DE-03 | Первый failed останавливает | Остальные не выполняются | ✅ |
+| DE-04 | Idempotency guard | Повторный запрос не дублирует | ✅ |
 
-### 4.2 CHECK 1: Schema Validity
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| DE-10 | Проверка наличия id, canonical_hash, status | PASSED если все есть | MVP |
-| DE-11 | REJECT при отсутствии полей | decision_type = 'reject', reason = 'schema_invalid' | MVP |
-
-### 4.3 CHECK 2: Death Memory
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| DE-20 | Проверка idea.status != 'dead' | PASSED если не dead | MVP |
-| DE-21 | REJECT при dead idea | decision_type = 'reject', reason = 'idea_dead' | MVP |
-| DE-22 | Проверка cluster death | REJECT если кластер мёртв | Future |
-
-### 4.4 CHECK 3: Fatigue Constraint
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| DE-30 | MVP: всегда PASS | result = 'PASSED', note = 'MVP not implemented' | MVP |
-| DE-31 | Full: проверка fatigue_level vs angle | REJECT при высоком fatigue + low novelty | Future |
-
-### 4.5 CHECK 4: Risk Budget
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| DE-40 | Проверка active_ideas_count < max | PASSED если есть слоты | MVP |
-| DE-41 | DEFER при превышении лимита | decision_type = 'defer', reason = 'risk_budget_exceeded' | MVP |
-| DE-42 | Default max_active_ideas = 100 | Лимит по умолчанию | MVP |
-
-### 4.6 Decision Types
-| Type | Условие | Следующий шаг |
-|------|---------|---------------|
-| APPROVE | Все 4 checks PASSED | → Hypothesis Factory |
-| REJECT | Check 1, 2, или 3 FAILED | Идея не используется |
-| DEFER | Check 4 FAILED | Повторить позже |
-
-### 4.7 Workflows
-- `decision_engine_mvp` (YT2d7z5h9bPy1R4v)
-- `keep_alive_decision_engine` (ClXUPP2IvWRgu99y)
+### 4.2 Checks
+| Check | Действие | Result |
+|-------|----------|--------|
+| schema_validity | Проверка полей | REJECT |
+| death_memory | Проверка death_state | REJECT |
+| fatigue_constraint | Проверка выгорания | REJECT |
+| risk_budget | Проверка лимитов | DEFER |
 
 ---
 
-## 5. HYPOTHESIS FACTORY (sphere:hypothesis-factory)
+## 5. HYPOTHESIS FACTORY
 
 ### 5.1 Генерация гипотез
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| HF-01 | Создание hypothesis из approved idea | Запись в `hypotheses` | MVP |
-| HF-02 | Связь hypothesis → idea, decision | FK заполнены | MVP |
-| HF-03 | Статус = 'pending' | `hypotheses.status = 'pending'` | MVP |
-| HF-04 | Event: HypothesisCreated | Запись в `event_log` | MVP |
+| HF-01 | Создание hypothesis из approved idea | Запись в `hypotheses` | ✅ |
+| HF-02 | Modular hypothesis generation | Из module_bank | ✅ |
+| HF-03 | Premise selection | Из premise_bank | ✅ |
+| HF-04 | Retry mechanism | Повтор при failed delivery | ✅ |
 
-### 5.2 Workflows
-- `hypothesis_factory_generate` (oxG1DqxtkTGCqLZi)
-
----
-
-## 6. DELIVERY (sphere:delivery)
-
-### 6.1 Telegram Delivery
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| DEL-01 | Отправка hypothesis buyer'у | Сообщение в Telegram | MVP |
-| DEL-02 | Форматирование с компонентами | Читаемый формат с % confidence | MVP |
-| DEL-03 | Запись в `deliveries` | Append-only лог доставок | MVP |
-| DEL-04 | Event: HypothesisDelivered | Запись в `event_log` | MVP |
-
-### 6.2 Recommendation Delivery
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| DEL-10 | Отправка recommendation buyer'у | Сообщение в Telegram | MVP |
-| DEL-11 | Указание типа (exploit/explore) | Видно в сообщении | MVP |
-| DEL-12 | Указание целевого аватара | Имя и desire аватара | MVP |
-
-### 6.3 Workflows
-- `Telegram Hypothesis Delivery` (5q3mshC9HRPpL6C0)
-- `Recommendation Delivery` (QC8bmnAYdH5mkntG)
+### 5.2 Temporal Workflows
+- `ModularHypothesisWorkflow` (creative-pipeline queue)
 
 ---
 
-## 7. RECOMMENDATIONS (sphere:hypothesis-factory)
+## 6. KNOWLEDGE EXTRACTION
 
-### 7.1 Генерация рекомендаций
+### 6.1 Premise Layer
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| REC-01 | POST /recommendations/generate | Возвращает recommendation с компонентами | MVP |
-| REC-02 | 75% exploitation mode | Проверенные компоненты с высоким confidence | MVP |
-| REC-03 | 25% exploration mode | Thompson Sampling для новых комбинаций | MVP |
-| REC-04 | Фильтрация по buyer, geo, vertical | Релевантные рекомендации | MVP |
+| KNW-01 | Premise extraction из transcripts | `premise_bank` записи | ✅ |
+| KNW-02 | Premise learning на outcomes | Win rate обновляется | ✅ |
+| KNW-03 | Premise selection для hypothesis | Лучшие premises выбираются | ✅ |
 
-### 7.2 Lifecycle
+### 6.2 Inspiration System
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| REC-10 | GET /recommendations/ | Список pending рекомендаций | MVP |
-| REC-11 | GET /recommendations/{id} | Получение рекомендации по ID | MVP |
-| REC-12 | POST /{id}/executed | Привязка к creative_id | MVP |
-| REC-13 | POST /{id}/outcome | Запись результата | MVP |
-| REC-14 | GET /recommendations/stats | Статистика для мониторинга | MVP |
+| KNW-10 | Inspiration detection | Предотвращение деградации | ✅ |
+| KNW-11 | Knowledge application | Применение к новым креативам | ✅ |
 
-### 7.3 Future
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| REC-20 | Настройка exploit/explore ratio | API для изменения 75/25 | Future |
+### 6.3 Temporal Workflows
+- `KnowledgeIngestionWorkflow` (knowledge queue)
+- `PremiseExtractionWorkflow` (knowledge queue)
+- `KnowledgeApplicationWorkflow` (knowledge queue)
 
 ---
 
-## 8. METRICS (sphere:metrics)
+## 7. METRICS & LEARNING
 
-### 8.1 Keitaro Polling
+### 7.1 Keitaro Polling
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| MET-01 | Периодический polling Keitaro API | Данные в `raw_metrics_current` | MVP |
-| MET-02 | creative_id = campaign_id в Keitaro | 1:1 mapping | MVP |
-| MET-03 | Сбор: clicks, conversions, spend, revenue | Все поля заполнены | MVP |
-| MET-04 | Event: RawMetricsObserved | Запись в `event_log` | MVP |
+| MET-01 | Polling каждые 10 минут | Данные в `raw_metrics_current` | ✅ |
+| MET-02 | profit_confirmed metric | Подтверждённая прибыль | ✅ |
+| MET-03 | Daily snapshots | `daily_metrics_snapshot` | ✅ |
 
-### 8.2 Snapshots
+### 7.2 Learning Loop
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| MET-10 | Создание daily snapshot | Запись в `daily_metrics_snapshot` | MVP |
-| MET-11 | Immutable snapshots | UPDATE/DELETE запрещены | MVP |
-| MET-12 | Event: DailyMetricsSnapshotCreated | Запись в `event_log` | MVP |
+| LRN-01 | Hourly learning cycle | Каждый час | ✅ |
+| LRN-02 | Confidence updates | `idea_confidence_versions` | ✅ |
+| LRN-03 | Component learning | `component_learnings` | ✅ |
+| LRN-04 | Module learning | `module_learnings` | ✅ |
+| LRN-05 | Fatigue versioning | История fatigue | ✅ |
+| LRN-06 | Death detection | 3→soft_dead, 5→hard_dead | ✅ |
+| LRN-07 | Trend calculation | Volatility, trend | ✅ |
 
-### 8.3 Workflows
-- `Keitaro Poller` (0TrVJOtHiNEEAsTN)
-- `Snapshot Creator` (Gii8l2XwnX43Wqr4)
+### 7.3 Temporal Workflows
+- `KeitaroPollerWorkflow` (metrics queue, 10 min)
+- `MetricsProcessingWorkflow` (metrics queue, 30 min)
+- `LearningLoopWorkflow` (metrics queue, 1 hour)
 
 ---
 
-## 9. OUTCOMES (sphere:outcomes)
+## 8. RECOMMENDATIONS
 
-### 9.1 Outcome Processing
+### 8.1 Генерация
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| OUT-01 | Обработка raw metrics в outcomes | Запись в `outcome_aggregates` | MVP |
-| OUT-02 | Расчёт CPA = spend/conversions | CPA заполнен корректно | MVP |
-| OUT-03 | environment_ctx с geo, vertical | JSONB заполнен | MVP |
-| OUT-04 | origin_type = 'system' для realtime | Отличие от historical | MVP |
+| REC-01 | Daily recommendations | 09:00 UTC | ✅ |
+| REC-02 | 75% exploitation | Проверенные компоненты | ✅ |
+| REC-03 | 25% exploration | Thompson Sampling | ✅ |
+| REC-04 | Фильтрация по buyer/geo/vertical | Релевантность | ✅ |
 
-### 9.2 Aggregation API
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| OUT-10 | POST /api/outcomes/aggregate | Агрегация outcomes | MVP |
-| OUT-11 | outcome_service.py | Логика агрегации в Python | MVP |
-
-### 9.3 Workflows
-- `Outcome Processor` (bbbQC4Aua5E3SYSK)
-- `Outcome Aggregator` (243QnGrUSDtXLjqU)
+### 8.2 Temporal Workflows
+- `DailyRecommendationWorkflow` (metrics queue, 09:00 UTC)
+- `SingleRecommendationDeliveryWorkflow` (metrics queue)
 
 ---
 
-## 10. LEARNING (sphere:learning)
+## 9. TELEGRAM BOT
 
-### 10.1 Confidence Updates
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| LRN-01 | POST /learning/process | Обработка unprocessed outcomes | MVP |
-| LRN-02 | CPA < 20 → confidence +0.1 | Положительный сигнал | MVP |
-| LRN-03 | CPA >= 20 → confidence -0.15 | Отрицательный сигнал | MVP |
-| LRN-04 | Time decay (exponential) | Старые данные меньше влияют | MVP |
-| LRN-05 | Environment weighting | Контекст влияет на delta | MVP |
-| LRN-06 | Версионирование confidence | Append в `idea_confidence_versions` | MVP |
+### 9.1 Buyer Commands
+| Command | Description | Статус |
+|---------|-------------|--------|
+| `/start` | Онбординг | ✅ |
+| `/help` | Справка | ✅ |
+| `/stats` | Статистика buyer | ✅ |
+| `/feedback` | Bug report → GitHub | ✅ |
 
-### 10.2 Death Detection
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| LRN-10 | 3 consecutive failures → soft_dead | death_state обновляется | MVP |
-| LRN-11 | 5 consecutive failures → hard_dead | death_state обновляется | MVP |
-| LRN-12 | Death блокирует будущие decisions | Check 2 возвращает REJECT | MVP |
+### 9.2 Analytics Commands
+| Command | Description | Статус |
+|---------|-------------|--------|
+| `/genome` | Component heatmap | ✅ |
+| `/trends` | Win rate charts | ✅ |
+| `/confidence` | Confidence intervals | ✅ |
+| `/drift` | Performance drift | ✅ |
+| `/correlations` | Component synergy | ✅ |
+| `/recommend` | Auto-recommendations | ✅ |
 
-### 10.3 Component Learning
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| LRN-20 | Запись в component_learnings | По каждому компоненту | MVP |
-| LRN-21 | Агрегация в avatar_learnings | winning_rate, sample_count | MVP |
-| LRN-22 | Использование в recommendations | Высокий winning_rate → exploit | MVP |
+### 9.3 Agent Commands
+| Command | Description | Статус |
+|---------|-------------|--------|
+| `/ag1`-`/ag5` | Agent identity | ✅ |
+| `/next` | Next task | ✅ |
 
-### 10.4 API
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| LRN-30 | GET /learning/status | pending_outcomes count | MVP |
+### 9.4 Admin Commands
+| Command | Description | Статус |
+|---------|-------------|--------|
+| `/health` | System health | ✅ |
+| `/schedules` | Temporal schedules | ✅ |
 
-### 10.5 Workflows
-- `Learning Loop v2` (fzXkoG805jQZUR3S)
-
----
-
-## 11. BUYER SYSTEM (sphere:buyer)
-
-### 11.1 Onboarding
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| BUY-01 | /start → State machine | 5 состояний онбординга | MVP |
-| BUY-02 | Сбор: name, geos[], verticals[], keitaro_source | Все поля в `buyers` | MVP |
-| BUY-03 | Multi-geo support | geos как TEXT[] | MVP |
-| BUY-04 | Multi-vertical support | verticals как TEXT[] | MVP |
-| BUY-05 | State persistence | `buyer_states` таблица | MVP |
-
-### 11.2 Commands
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| BUY-10 | /start | Начало онбординга | MVP |
-| BUY-11 | /stats | Статистика buyer'а | MVP |
-| BUY-12 | /help | Справка (работает всегда) | MVP |
-
-### 11.3 Interaction Logging
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| BUY-20 | Все сообщения логируются | Append в `buyer_interactions` | MVP |
-| BUY-21 | direction: 'in' / 'out' | Входящие и исходящие | MVP |
-| BUY-22 | message_type classification | text, video, command, etc. | MVP |
-
-### 11.4 Daily Digest
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| BUY-30 | Ежедневная сводка в Telegram | Автоматическая отправка | MVP |
-
-### 11.5 Workflows
-- `Telegram Router` (BuyQncnHNb7ulL6z)
-- `Buyer Onboarding` (hgTozRQFwh4GLM0z)
-- `Buyer Creative Registration` (d5i9dB2GNqsbfmSD)
-- `Buyer Stats Command` (rHuT8dYyIXoiHMAV)
-- `Buyer Daily Digest` (WkS1fPSxZaLmWcYy)
-- `Buyer Test Conclusion Checker` (4uluD04qYHhsetBy)
+### 9.5 Temporal Workflows
+- `BuyerOnboardingWorkflow` (telegram queue)
+- `HistoricalImportWorkflow` (telegram queue)
 
 ---
 
-## 12. HISTORICAL IMPORT
+## 10. MULTI-AGENT ORCHESTRATION
 
-### 12.1 Import Flow
+### 10.1 Task Queue
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| HIS-01 | Batch URL input через Telegram | Парсинг множества ссылок | MVP |
-| HIS-02 | Queue management | `historical_import_queue` | MVP |
-| HIS-03 | origin_type = 'historical' | Отличие от realtime | MVP |
-| HIS-04 | Связь с buyer через keitaro_source | Mapping по source ID | MVP |
-
-### 12.2 Workflows
-- `Historical Creative Import` (1FC7amTd3dCRZPEa)
-- `Buyer Historical Loader` (lmiWkYTRZPSpydJH)
-- `Buyer Historical URL Handler` (A8gKvO5810L1lusZ)
-- `Historical Import Video Handler` (UYgvqpsU3TMzb2Qd)
+| AGT-01 | Task queue в Supabase | `agent_tasks` таблица | ✅ |
+| AGT-02 | Agent identity | /ag1-/ag5 команды | ✅ |
+| AGT-03 | Orphan detection | Незавершённые задачи | ✅ |
+| AGT-04 | Task assignment | Автораспределение | ✅ |
 
 ---
 
-## 13. INFRASTRUCTURE
+## 11. MAINTENANCE
 
-### 13.1 Health & Monitoring
+### 11.1 Health & Cleanup
 | ID | Capability | Проверка | Статус |
 |----|------------|----------|--------|
-| INF-01 | GET /health | status: 'ok' | MVP |
-| INF-02 | Keep-alive ping каждые 10 мин | Cold start prevention | MVP |
-| INF-03 | Retry logic (3x15s) | Обработка 503 после cold start | MVP |
+| MNT-01 | Health check workflow | Каждые 6 часов | ✅ |
+| MNT-02 | Stuck creatives archive | Архивация зависших | ✅ |
+| MNT-03 | Integrity check | Проверка связей | ✅ |
+| MNT-04 | Orphaned records cleanup | Чистка сирот | ✅ |
+| MNT-05 | Recovery workflow conflicts | Предотвращение | ✅ |
 
-### 13.2 Event Log
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| INF-10 | Все события в event_log | Append-only audit trail | MVP |
-| INF-11 | Immutable (no UPDATE/DELETE) | Trigger protection | MVP |
-
-### 13.3 Database Constraints
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| INF-20 | Generated columns read-only | win_rate, avg_roi не пишутся | MVP |
-| INF-21 | FK constraints | Referential integrity | MVP |
-| INF-22 | CHECK constraints | origin_type + decision_id rules | MVP |
+### 11.2 Temporal Workflows
+- `MaintenanceWorkflow` (metrics queue, 6 hours)
+- `HealthCheckWorkflow` (metrics queue)
 
 ---
 
-## 14. ERROR HANDLING
+## 12. API ENDPOINTS
 
-### 14.1 API Errors
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| ERR-01 | 400 Bad Request | Невалидный payload | MVP |
-| ERR-02 | 401 Unauthorized | Отсутствует/неверный API_KEY | MVP |
-| ERR-03 | 404 Not Found | idea_id не существует | MVP |
-| ERR-04 | 500 Internal Error | Unhandled exception | MVP |
+### 12.1 Core API
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/api/decision/` | POST | Submit decision |
+| `/learning/process` | POST | Trigger learning |
+| `/learning/status` | GET | Learning status |
 
-### 14.2 n8n Error Handling
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| ERR-10 | Error workflow trigger | Уведомление при ошибке | MVP |
-| ERR-11 | continueOnFail на критических нодах | Graceful degradation | MVP |
+### 12.2 Schedule API
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/schedules/` | GET | List schedules |
+| `/api/schedules/{id}` | GET | Get schedule |
+| `/api/schedules/{id}/trigger` | POST | Trigger schedule |
+| `/api/schedules/{id}/pause` | POST | Pause schedule |
+| `/api/schedules/{id}/resume` | POST | Resume schedule |
 
 ---
 
-## 15. SECURITY
+## 13. TEMPORAL SCHEDULES
 
-### 15.1 Authentication
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| SEC-01 | Bearer token на всех endpoints (кроме /health) | 401 без токена | MVP |
-| SEC-02 | Service role key для Supabase | Не anon key | MVP |
-
-### 15.2 Data Protection
-| ID | Capability | Проверка | Статус |
-|----|------------|----------|--------|
-| SEC-10 | Credentials не в коде | Environment variables | MVP |
-| SEC-11 | genomai schema isolation | Не public schema | MVP |
+| Schedule ID | Workflow | Interval |
+|-------------|----------|----------|
+| keitaro-poller | KeitaroPollerWorkflow | 10 min |
+| metrics-processor | MetricsProcessingWorkflow | 30 min |
+| learning-loop | LearningLoopWorkflow | 1 hour |
+| daily-recommendations | DailyRecommendationWorkflow | 09:00 UTC |
+| maintenance | MaintenanceWorkflow | 6 hours |
 
 ---
 
 ## Summary
 
-| Sphere | MVP Capabilities | Future | Total |
-|--------|------------------|--------|-------|
-| Ingestion | 13 | 0 | 13 |
-| Decomposition | 12 | 0 | 12 |
-| Idea Registry | 8 | 0 | 8 |
-| Decision Engine | 16 | 2 | 18 |
-| Hypothesis Factory | 4 | 0 | 4 |
-| Delivery | 7 | 0 | 7 |
-| Recommendations | 9 | 1 | 10 |
-| Metrics | 8 | 0 | 8 |
-| Outcomes | 6 | 0 | 6 |
-| Learning | 14 | 0 | 14 |
-| Buyer | 14 | 0 | 14 |
-| Historical | 4 | 0 | 4 |
-| Infrastructure | 8 | 0 | 8 |
-| Error Handling | 6 | 0 | 6 |
-| Security | 4 | 0 | 4 |
-| **TOTAL** | **123** | **3** | **126** |
+| Category | Capabilities |
+|----------|--------------|
+| Video Ingestion | 9 |
+| Decomposition | 7 |
+| Idea Registry | 4 |
+| Decision Engine | 8 |
+| Hypothesis Factory | 4 |
+| Knowledge Extraction | 5 |
+| Metrics & Learning | 10 |
+| Recommendations | 4 |
+| Telegram Bot | 16 |
+| Multi-Agent | 4 |
+| Maintenance | 5 |
+| API | 10 |
+| **TOTAL** | **86** |
 
 ---
 
-## Open Questions (TBD)
-
-1. **Death Memory**: Как определяется cluster для cluster death?
-2. **Fatigue Check**: Threshold values для full implementation
-3. **Thompson Sampling**: Параметры alpha/beta priors
-4. **Telegram**: Дополнительные команды кроме /start, /stats, /help?
-
----
-
-## Database Tables (genomai schema)
+## Database Tables
 
 ### Core Pipeline
-| Таблица | Назначение | Mutable | Writer |
-|---------|-----------|---------|--------|
-| `creatives` | Входящие видео-креативы | Yes (status) | Buyer Registration |
-| `transcripts` | Транскрипты (AssemblyAI) | No | Transcription |
-| `decomposed_creatives` | LLM-разбор структуры | No | Decomposition |
-| `ideas` | Канонические идеи | Yes (death_state) | Idea Registry, Learning |
-| `decisions` | Решения DE (append-only) | No | Decision Engine |
-| `decision_traces` | Trace checks | No | Decision Engine |
-| `hypotheses` | Сгенерированные гипотезы | Yes (status) | Hypothesis Factory |
-| `deliveries` | Лог доставок | No | Telegram Delivery |
-| `recommendations` | Рекомендации для buyers | Yes | Recommendation Engine |
+- `creatives` — Входящие видео
+- `transcripts` — Транскрипты (AssemblyAI)
+- `decomposed_creatives` — LLM-разбор
+- `ideas` — Канонические идеи
+- `decisions` — Решения DE
+- `decision_traces` — Trace checks
+- `hypotheses` — Сгенерированные гипотезы
 
-### Metrics & Outcomes
-| Таблица | Назначение | Mutable | Writer |
-|---------|-----------|---------|--------|
-| `raw_metrics_current` | Live метрики из Keitaro | Yes | Keitaro Poller |
-| `daily_metrics_snapshot` | Daily snapshots | No | Snapshot Creator |
-| `outcome_aggregates` | Агрегированные outcomes | Yes (learning_applied) | Outcome Aggregator |
+### Modular System
+- `module_bank` — Извлечённые модули
+- `module_learnings` — Обучение модулей
+- `premise_bank` — Narrative premises
+- `premise_learnings` — Обучение premises
 
-### Learning
-| Таблица | Назначение | Mutable | Writer |
-|---------|-----------|---------|--------|
-| `idea_confidence_versions` | История confidence | No | Learning Loop |
-| `fatigue_state_versions` | История fatigue | No | Learning Loop |
-| `component_learnings` | Learnings по компонентам | Yes | Learning Loop |
-| `avatar_learnings` | Learnings по аватарам | Yes | Learning Loop |
-| `exploration_log` | Thompson Sampling tracking | No | Recommendation Engine |
+### Metrics & Learning
+- `raw_metrics_current` — Live метрики
+- `daily_metrics_snapshot` — Daily snapshots
+- `outcome_aggregates` — Агрегированные outcomes
+- `component_learnings` — По компонентам
+- `avatar_learnings` — По аватарам
 
 ### Buyer System
-| Таблица | Назначение | Mutable | Writer |
-|---------|-----------|---------|--------|
-| `buyers` | Зарегистрированные buyers | Yes | Onboarding |
-| `buyer_states` | State machine онбординга | Yes | Onboarding |
-| `buyer_interactions` | Лог Telegram сообщений | No | Telegram Router |
-| `historical_import_queue` | Очередь импорта | Yes | Historical Import |
+- `buyers` — Зарегистрированные buyers
+- `buyer_states` — State machine
+- `buyer_interactions` — Лог сообщений
 
-### Config & Lookup
-| Таблица | Назначение | Mutable | Writer |
-|---------|-----------|---------|--------|
-| `config` | Системная конфигурация | Yes | Manual |
-| `keitaro_config` | Keitaro credentials | Yes | Manual |
-| `avatars` | Целевые аватары | Yes | Manual |
-| `event_log` | Audit trail (append-only) | No | All workflows |
-| `geo_lookup` | Нормализация geo | Yes | Manual |
-| `vertical_lookup` | Нормализация verticals | Yes | Manual |
+### Multi-Agent
+- `agent_tasks` — Task queue
 
 ---
 
 ## Related Documents
 
+- `docs/TEMPORAL_WORKFLOWS.md` — Workflow reference
+- `docs/TEMPORAL_RUNBOOK.md` — Operations guide
 - `docs/SCHEMA_REFERENCE.md` — Database schema
 - `docs/API_REFERENCE.md` — API endpoints
-- `docs/N8N_WORKFLOWS.md` — All 23 workflows
-- `infrastructure/schemas/` — JSON Schemas

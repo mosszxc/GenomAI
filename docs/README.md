@@ -1,64 +1,78 @@
-# GenomAI Documentation
+# GenomAI Documentation v2.0
 
-> Полная документация системы GenomAI — Autonomous Creative Decision System
+> Документация системы GenomAI — Autonomous Creative Decision System
+
+---
+
+## Quick Links
+
+| Document | Description |
+|----------|-------------|
+| [TEMPORAL_WORKFLOWS.md](./TEMPORAL_WORKFLOWS.md) | Workflow reference |
+| [TEMPORAL_RUNBOOK.md](./TEMPORAL_RUNBOOK.md) | Operations guide |
+| [SCHEMA_REFERENCE.md](./SCHEMA_REFERENCE.md) | Database schema |
+| [API_REFERENCE.md](./API_REFERENCE.md) | API endpoints |
+| [SYSTEM_CAPABILITIES.md](./SYSTEM_CAPABILITIES.md) | System capabilities |
 
 ---
 
 ## Структура документации
 
-Документация организована в 5 слоёв:
-
-### 🟥 Layer 0 — Doctrine / Конституция системы
-**Фундаментальные принципы, правила и политики системы.**
+### Layer 0 — Doctrine
+Фундаментальные принципы и архитектурные инварианты.
 
 📁 [layer-0-doctrine/](./layer-0-doctrine/)
+- `CONCEPT.md` — System concept
+- `ARCHITECTURE_LOCK.md` — Invariants
+- `USAGE_DOCTRINE.md` — Interaction model
 
-### 🟧 Layer 1 — System Design / Logical Architecture
-**Логическая архитектура системы. Спецификации компонентов, схемы данных, контракты.**
+### Layer 1 — System Design
+Логическая архитектура, схемы данных, контракты.
 
 📁 [layer-1-logic/](./layer-1-logic/)
+- `DECISION_ENGINE.md` — DE specification
+- `CANONICAL_SCHEMA.md` — Data schema
+- `LEARNING_MEMORY_POLICY.md` — Learning rules
+- `DATA_FLOW.md` — Data flow
+- `LLM_USAGE_POLICY.md` — LLM rules
 
-### 🟨 Layer 2 — Product & Integration Specs
-**Спецификации продукта и интеграций. API, интерфейсы, интеграционные контракты.**
+### Layer 2 — Product Specs
+Спецификации продукта и интеграций.
 
 📁 [layer-2-product/](./layer-2-product/)
+- `USER_FLOWS.md` — User scenarios
+- `TELEGRAM_INTERACTION_MODEL.md` — Telegram spec
+- `INPUT_NORMALIZATION.md` — Input rules
+- `OUTPUT_PAYLOADS.md` — Output format
 
-### 🟩 Layer 3 — Implementation Design
-**Спецификации реализации и инфраструктуры. Логические сервисы, технологии, деплой.**
+### Layer 3 — Implementation Design
+Спецификации реализации и инфраструктуры.
 
 📁 [layer-3-implementation-design/](./layer-3-implementation-design/)
-
-### 🟦 Layer 4 — Implementation Planning
-**Планы реализации и технические детали. Конкретные технологии, схемы БД, API контракты.**
-
-📁 [layer-4-implementation-planning/](./layer-4-implementation-planning/)
-
----
-
-## Порядок изучения
-
-1. **Начните с [Layer 0](./layer-0-doctrine/)** — это основа всех решений
-2. **Изучите [Layer 1](./layer-1-logic/)** — логическая архитектура системы
-3. **Ознакомьтесь с [Layer 2](./layer-2-product/)** — спецификации продукта
-4. **Изучите [Layer 3](./layer-3-implementation-design/)** — спецификации реализации
-5. **Используйте [Layer 4](./layer-4-implementation-planning/)** — планы реализации
+- `SERVICE_BOUNDARIES.md` — Service boundaries
+- `EVENT_MODEL.md` — Event specification
+- `STORAGE_MODEL.md` — Storage model
+- `ERROR_HANDLING.md` — Error handling
 
 ---
 
-## Дополнительные документы
+## Operations
 
-📋 **[Development Order](./DEVELOPMENT_ORDER.md)** — Строгий порядок разработки системы
-
----
-
-## Правила изменения документации
-
-- **Layer 0** — изменения требуют архитектурного ревью
-- **Layer 1** — изменения должны быть совместимы с Layer 0
-- **Layer 2** — изменения должны быть совместимы с Layer 0 и Layer 1
-- **Layer 3** — технические детали могут меняться чаще
-- **Layer 4** — планы реализации могут изменяться часто
+| Document | Description |
+|----------|-------------|
+| [TEMPORAL_WORKFLOWS.md](./TEMPORAL_WORKFLOWS.md) | All 15 Temporal workflows |
+| [TEMPORAL_RUNBOOK.md](./TEMPORAL_RUNBOOK.md) | How to operate Temporal |
+| [E2E_SERVER_CHECKLIST.md](./E2E_SERVER_CHECKLIST.md) | E2E testing checklist |
+| [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) | Known issues & workarounds |
 
 ---
 
-**Удачи в разработке! 🎉**
+## Historical
+
+| Document | Description |
+|----------|-------------|
+| [DEVELOPMENT_ORDER.md](./DEVELOPMENT_ORDER.md) | Historical development roadmap |
+
+---
+
+**Version:** 2.0.0 | **Updated:** 2026-01-12

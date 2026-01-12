@@ -40,10 +40,6 @@ from temporal.workflows.recommendation import (
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow, MaintenanceInput
 from temporal.workflows.health_check import HealthCheckWorkflow, HealthCheckInput
-from temporal.workflows.agent_supervisor import (
-    AgentSupervisorWorkflow,
-    AgentSupervisorInput,
-)
 
 
 logging.basicConfig(
@@ -110,23 +106,6 @@ SCHEDULES = {
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=3),
         "description": "Health monitoring every 3 hours",
-    },
-    "agent-supervisor": {
-        "workflow": AgentSupervisorWorkflow.run,
-        "args": [
-            AgentSupervisorInput(
-                poll_github=True,
-                github_labels=["enhancement"],
-                github_limit=10,
-                process_queue=True,
-                max_assignments=5,
-                run_orphan_detection=True,
-                orphan_timeout_minutes=10,
-            )
-        ],
-        "task_queue": settings.temporal.TASK_QUEUE_AGENT_SUPERVISOR,
-        "interval": timedelta(hours=2),
-        "description": "Agent supervisor: polls issues, assigns tasks (every 2 hours)",
     },
 }
 

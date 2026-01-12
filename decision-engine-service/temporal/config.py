@@ -50,7 +50,6 @@ class TemporalSettings:
     TASK_QUEUE_TELEGRAM: str = "telegram"
     TASK_QUEUE_METRICS: str = "metrics"
     TASK_QUEUE_KNOWLEDGE: str = "knowledge"
-    TASK_QUEUE_AGENT_SUPERVISOR: str = "agent-supervisor"
 
 
 @dataclass

@@ -176,39 +176,6 @@ Always push after commit. No exceptions.
 
 ⚠️ **Merge блокируется активным деплоем.** Push в ветки — свободно.
 
-### Multi-Agent Task Coordination
-Lock-файлы предотвращают дублирование работы между агентами.
-
-**Автоматически:**
-- `task-start.sh` создаёт `.agents/locks/issue-{N}.lock`
-- `task-done.sh` удаляет lock
-
-**Перед началом работы:**
-```bash
-# Проверить активные агенты
-ls .agents/locks/
-
-# Или вызвать без аргументов
-./scripts/task-start.sh
-```
-
-**Если issue занят:**
-```
-╔═══════════════════════════════════════════════════════════════╗
-║  ⚠️  ISSUE #123 IS ALREADY CLAIMED                            ║
-╚═══════════════════════════════════════════════════════════════╝
-
-  Agent: hostname-12345
-  Since: 2025-01-11T10:00:00Z
-
-Options:
-  1. Choose a different issue
-  2. Coordinate with the other agent
-  3. Force claim: rm .agents/locks/issue-123.lock
-```
-
-**Status board:** `.agents/STATUS.md` — shared overview всех агентов
-
 ## TodoWrite Rules
 При создании todo списка **ВСЕГДА** добавлять последним пунктом:
 ```
@@ -216,41 +183,71 @@ Options:
 ```
 Этот пункт блокирует закрытие задачи до выполнения Post-Task Loop.
 
-## ⛔ Issue Closure Order (STRICT)
+## ⛔⛔⛔ Issue Closure (MANDATORY FORMAT)
 
-**Порядок ОБЯЗАТЕЛЕН. Шаг N+1 только после завершения шага N:**
+### СТОП. Прочитай перед закрытием ЛЮБОГО issue.
+
+**Issue НЕ закрыт пока пользователь НЕ УВИДЕЛ этот блок в твоём сообщении:**
 
 ```
-1. ✓ Code complete
-2. ✓ git commit + push
-3. ✓ Deploy finished (if applicable)
-4. ✓ PRODUCTION TEST PASSED ← BLOCKING
-5. ✓ qa-notes written (с результатами теста)
-6. ✓ docs updated (если нужно)
-7. ✓ Issue closed ← ТОЛЬКО после шага 4-6
+═══════════════════════════════════════════════════════
+ISSUE #XXX CLOSURE REPORT
+═══════════════════════════════════════════════════════
+
+PRODUCTION TEST: [PASSED/FAILED]
+  Type: [Workflow/API/Migration/Telegram]
+  Command: <точная команда которую выполнил>
+  Result: <вывод команды или данные из БД>
+  Критерий: <что проверялось>
+
+QA-NOTES: [WRITTEN/SKIPPED]
+  File: qa-notes/issue-XXX-*.md
+
+DOCS: [UPDATED/NOT REQUIRED]
+  Files: <список или "—">
+
+POST-TASK LOOP: ✓ COMPLETE
+═══════════════════════════════════════════════════════
 ```
 
-⛔ **Issue closed BEFORE test = A006 CRITICAL violation**
+⛔ **БЕЗ ЭТОГО БЛОКА = ISSUE НЕ ЗАКРЫТ**
+⛔ **PRODUCTION TEST: FAILED = ISSUE НЕ ЗАКРЫТ**
+⛔ **Пропуск теста = A006 CRITICAL VIOLATION**
 
-### Production Test Types
-| Изменение | Тест | Критерий успеха |
-|-----------|------|-----------------|
-| Workflow | `temporal.schedules trigger` | данные в БД |
-| API | `curl` endpoint | HTTP 200 + body |
-| Migration | `execute_sql` SELECT | constraints OK |
-| Telegram | `WebFetch` webhook | логи + БД |
+### Порядок (каждый шаг блокирует следующий)
 
-### Формат закрытия
+| # | Шаг | Блокирует | Проверка |
+|---|-----|-----------|----------|
+| 1 | Code complete | — | — |
+| 2 | git commit + push | — | — |
+| 3 | Deploy finished | — | `list_deploys` status=live |
+| 4 | **PRODUCTION TEST** | ⛔ ВСЁ | См. таблицу ниже |
+| 5 | qa-notes written | ⛔ Close | Файл существует |
+| 6 | docs updated | ⛔ Close | Если требуется |
+| 7 | CLOSURE REPORT | ⛔ Close | Блок выше в сообщении |
+
+### Production Test (ОБЯЗАТЕЛЕН)
+
+| Изменение | Команда | Критерий PASSED |
+|-----------|---------|-----------------|
+| Workflow | `temporal.schedules trigger X` | Новые записи в таблице |
+| API | `curl -X POST endpoint` | HTTP 200 + валидный body |
+| Migration | `SELECT ... FROM genomai.table` | Constraints работают |
+| Telegram | `WebFetch` webhook | Логи + запись в БД |
+
+**НЕТ ТЕСТА В ТАБЛИЦЕ?** → Спроси пользователя какой тест нужен.
+
+### Антипаттерны (A006)
+
 ```
-Production test: PASSED
-  Command: <команда>
-  Result: <результат>
-
-Issue #XXX закрыт.
-Post-Task Loop выполнен ✓
+❌ "Issue закрыт" без CLOSURE REPORT
+❌ "Тест пройден" без команды и результата
+❌ "qa-notes будут позже"
+❌ Закрытие с PRODUCTION TEST: FAILED
+❌ "Это мелкое изменение, тест не нужен"
 ```
 
-⛔ Нарушение = A006 антипаттерн (см. LESSONS.md)
+**Любое из этого = A006 violation → добавить в LESSONS.md**
 
 ## Testing (BLOCKING)
 **Детали:** `.claude/docs/testing-rules.md`
