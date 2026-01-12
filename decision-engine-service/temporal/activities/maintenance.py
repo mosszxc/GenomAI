@@ -910,10 +910,14 @@ async def check_staleness(
 
 
 async def _get_temporal_client() -> TemporalClient:
-    """Get Temporal client for workflow operations."""
-    temporal_host = os.getenv("TEMPORAL_HOST", "localhost:7233")
-    namespace = os.getenv("TEMPORAL_NAMESPACE", "default")
-    return await TemporalClient.connect(temporal_host, namespace=namespace)
+    """Get Temporal client for workflow operations.
+
+    Uses the shared client from temporal/client.py which properly handles
+    both Temporal Cloud (with TLS/API key) and local development.
+    """
+    from temporal.client import get_temporal_client
+
+    return await get_temporal_client()
 
 
 @activity.defn
