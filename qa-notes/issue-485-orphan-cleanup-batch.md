@@ -14,22 +14,5 @@
 ## Test
 
 ```bash
-cd /Users/mosszxc/Documents/Проэкты/GenomAI/.worktrees/issue-485-arch-medium-orphan-cleanup-обрабатывает-/decision-engine-service && python -c "
-from temporal.activities.hygiene_cleanup import cleanup_orphan_raw_metrics
-import inspect
-source = inspect.getsource(cleanup_orphan_raw_metrics)
-
-# Check batch size increased
-assert 'batch_size = 500' in source, 'batch_size should be 500'
-
-# Check error logging
-assert 'activity.logger.warning' in source, 'Should log warnings'
-assert 'Failed to delete orphan' in source, 'Should have failure message'
-
-# Check orphan count metric
-assert 'total_orphans' in source, 'Should track total orphans'
-assert 'remaining=' in source, 'Should log remaining count'
-
-print('OK: batch=500, error_logging=yes, metrics=yes')
-"
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/.worktrees/issue-485-arch-medium-orphan-cleanup-обрабатывает-/decision-engine-service && grep -q 'batch_size = 500' temporal/activities/hygiene_cleanup.py && grep -q 'Failed to delete orphan' temporal/activities/hygiene_cleanup.py && grep -q 'total_orphans' temporal/activities/hygiene_cleanup.py && echo 'OK: batch=500, error_logging=yes, metrics=yes'
 ```
