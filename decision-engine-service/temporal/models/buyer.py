@@ -28,16 +28,16 @@ class OnboardingState(str, Enum):
 class BuyerOnboardingInput:
     """Input for BuyerOnboardingWorkflow.
 
-    Note: telegram_id accepts Union[str, int] for backward compatibility
-    with workflows started before the type migration to str.
+    Note: telegram_id accepts Union[str, int] for backward compatibility.
+    Old workflows may have int, new workflows use str.
     """
 
-    telegram_id: Union[str, int]  # Accept both for Temporal backward compat
+    telegram_id: Union[str, int]
     telegram_username: Optional[str] = None
     chat_id: str = ""
 
     def __post_init__(self):
-        # Normalize telegram_id to str (backward compat with int)
+        # Normalize telegram_id to str for consistent usage
         self.telegram_id = str(self.telegram_id)
         if not self.chat_id:
             self.chat_id = self.telegram_id

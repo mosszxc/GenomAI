@@ -26,7 +26,7 @@
 | L021 | #210 | Render | Cold start = 50-90 sec, use keep_alive |
 | L022 | — | Temporal | Activities must be in separate file from workflow |
 | L023 | #256 | Temporal | No `datetime.utcnow()` in workflows — use `workflow.now()` |
-| L024 | Tu stuck | Temporal | **Type changes in workflow Input models break running workflows.** Use `Union[old, new]` for backward compat. Temporal deserializer fails BEFORE `__post_init__`. |
+| L024 | #499 | Temporal | **Type changes in workflow Input models break running workflows.** Use `Union[old, new]` for backward compat. Temporal deserializer fails BEFORE `__post_init__`. |
 
 ## Anti-Patterns
 
@@ -57,7 +57,7 @@
 | "activity not registered" / sandbox error | L020, L022 |
 | Service unavailable after deploy | L021 |
 | "RestrictedWorkflowAccessError" / "cannot access datetime" | L023 |
-| "Failed converting field X on dataclass" / "Failed decoding arguments" | L024 |
+| "Failed converting field" / "Failed decoding arguments" | L024 |
 
 ---
 
