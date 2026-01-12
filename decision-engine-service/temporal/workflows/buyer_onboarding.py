@@ -527,6 +527,7 @@ class BuyerOnboardingWorkflow:
                 id=f"historical-import-{self._buyer_id}",
                 task_queue="telegram",
                 execution_timeout=timedelta(hours=2),
+                parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
             )
 
             self._campaigns_count = (
@@ -628,6 +629,7 @@ class BuyerOnboardingWorkflow:
                                 ],
                                 id=f"onboarding-video-{self._buyer_id}-{campaign['campaign_id']}",
                                 task_queue="telegram",
+                                parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
                             )
 
                             self._videos_count += 1
