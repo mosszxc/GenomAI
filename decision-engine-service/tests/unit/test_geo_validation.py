@@ -4,7 +4,6 @@ Test geo validation in /simulate command.
 Issue #464: --geo flag accepts any value without validation
 """
 
-import pytest
 from temporal.models.buyer import VALID_GEOS
 
 
@@ -24,10 +23,10 @@ class TestGeoValidation:
         """Invalid geo codes should be rejected."""
         invalid_samples = [
             "TOOLONGCODE123",  # Too long
-            "XX",              # Non-existent
-            "USA",             # Wrong format (should be US)
-            "123",             # Numbers only
-            "",                # Empty after strip
+            "XX",  # Non-existent
+            "USA",  # Wrong format (should be US)
+            "123",  # Numbers only
+            "",  # Empty after strip
         ]
 
         for geo in invalid_samples:
@@ -68,7 +67,7 @@ class TestGeoValidation:
         assert "US" in error_msg
         assert "UK" in error_msg
 
-        print(f"\n✓ Error message generated:")
+        print("\n✓ Error message generated:")
         print(error_msg)
 
     def test_valid_geos_count(self):
