@@ -15,6 +15,7 @@ Environment:
 
 import asyncio
 import logging
+import signal
 import sys
 from pathlib import Path
 
@@ -310,16 +311,24 @@ async def run_worker():
 
 async def run_all_workers():
     """
-    Run all workers concurrently.
+    Run all workers concurrently with graceful shutdown.
 
     Runs:
     - Creative Pipeline worker (creative-pipeline queue)
     - Metrics worker (metrics queue) - Keitaro, Metrics, Learning
+
+    Graceful shutdown:
+    - Handles SIGTERM and SIGINT signals
+    - Stops accepting new work
+    - Waits for in-flight activities to complete
+    - Closes Temporal client connection
     """
 
     logger.info("Starting GenomAI Temporal Workers")
 
     client = await get_temporal_client()
+    workers: list[Worker] = []
+    shutdown_event = asyncio.Event()
 
     # Creative Pipeline Worker
     creative_worker = Worker(
@@ -509,6 +518,9 @@ async def run_all_workers():
         ],
     )
 
+    # Collect all workers for shutdown
+    workers = [creative_worker, metrics_worker, telegram_worker, knowledge_worker]
+
     logger.info("Workers configured:")
     logger.info(
         f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
@@ -517,24 +529,58 @@ async def run_all_workers():
     logger.info(f"  - Telegram & Buyer: {settings.temporal.TASK_QUEUE_TELEGRAM}")
     logger.info(f"  - Knowledge Extraction: {settings.temporal.TASK_QUEUE_KNOWLEDGE}")
 
-    # Run all workers concurrently
-    await asyncio.gather(
-        creative_worker.run(),
-        metrics_worker.run(),
-        telegram_worker.run(),
-        knowledge_worker.run(),
-    )
+    async def graceful_shutdown(sig_name: str):
+        """Handle graceful shutdown on signal."""
+        logger.info(f"Received {sig_name}, initiating graceful shutdown...")
+
+        # Signal all workers to shutdown (stops accepting new work)
+        logger.info("Stopping workers (waiting for in-flight activities)...")
+        shutdown_tasks = [worker.shutdown() for worker in workers]
+        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+
+        logger.info("All workers stopped gracefully")
+        shutdown_event.set()
+
+    # Setup signal handlers
+    loop = asyncio.get_running_loop()
+
+    def signal_handler(sig: signal.Signals):
+        logger.info(f"Signal {sig.name} received")
+        asyncio.create_task(graceful_shutdown(sig.name))
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))
+
+    logger.info("Signal handlers installed (SIGTERM, SIGINT)")
+    logger.info("Press Ctrl+C to stop gracefully")
+
+    try:
+        # Run all workers concurrently
+        await asyncio.gather(
+            creative_worker.run(),
+            metrics_worker.run(),
+            telegram_worker.run(),
+            knowledge_worker.run(),
+        )
+    except asyncio.CancelledError:
+        logger.info("Workers cancelled, waiting for shutdown...")
+        await shutdown_event.wait()
+    finally:
+        # Ensure client connection is closed
+        logger.info("Closing Temporal client connection...")
+        await client.service_client.close()
+        logger.info("Temporal client closed")
 
 
 def main():
-    """Main entry point."""
+    """Main entry point with graceful shutdown support."""
     try:
         asyncio.run(run_all_workers())
-    except KeyboardInterrupt:
-        logger.info("Worker stopped by user")
     except Exception as e:
         logger.error(f"Worker error: {e}")
         raise
+    finally:
+        logger.info("Worker process exiting")
 
 
 if __name__ == "__main__":
