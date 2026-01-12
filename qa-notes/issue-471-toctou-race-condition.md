@@ -34,5 +34,5 @@ idea = await upsert_idea(hash, decomposed_id)
 ## Test
 
 ```bash
-cd decision-engine-service && python3 -c "from temporal.activities.supabase import upsert_idea; from src.services.idea_registry import upsert_idea as reg_upsert; print('OK: upsert_idea imported from both modules')"
+grep -q "async def upsert_idea" .worktrees/issue-471-*/decision-engine-service/temporal/activities/supabase.py && grep -q "async def upsert_idea" .worktrees/issue-471-*/decision-engine-service/src/services/idea_registry.py && echo "OK: upsert_idea found in both files"
 ```
