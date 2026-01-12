@@ -217,6 +217,7 @@ class ProcessOutcomeOutput:
     success: bool
     outcome_id: Optional[str] = None
     learning_triggered: bool = False
+    skipped: bool = False  # True when tracker has no linked idea (expected case)
     error_code: Optional[str] = None
     error_message: Optional[str] = None
 
@@ -244,14 +245,27 @@ async def process_outcome(input: ProcessOutcomeInput) -> ProcessOutcomeOutput:
         result = await service.aggregate(input.snapshot_id)
 
         if result.success:
-            activity.logger.info(
-                f"Outcome created: {result.outcome.id if result.outcome else 'N/A'}"
-            )
-            return ProcessOutcomeOutput(
-                success=True,
-                outcome_id=result.outcome.id if result.outcome else None,
-                learning_triggered=result.learning_triggered,
-            )
+            if result.skipped:
+                # Tracker without linked idea is expected (e.g., test campaigns)
+                # Log as debug, not warning, to avoid polluting logs
+                activity.logger.debug(
+                    f"Snapshot skipped: {result.error_code} - {result.error_message}"
+                )
+                return ProcessOutcomeOutput(
+                    success=True,
+                    skipped=True,
+                    error_code=result.error_code,
+                    error_message=result.error_message,
+                )
+            else:
+                activity.logger.info(
+                    f"Outcome created: {result.outcome.id if result.outcome else 'N/A'}"
+                )
+                return ProcessOutcomeOutput(
+                    success=True,
+                    outcome_id=result.outcome.id if result.outcome else None,
+                    learning_triggered=result.learning_triggered,
+                )
         else:
             activity.logger.warning(
                 f"Outcome processing failed: {result.error_code} - {result.error_message}"
