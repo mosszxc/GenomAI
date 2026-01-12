@@ -39,6 +39,14 @@ with workflow.unsafe.imports_passed_through():
         UpdateImportVideoInput,
         update_import_with_video,
     )
+    from temporal.activities.keitaro import (
+        get_campaigns_by_source,
+        GetCampaignsBySourceInput,
+    )
+
+
+# Maximum retry attempts for sub10 validation
+MAX_SUB10_RETRY_ATTEMPTS = 3
 
 
 # Onboarding messages (Russian, friendly tone)
@@ -113,6 +121,19 @@ MESSAGES = {
     ),
     "invalid_video_url": (
         "❌ Не распознал ссылку на видео.\nОтправь URL (YouTube, .mp4 и т.д.)"
+    ),
+    "validating_sub10": ("🔍 Проверяю sub10 <code>{sub10}</code> в Keitaro..."),
+    "sub10_found": (
+        "✅ Найдено <b>{count}</b> кампаний с sub10='{sub10}'\n\nПродолжаю настройку..."
+    ),
+    "sub10_not_found": (
+        "❌ Кампаний с sub10='{sub10}' не найдено.\n\n"
+        "Проверь правильность написания и попробуй ещё раз.\n"
+        "<i>Осталось попыток: {remaining}</i>"
+    ),
+    "sub10_retries_exhausted": (
+        "❌ Исчерпаны попытки ввода sub10.\n\n"
+        "Напиши в поддержку @genomai_support или отправь /start чтобы начать заново."
     ),
 }
 
@@ -330,7 +351,7 @@ class BuyerOnboardingWorkflow:
                     retry_policy=default_retry,
                 )
 
-            # Step 4: Ask for Keitaro source
+            # Step 4: Ask for Keitaro source with validation
             self._state = OnboardingState.AWAITING_KEITARO
             await workflow.execute_activity(
                 send_telegram_message,
@@ -344,16 +365,82 @@ class BuyerOnboardingWorkflow:
                 retry_policy=default_retry,
             )
 
-            # Wait for Keitaro source
-            await workflow.wait_condition(
-                lambda: self._pending_message is not None,
-                timeout=step_timeout,
-            )
-            if self._pending_message is None:
-                return await self._handle_timeout()
+            # Wait for valid Keitaro source (with retry)
+            sub10_attempts = 0
+            while sub10_attempts < MAX_SUB10_RETRY_ATTEMPTS:
+                await workflow.wait_condition(
+                    lambda: self._pending_message is not None,
+                    timeout=step_timeout,
+                )
+                if self._pending_message is None:
+                    return await self._handle_timeout()
 
-            self._keitaro_source = self._pending_message.text.strip()
-            self._pending_message = None
+                sub10_input = self._pending_message.text.strip()
+                self._pending_message = None
+
+                # Validate sub10 by checking campaigns in Keitaro
+                await workflow.execute_activity(
+                    send_telegram_message,
+                    args=[
+                        self._chat_id,
+                        MESSAGES["validating_sub10"].format(sub10=sub10_input),
+                    ],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+
+                campaigns_result = await workflow.execute_activity(
+                    get_campaigns_by_source,
+                    GetCampaignsBySourceInput(source=sub10_input),
+                    start_to_close_timeout=timedelta(minutes=5),
+                    retry_policy=default_retry,
+                )
+
+                if campaigns_result.total > 0:
+                    # Valid sub10 found
+                    self._keitaro_source = sub10_input
+                    await workflow.execute_activity(
+                        send_telegram_message,
+                        args=[
+                            self._chat_id,
+                            MESSAGES["sub10_found"].format(
+                                count=campaigns_result.total,
+                                sub10=sub10_input,
+                            ),
+                        ],
+                        start_to_close_timeout=timedelta(seconds=30),
+                        retry_policy=default_retry,
+                    )
+                    break
+
+                # Invalid sub10, ask again
+                sub10_attempts += 1
+                remaining = MAX_SUB10_RETRY_ATTEMPTS - sub10_attempts
+
+                if remaining > 0:
+                    await workflow.execute_activity(
+                        send_telegram_message,
+                        args=[
+                            self._chat_id,
+                            MESSAGES["sub10_not_found"].format(
+                                sub10=sub10_input,
+                                remaining=remaining,
+                            ),
+                        ],
+                        start_to_close_timeout=timedelta(seconds=30),
+                        retry_policy=default_retry,
+                    )
+                else:
+                    # Retries exhausted
+                    await workflow.execute_activity(
+                        send_telegram_message,
+                        args=[self._chat_id, MESSAGES["sub10_retries_exhausted"]],
+                        start_to_close_timeout=timedelta(seconds=30),
+                        retry_policy=default_retry,
+                    )
+                    self._state = OnboardingState.CANCELLED
+                    self._error = "sub10 validation failed after max retries"
+                    return self._build_result()
 
             # Step 5: Create buyer and load history
             self._state = OnboardingState.LOADING_HISTORY
