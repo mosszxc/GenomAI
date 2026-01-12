@@ -163,7 +163,7 @@ class CreativePipelineWorkflow:
                         input.creative_id,
                     ],  # url, language, creative_id
                     start_to_close_timeout=timedelta(minutes=15),
-                    heartbeat_timeout=timedelta(seconds=60),
+                    heartbeat_timeout=timedelta(minutes=5),
                     retry_policy=long_running_retry,
                 )
 
