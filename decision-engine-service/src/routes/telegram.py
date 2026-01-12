@@ -679,11 +679,21 @@ async def handle_genome_command(message: TelegramMessage) -> None:
 
     if "--by" in parts:
         by_index = parts.index("--by")
-        if by_index + 1 < len(parts):
-            segment_by = parts[by_index + 1].lower()
-            # Everything before --by is the component value
-            if by_index > 1:
-                component_value = parts[1]
+        if by_index + 1 >= len(parts):
+            await send_telegram_message(
+                message.chat_id,
+                "Укажите тип сегментации после --by.\n\n"
+                "Usage: /genome fear --by <geo|avatar|week>\n\n"
+                "Примеры:\n"
+                "  /genome fear --by geo\n"
+                "  /genome hope --by avatar\n"
+                "  /genome curiosity --by week",
+            )
+            return
+        segment_by = parts[by_index + 1].lower()
+        # Everything before --by is the component value
+        if by_index > 1:
+            component_value = parts[1]
 
     # Log incoming command
     await log_buyer_interaction(
