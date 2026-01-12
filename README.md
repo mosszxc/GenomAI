@@ -97,6 +97,29 @@ All pass           → APPROVE
 
 ---
 
+## Issue Management
+
+### Quick Links
+
+| View | Link |
+|------|------|
+| 🟢 **Ready to work** | [status:ready](https://github.com/mosszxc/GenomAI/issues?q=is:open+label:status:ready) |
+| 📌 **In Progress** | [status:in-progress](https://github.com/mosszxc/GenomAI/issues?q=is:open+label:status:in-progress) |
+| 🔴 **Blocked** | [status:blocked](https://github.com/mosszxc/GenomAI/issues?q=is:open+label:status:blocked) |
+| 🔥 **Critical** | [CRITICAL](https://github.com/mosszxc/GenomAI/issues?q=is:open+CRITICAL+in:title) |
+| ⚪ **All open** | [All issues](https://github.com/mosszxc/GenomAI/issues) |
+
+### CLI Commands
+
+```bash
+make issues              # Dashboard
+make issue-start N=123   # Start working (+ worktree)
+make issue-ready N=123   # Mark as ready
+make issue-block N=123   # Mark as blocked
+```
+
+---
+
 ## Быстрый старт
 
 ### Запуск сервиса

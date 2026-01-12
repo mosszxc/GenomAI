@@ -1,7 +1,7 @@
 # Makefile for GenomAI
 # Usage: make <target>
 
-.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check
+.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-block issue-ready issues-critical issues-by-priority
 
 # Default target
 help:
@@ -31,6 +31,14 @@ help:
 	@echo "  make ci             - Simulate full CI pipeline locally"
 	@echo "  make pre-commit-check - Run pre-commit hooks manually"
 	@echo "  make pre-push-check   - Run pre-push hooks manually"
+	@echo ""
+	@echo "Issue Management:"
+	@echo "  make issues         - Dashboard: in-progress, ready, blocked"
+	@echo "  make issue-start N=123 - Start working on issue #123"
+	@echo "  make issue-block N=123 - Mark issue as blocked"
+	@echo "  make issue-ready N=123 - Mark issue as ready to work"
+	@echo "  make issues-critical   - List CRITICAL issues"
+	@echo "  make issues-by-priority - List by CRITICAL/HIGH/MEDIUM"
 
 # ============ Setup ============
 
@@ -123,6 +131,55 @@ e2e:
 	else \
 		echo "Automated E2E script not found. Follow manual checklist."; \
 	fi
+
+# ============ Issue Management ============
+
+# Show all issues by status
+issues:
+	@echo "=== Issues Dashboard ==="
+	@echo ""
+	@echo "📌 IN PROGRESS:"
+	@gh issue list -l "status:in-progress" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}' || true
+	@echo ""
+	@echo "🟢 READY:"
+	@gh issue list -l "status:ready" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}' || true
+	@echo ""
+	@echo "🔴 BLOCKED:"
+	@gh issue list -l "status:blocked" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}' || true
+	@echo ""
+	@echo "⚪ BACKLOG (no status): gh issue list"
+
+# Start working on an issue
+issue-start:
+	@if [ -z "$(N)" ]; then echo "Usage: make issue-start N=123"; exit 1; fi
+	gh issue edit $(N) --add-label "status:in-progress" --remove-label "status:ready" --remove-label "status:blocked"
+	./scripts/task-start.sh $(N)
+
+# Mark issue as blocked
+issue-block:
+	@if [ -z "$(N)" ]; then echo "Usage: make issue-block N=123"; exit 1; fi
+	gh issue edit $(N) --add-label "status:blocked" --remove-label "status:in-progress" --remove-label "status:ready"
+
+# Mark issue as ready
+issue-ready:
+	@if [ -z "$(N)" ]; then echo "Usage: make issue-ready N=123"; exit 1; fi
+	gh issue edit $(N) --add-label "status:ready" --remove-label "status:in-progress" --remove-label "status:blocked"
+
+# List critical issues (ARCH-CRITICAL, CRITICAL)
+issues-critical:
+	@echo "=== CRITICAL Issues ==="
+	@gh issue list --search "CRITICAL in:title" --json number,title,labels --template '{{range .}}#{{.number}} {{.title}}{{"\n"}}{{end}}'
+
+# List issues by priority
+issues-by-priority:
+	@echo "=== CRITICAL ==="
+	@gh issue list --search "CRITICAL in:title" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}'
+	@echo ""
+	@echo "=== HIGH ==="
+	@gh issue list --search "HIGH in:title" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}'
+	@echo ""
+	@echo "=== MEDIUM ==="
+	@gh issue list --search "MEDIUM in:title" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}'
 
 # ============ CI Simulation ============
 
