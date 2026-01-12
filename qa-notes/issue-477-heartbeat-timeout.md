@@ -16,5 +16,5 @@
 ## Test
 
 ```bash
-grep -q "heartbeat_timeout=timedelta(minutes=5)" decision-engine-service/temporal/workflows/creative_pipeline.py && echo "OK: heartbeat_timeout=5min"
+grep -q "heartbeat_timeout=timedelta(minutes=5)" .worktrees/issue-477-arch-high-heartbeat-timeout-60-сек-слишк/decision-engine-service/temporal/workflows/creative_pipeline.py && echo "OK: heartbeat_timeout=5min"
 ```
