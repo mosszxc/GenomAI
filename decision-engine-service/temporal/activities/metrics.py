@@ -134,10 +134,10 @@ async def create_daily_snapshot(input: CreateSnapshotInput) -> CreateSnapshotOut
         f"Creating snapshot for tracker {input.tracker_id} on {input.snapshot_date}"
     )
 
-    url = _get_supabase_url("daily_metrics_snapshot")
+    # Use on_conflict query param + ignore-duplicates to skip INSERT on conflict
+    # This is needed because the table has UNIQUE(tracker_id, date) and triggers blocking UPDATE
+    url = _get_supabase_url("daily_metrics_snapshot") + "?on_conflict=tracker_id,date"
     headers = _get_supabase_headers(for_write=True)
-    # Use ignore-duplicates to skip INSERT on conflict (tracker_id, date)
-    # This is needed because the table has triggers blocking UPDATE
     headers["Prefer"] = "return=representation,resolution=ignore-duplicates"
 
     payload = {
