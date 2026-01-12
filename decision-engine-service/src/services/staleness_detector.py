@@ -18,13 +18,16 @@ staleness_score = 0.25*diversity + 0.25*win_rate_decline +
 Issue: Inspiration System
 """
 
+import logging
 import os
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -65,6 +68,9 @@ class StalenessMetrics:
     avatar_id: Optional[str] = None
     geo: Optional[str] = None
     vertical: Optional[str] = None
+
+    # Error tracking - which metrics failed to fetch from DB
+    error_sources: list = field(default_factory=list)
 
 
 def _get_credentials():
@@ -115,15 +121,15 @@ async def calculate_diversity_score(
 
     filter_str = "&".join(filters) if filters else ""
 
-    async with httpx.AsyncClient() as client:
-        # Count distinct component_type + component_value pairs
-        url = f"{rest_url}/component_learnings?select=component_type,component_value"
-        if filter_str:
-            url += f"&{filter_str}"
+    client = get_http_client()
+    # Count distinct component_type + component_value pairs
+    url = f"{rest_url}/component_learnings?select=component_type,component_value"
+    if filter_str:
+        url += f"&{filter_str}"
 
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    response = await client.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
 
     # Count unique values per type
     types_seen = set()
@@ -169,14 +175,14 @@ async def calculate_win_rate_trend(
     # Filter by date only; avatar/geo filtering would require JOIN with creatives
     filter_str = f"created_at=gte.{date_30d}"
 
-    async with httpx.AsyncClient() as client:
-        # Get outcome_aggregates from last 30 days
-        response = await client.get(
-            f"{rest_url}/outcome_aggregates?{filter_str}&select=cpa,created_at&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    # Get outcome_aggregates from last 30 days
+    response = await client.get(
+        f"{rest_url}/outcome_aggregates?{filter_str}&select=cpa,created_at&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     if not data:
         return 0.0  # No data = neutral
@@ -252,33 +258,33 @@ async def calculate_fatigue_ratio(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        # Step 1: Get active ideas
-        response = await client.get(
-            f"{rest_url}/ideas?{filter_str}&select=id&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        active_ideas = response.json()
+    client = get_http_client()
+    # Step 1: Get active ideas
+    response = await client.get(
+        f"{rest_url}/ideas?{filter_str}&select=id&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    active_ideas = response.json()
 
-        if not active_ideas:
-            return 0.0
+    if not active_ideas:
+        return 0.0
 
-        # Step 2: Get latest fatigue values from fatigue_state_versions
-        # Order by version desc to get latest first, then dedupe in code
-        idea_ids = [idea["id"] for idea in active_ideas]
-        idea_ids_str = ",".join(idea_ids)
+    # Step 2: Get latest fatigue values from fatigue_state_versions
+    # Order by version desc to get latest first, then dedupe in code
+    idea_ids = [idea["id"] for idea in active_ideas]
+    idea_ids_str = ",".join(idea_ids)
 
-        response = await client.get(
-            f"{rest_url}/fatigue_state_versions"
-            f"?idea_id=in.({idea_ids_str})"
-            f"&select=idea_id,fatigue_value,version"
-            f"&order=idea_id,version.desc"
-            f"&limit=1000",
-            headers=headers,
-        )
-        response.raise_for_status()
-        fatigue_data = response.json()
+    response = await client.get(
+        f"{rest_url}/fatigue_state_versions"
+        f"?idea_id=in.({idea_ids_str})"
+        f"&select=idea_id,fatigue_value,version"
+        f"&order=idea_id,version.desc"
+        f"&limit=1000",
+        headers=headers,
+    )
+    response.raise_for_status()
+    fatigue_data = response.json()
 
     if not fatigue_data:
         return 0.0  # No fatigue data = no fatigue
@@ -323,14 +329,14 @@ async def calculate_days_since_new_component(
 
     filter_str = "&".join(filters) if filters else ""
 
-    async with httpx.AsyncClient() as client:
-        url = f"{rest_url}/component_learnings?select=created_at&order=created_at.desc&limit=1"
-        if filter_str:
-            url += f"&{filter_str}"
+    client = get_http_client()
+    url = f"{rest_url}/component_learnings?select=created_at&order=created_at.desc&limit=1"
+    if filter_str:
+        url += f"&{filter_str}"
 
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    response = await client.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
 
     if not data:
         return DAYS_STALE_THRESHOLD * 2  # No data = very stale
@@ -375,13 +381,13 @@ async def calculate_exploration_success_rate(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/exploration_log?{filter_str}&select=was_successful&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/exploration_log?{filter_str}&select=was_successful&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     if not data:
         return 0.5  # No data = neutral
@@ -445,31 +451,77 @@ async def calculate_staleness_metrics(
         StalenessMetrics with all metrics and composite score
     """
     # Calculate individual metrics with error handling
-    # Each metric defaults to neutral value on error
+    # Track which metrics failed to fetch from DB
+    error_sources: list[str] = []
+
     try:
         diversity = await calculate_diversity_score(avatar_id, geo)
-    except Exception:
-        diversity = 0.5  # Neutral
+    except Exception as e:
+        logger.error(
+            "Failed to calculate diversity_score: %s (avatar=%s, geo=%s)",
+            e,
+            avatar_id,
+            geo,
+        )
+        error_sources.append("diversity_score")
+        diversity = 0.5  # Neutral fallback
 
     try:
         win_rate_trend = await calculate_win_rate_trend(avatar_id, geo)
-    except Exception:
-        win_rate_trend = 0.0  # Neutral
+    except Exception as e:
+        logger.error(
+            "Failed to calculate win_rate_trend: %s (avatar=%s, geo=%s)",
+            e,
+            avatar_id,
+            geo,
+        )
+        error_sources.append("win_rate_trend")
+        win_rate_trend = 0.0  # Neutral fallback
 
     try:
         fatigue = await calculate_fatigue_ratio(avatar_id, geo)
-    except Exception:
-        fatigue = 0.0  # No fatigue assumed
+    except Exception as e:
+        logger.error(
+            "Failed to calculate fatigue_ratio: %s (avatar=%s, geo=%s)",
+            e,
+            avatar_id,
+            geo,
+        )
+        error_sources.append("fatigue_ratio")
+        fatigue = 0.0  # No fatigue assumed fallback
 
     try:
         days_stale = await calculate_days_since_new_component(avatar_id, geo)
-    except Exception:
-        days_stale = DAYS_STALE_THRESHOLD  # Neutral
+    except Exception as e:
+        logger.error(
+            "Failed to calculate days_since_new_component: %s (avatar=%s, geo=%s)",
+            e,
+            avatar_id,
+            geo,
+        )
+        error_sources.append("days_since_new_component")
+        days_stale = DAYS_STALE_THRESHOLD  # Neutral fallback
 
     try:
         exploration = await calculate_exploration_success_rate(avatar_id, geo)
-    except Exception:
-        exploration = 0.5  # Neutral
+    except Exception as e:
+        logger.error(
+            "Failed to calculate exploration_success_rate: %s (avatar=%s, geo=%s)",
+            e,
+            avatar_id,
+            geo,
+        )
+        error_sources.append("exploration_success_rate")
+        exploration = 0.5  # Neutral fallback
+
+    # Log warning if any metrics failed - indicates potential DB issues
+    if error_sources:
+        logger.warning(
+            "Staleness metrics calculated with %d/%d fallback values due to errors: %s",
+            len(error_sources),
+            5,
+            error_sources,
+        )
 
     # Create metrics object
     metrics = StalenessMetrics(
@@ -483,6 +535,7 @@ async def calculate_staleness_metrics(
         avatar_id=avatar_id,
         geo=geo,
         vertical=vertical,
+        error_sources=error_sources,
     )
 
     # Compute composite score
@@ -528,12 +581,12 @@ async def save_staleness_snapshot(
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/staleness_snapshots", headers=headers, json=payload
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/staleness_snapshots", headers=headers, json=payload
+    )
+    response.raise_for_status()
+    return response.json()[0] if response.json() else {}
 
 
 async def get_latest_staleness(
@@ -560,13 +613,13 @@ async def get_latest_staleness(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/staleness_snapshots?{filter_str}&order=created_at.desc&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/staleness_snapshots?{filter_str}&order=created_at.desc&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     return data[0] if data else None
 
@@ -599,6 +652,9 @@ async def check_staleness_and_act(
         "recommended_action": None,
         "avatar_id": avatar_id,
         "geo": geo,
+        # Error tracking - indicates which metrics used fallback values due to DB errors
+        "has_db_errors": len(metrics.error_sources) > 0,
+        "error_sources": metrics.error_sources,
     }
 
     if metrics.is_stale:

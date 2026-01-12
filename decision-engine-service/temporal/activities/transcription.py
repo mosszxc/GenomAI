@@ -17,6 +17,9 @@ from typing import Optional
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from temporal.tracing import get_activity_logger
+from src.core.http_client import get_http_client
+
 # Polling interval for transcription status (seconds)
 POLL_INTERVAL = 30
 
@@ -114,7 +117,7 @@ async def transcribe_via_n8n(
     Returns:
         dict with transcript_id, text, status
     """
-    import httpx
+    log = get_activity_logger(creative_id=creative_id)
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -134,58 +137,59 @@ async def transcribe_via_n8n(
     }
 
     # Step 1: Create transcript record in DB
-    activity.logger.info(f"Creating transcript record for creative {creative_id}")
+    log.info("Creating transcript record")
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Extract Google Drive file ID for VideoID field
-        video_id = extract_gdrive_file_id(video_url)
+    client = get_http_client()
+    # Extract Google Drive file ID for VideoID field
+    video_id = extract_gdrive_file_id(video_url)
 
-        # Insert transcript record with VideoID for pg_cron worker
-        insert_resp = await client.post(
+    # Insert transcript record with VideoID for pg_cron worker
+    insert_resp = await client.post(
+        f"{supabase_url}/rest/v1/transcripts",
+        headers=headers,
+        json={
+            "creative_id": creative_id,
+            "Name": f"transcript_{creative_id[:8]}",  # Required by pg_cron
+            "VideoID": video_id,  # Google Drive file ID for Convert stage
+            "ConvertStatus": "queued",  # Triggers pg_cron worker
+            "Status": "queued",
+        },
+    )
+
+    if insert_resp.status_code not in (200, 201):
+        raise ApplicationError(f"Failed to create transcript: {insert_resp.text}")
+
+    # Get the created record ID
+    created = insert_resp.json()
+    transcript_db_id = (
+        created[0]["id"] if isinstance(created, list) else created.get("id")
+    )
+
+    if not transcript_db_id:
+        # Fetch the latest transcript for this creative
+        get_resp = await client.get(
             f"{supabase_url}/rest/v1/transcripts",
             headers=headers,
-            json={
-                "creative_id": creative_id,
-                "Name": f"transcript_{creative_id[:8]}",  # Required by pg_cron
-                "VideoID": video_id,  # Google Drive file ID for Convert stage
-                "ConvertStatus": "queued",  # Triggers pg_cron worker
-                "Status": "queued",
+            params={
+                "creative_id": f"eq.{creative_id}",
+                "order": "created_at.desc",
+                "limit": "1",
             },
         )
+        if get_resp.status_code == 200:
+            records = get_resp.json()
+            if records:
+                transcript_db_id = records[0]["id"]
 
-        if insert_resp.status_code not in (200, 201):
-            raise ApplicationError(f"Failed to create transcript: {insert_resp.text}")
-
-        # Get the created record ID
-        created = insert_resp.json()
-        transcript_db_id = (
-            created[0]["id"] if isinstance(created, list) else created.get("id")
-        )
-
-        if not transcript_db_id:
-            # Fetch the latest transcript for this creative
-            get_resp = await client.get(
-                f"{supabase_url}/rest/v1/transcripts",
-                headers=headers,
-                params={
-                    "creative_id": f"eq.{creative_id}",
-                    "order": "created_at.desc",
-                    "limit": "1",
-                },
-            )
-            if get_resp.status_code == 200:
-                records = get_resp.json()
-                if records:
-                    transcript_db_id = records[0]["id"]
-
-        activity.logger.info(f"Created transcript record id={transcript_db_id}")
+    log.info("Created transcript record", transcript_db_id=transcript_db_id)
 
     # Step 2: Poll transcripts table for result
     # pg_cron worker will pick up the record and call webhooks:
     # ConvertStatus=queued → MP3MP4 webhook → AudioID
     # TranscribeStatus=queued → AudioTranscribe webhook → transcript_text
-    activity.logger.info(
-        f"Waiting for pg_cron worker to process transcript {transcript_db_id}"
+    log.info(
+        "Waiting for pg_cron worker to process transcript",
+        transcript_db_id=transcript_db_id,
     )
 
     elapsed = 0
@@ -205,50 +209,50 @@ async def transcribe_via_n8n(
         )
 
         # Check transcript status
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            check_resp = await client.get(
-                f"{supabase_url}/rest/v1/transcripts",
-                headers=headers,
-                params={
-                    "id": f"eq.{transcript_db_id}",
-                    "select": "id,transcript_text,TranscribeStatus,assemblyai_transcript_id",
-                },
-            )
+        client = get_http_client()
+        check_resp = await client.get(
+            f"{supabase_url}/rest/v1/transcripts",
+            headers=headers,
+            params={
+                "id": f"eq.{transcript_db_id}",
+                "select": "id,transcript_text,TranscribeStatus,assemblyai_transcript_id",
+            },
+        )
 
-            if check_resp.status_code == 200:
-                records = check_resp.json()
-                if records:
-                    record = records[0]
-                    status = record.get("TranscribeStatus", "")
+        if check_resp.status_code == 200:
+            records = check_resp.json()
+            if records:
+                record = records[0]
+                status = record.get("TranscribeStatus", "")
 
-                    if status == "finish":
-                        activity.logger.info("Transcription completed via n8n")
+                if status == "finish":
+                    log.info("Transcription completed via n8n")
 
-                        # Update Status to finish to unblock pg_cron queue
-                        # n8n webhook only sets TranscribeStatus, not Status
-                        await client.patch(
-                            f"{supabase_url}/rest/v1/transcripts",
-                            headers=headers,
-                            params={"id": f"eq.{transcript_db_id}"},
-                            json={"Status": "finish"},
-                        )
+                    # Update Status to finish to unblock pg_cron queue
+                    # n8n webhook only sets TranscribeStatus, not Status
+                    await client.patch(
+                        f"{supabase_url}/rest/v1/transcripts",
+                        headers=headers,
+                        params={"id": f"eq.{transcript_db_id}"},
+                        json={"Status": "finish"},
+                    )
 
-                        return {
-                            "transcript_id": record.get(
-                                "assemblyai_transcript_id", str(transcript_db_id)
-                            ),
-                            "text": record.get("transcript_text", ""),
-                            "status": "completed",
-                            "words": len(record.get("transcript_text", "").split()),
-                        }
+                    return {
+                        "transcript_id": record.get(
+                            "assemblyai_transcript_id", str(transcript_db_id)
+                        ),
+                        "text": record.get("transcript_text", ""),
+                        "status": "completed",
+                        "words": len(record.get("transcript_text", "").split()),
+                    }
 
-                    if status == "error":
-                        raise ApplicationError(
-                            f"n8n transcription failed: {record.get('transcript_text', 'Unknown error')}",
-                            type="TRANSCRIPTION_ERROR",
-                        )
+                if status == "error":
+                    raise ApplicationError(
+                        f"n8n transcription failed: {record.get('transcript_text', 'Unknown error')}",
+                        type="TRANSCRIPTION_ERROR",
+                    )
 
-        activity.logger.info(f"Waiting for n8n transcription, elapsed={elapsed}s")
+        log.info("Waiting for n8n transcription", elapsed_seconds=elapsed)
         time.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
 
@@ -284,6 +288,8 @@ async def transcribe_audio(
     Raises:
         ApplicationError: If transcription fails or is cancelled
     """
+    log = get_activity_logger(creative_id=creative_id, audio_url=audio_url)
+
     # Check if Google Drive URL - use n8n path (MP4→MP3 conversion)
     if is_google_drive_url(audio_url):
         if not creative_id:
@@ -292,7 +298,7 @@ async def transcribe_audio(
                 type="MISSING_PARAM",
             )
 
-        activity.logger.info(f"Using n8n path for video URL: {audio_url}")
+        log.info("Using n8n path for video URL")
         return await transcribe_via_n8n(audio_url, creative_id)
 
     # Direct AssemblyAI path for non-Google Drive URLs
@@ -308,9 +314,9 @@ async def transcribe_audio(
     original_url = audio_url
     audio_url = convert_to_direct_url(audio_url)
     if audio_url != original_url:
-        activity.logger.info(f"Converted URL: {original_url} -> {audio_url}")
+        log.info("Converted URL for direct download", original_url=original_url)
 
-    activity.logger.info(f"Starting direct transcription for: {audio_url}")
+    log.info("Starting direct transcription")
 
     # Configure transcription
     config = aai.TranscriptionConfig(
@@ -323,7 +329,7 @@ async def transcribe_audio(
     transcript = transcriber.submit(audio_url)
     transcript_id = transcript.id
 
-    activity.logger.info(f"Submitted transcription job: {transcript_id}")
+    log.info("Submitted transcription job", transcript_id=transcript_id)
 
     # Send initial heartbeat with transcript ID for recovery
     activity.heartbeat({"transcript_id": transcript_id, "status": "submitted"})
@@ -333,7 +339,7 @@ async def transcribe_audio(
     while elapsed < MAX_WAIT_TIME:
         # Check for cancellation
         if activity.is_cancelled():
-            activity.logger.warning(f"Transcription cancelled: {transcript_id}")
+            log.warning("Transcription cancelled", transcript_id=transcript_id)
             raise ApplicationError(
                 f"Transcription cancelled: {transcript_id}",
                 type="CANCELLED",
@@ -343,7 +349,11 @@ async def transcribe_audio(
         transcript = aai.Transcript.get_by_id(transcript_id)
 
         if transcript.status == aai.TranscriptStatus.completed:
-            activity.logger.info(f"Transcription completed: {transcript_id}")
+            log.info(
+                "Transcription completed",
+                transcript_id=transcript_id,
+                words=len(transcript.text.split()) if transcript.text else 0,
+            )
             return {
                 "transcript_id": transcript_id,
                 "text": transcript.text,
@@ -353,7 +363,9 @@ async def transcribe_audio(
 
         if transcript.status == aai.TranscriptStatus.error:
             error_msg = transcript.error or "Unknown transcription error"
-            activity.logger.error(f"Transcription failed: {error_msg}")
+            log.error(
+                "Transcription failed", error=error_msg, transcript_id=transcript_id
+            )
             raise ApplicationError(
                 f"Transcription failed: {error_msg}",
                 type="TRANSCRIPTION_ERROR",
@@ -368,9 +380,11 @@ async def transcribe_audio(
             }
         )
 
-        activity.logger.info(
-            f"Transcription in progress: {transcript_id}, "
-            f"status={transcript.status}, elapsed={elapsed}s"
+        log.info(
+            "Transcription in progress",
+            transcript_id=transcript_id,
+            status=str(transcript.status),
+            elapsed_seconds=elapsed,
         )
 
         # Wait before next poll

@@ -9,7 +9,7 @@ Pattern: component_learning.py
 """
 
 import os
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass
 
@@ -85,25 +85,25 @@ async def get_hypothesis_premise(hypothesis_id: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Get hypothesis with premise
-        response = await client.get(
-            f"{rest_url}/hypotheses"
-            f"?id=eq.{hypothesis_id}"
-            f"&select=premise_id,premises(id,premise_type)",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    # Get hypothesis with premise
+    response = await client.get(
+        f"{rest_url}/hypotheses"
+        f"?id=eq.{hypothesis_id}"
+        f"&select=premise_id,premises(id,premise_type)",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data and data[0].get("premise_id"):
-            hypothesis = data[0]
-            premise = hypothesis.get("premises", {})
-            return {
-                "premise_id": hypothesis["premise_id"],
-                "premise_type": premise.get("premise_type") if premise else None,
-            }
-        return None
+    if data and data[0].get("premise_id"):
+        hypothesis = data[0]
+        premise = hypothesis.get("premises", {})
+        return {
+            "premise_id": hypothesis["premise_id"],
+            "premise_type": premise.get("premise_type") if premise else None,
+        }
+    return None
 
 
 async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
@@ -119,48 +119,45 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Get creative -> hypothesis_id and idea_id
+    client = get_http_client()
+    # Get creative -> hypothesis_id and idea_id
+    response = await client.get(
+        f"{rest_url}/creatives?id=eq.{creative_id}&select=hypothesis_id,idea_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if not data:
+        return None
+
+    creative = data[0]
+    hypothesis_id = creative.get("hypothesis_id")
+    idea_id = creative.get("idea_id")
+
+    # Path 1: Direct hypothesis_id link
+    if hypothesis_id:
         response = await client.get(
-            f"{rest_url}/creatives?id=eq.{creative_id}&select=hypothesis_id,idea_id",
+            f"{rest_url}/hypotheses?id=eq.{hypothesis_id}&select=id,premise_id",
             headers=headers,
         )
         response.raise_for_status()
-        data = response.json()
+        hypothesis_data = response.json()
+        if hypothesis_data:
+            return hypothesis_data[0]
 
-        if not data:
-            return None
+    # Path 2: Via idea_id → hypotheses.idea_id
+    if idea_id:
+        response = await client.get(
+            f"{rest_url}/hypotheses?idea_id=eq.{idea_id}&select=id,premise_id&limit=1",
+            headers=headers,
+        )
+        response.raise_for_status()
+        hypothesis_data = response.json()
+        if hypothesis_data:
+            return hypothesis_data[0]
 
-        creative = data[0]
-        hypothesis_id = creative.get("hypothesis_id")
-        idea_id = creative.get("idea_id")
-
-        # Path 1: Direct hypothesis_id link
-        if hypothesis_id:
-            response = await client.get(
-                f"{rest_url}/hypotheses?id=eq.{hypothesis_id}&select=id,premise_id",
-                headers=headers,
-            )
-            response.raise_for_status()
-            hypothesis_data = response.json()
-            if hypothesis_data:
-                return hypothesis_data[0]
-
-        # Path 2: Via idea_id → hypotheses.idea_id
-        if idea_id:
-            response = await client.get(
-                f"{rest_url}/hypotheses"
-                f"?idea_id=eq.{idea_id}"
-                f"&select=id,premise_id"
-                f"&limit=1",
-                headers=headers,
-            )
-            response.raise_for_status()
-            hypothesis_data = response.json()
-            if hypothesis_data:
-                return hypothesis_data[0]
-
-        return None
+    return None
 
 
 async def get_premise_type(premise_id: str) -> Optional[str]:
@@ -168,17 +165,17 @@ async def get_premise_type(premise_id: str) -> Optional[str]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/premises?id=eq.{premise_id}&select=premise_type",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/premises?id=eq.{premise_id}&select=premise_type",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0].get("premise_type")
-        return None
+    if data:
+        return data[0].get("premise_type")
+    return None
 
 
 async def upsert_premise_learning(
@@ -214,58 +211,58 @@ async def upsert_premise_learning(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        # Check if record exists
-        response = await client.get(
-            f"{rest_url}/premise_learnings?{filter_str}",
-            headers=_get_headers(supabase_key),
+    client = get_http_client()
+    # Check if record exists
+    response = await client.get(
+        f"{rest_url}/premise_learnings?{filter_str}",
+        headers=_get_headers(supabase_key),
+    )
+    response.raise_for_status()
+    existing = response.json()
+
+    if existing:
+        # Update existing record
+        record = existing[0]
+        new_sample = (record.get("sample_size") or 0) + 1
+        new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
+        new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
+        new_spend = float(record.get("total_spend") or 0) + spend
+        new_revenue = float(record.get("total_revenue") or 0) + revenue
+
+        # win_rate and avg_roi are generated columns, don't update them
+        response = await client.patch(
+            f"{rest_url}/premise_learnings?id=eq.{record['id']}",
+            headers=headers,
+            json={
+                "sample_size": new_sample,
+                "win_count": new_wins,
+                "loss_count": new_losses,
+                "total_spend": new_spend,
+                "total_revenue": new_revenue,
+                "updated_at": "now()",
+            },
         )
         response.raise_for_status()
-        existing = response.json()
-
-        if existing:
-            # Update existing record
-            record = existing[0]
-            new_sample = (record.get("sample_size") or 0) + 1
-            new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
-            new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
-            new_spend = float(record.get("total_spend") or 0) + spend
-            new_revenue = float(record.get("total_revenue") or 0) + revenue
-
-            # win_rate and avg_roi are generated columns, don't update them
-            response = await client.patch(
-                f"{rest_url}/premise_learnings?id=eq.{record['id']}",
-                headers=headers,
-                json={
-                    "sample_size": new_sample,
-                    "win_count": new_wins,
-                    "loss_count": new_losses,
-                    "total_spend": new_spend,
-                    "total_revenue": new_revenue,
-                    "updated_at": "now()",
-                },
-            )
-            response.raise_for_status()
-            return response.json()[0] if response.json() else {}
-        else:
-            # Insert new record (win_rate and avg_roi are generated columns)
-            response = await client.post(
-                f"{rest_url}/premise_learnings",
-                headers=headers,
-                json={
-                    "premise_id": premise_id,
-                    "premise_type": premise_type,
-                    "geo": geo,
-                    "avatar_id": avatar_id,
-                    "sample_size": 1,
-                    "win_count": 1 if was_win else 0,
-                    "loss_count": 0 if was_win else 1,
-                    "total_spend": spend,
-                    "total_revenue": revenue,
-                },
-            )
-            response.raise_for_status()
-            return response.json()[0] if response.json() else {}
+        return response.json()[0] if response.json() else {}
+    else:
+        # Insert new record (win_rate and avg_roi are generated columns)
+        response = await client.post(
+            f"{rest_url}/premise_learnings",
+            headers=headers,
+            json={
+                "premise_id": premise_id,
+                "premise_type": premise_type,
+                "geo": geo,
+                "avatar_id": avatar_id,
+                "sample_size": 1,
+                "win_count": 1 if was_win else 0,
+                "loss_count": 0 if was_win else 1,
+                "total_spend": spend,
+                "total_revenue": revenue,
+            },
+        )
+        response.raise_for_status()
+        return response.json()[0] if response.json() else {}
 
 
 async def process_premise_learning(

@@ -11,7 +11,7 @@ Based on LEARNING_MEMORY_POLICY.md and ARCHITECTURE_LOCK.md
 """
 
 import os
-import httpx
+from src.core.http_client import get_http_client
 from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass
@@ -39,6 +39,7 @@ class LearningResult:
     """Result of learning loop batch processing"""
 
     processed_count: int = 0
+    skipped_count: int = 0  # Issue #473: idempotency - already processed outcomes
     updated_ideas: list = None
     new_deaths: list = None
     component_updates: int = 0
@@ -54,6 +55,7 @@ class LearningResult:
     def to_dict(self) -> dict:
         return {
             "processed_count": self.processed_count,
+            "skipped_count": self.skipped_count,
             "updated_ideas": self.updated_ideas,
             "new_deaths": self.new_deaths,
             "component_updates": self.component_updates,
@@ -101,18 +103,18 @@ async def fetch_unprocessed_outcomes(limit: int = 100) -> list:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/outcome_aggregates"
-            f"?learning_applied=eq.false"
-            f"&origin_type=eq.system"
-            f"&cpa=not.is.null"
-            f"&select=id,creative_id,cpa,spend,environment_ctx,window_end,decision_id"
-            f"&limit={limit}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/outcome_aggregates"
+        f"?learning_applied=eq.false"
+        f"&origin_type=eq.system"
+        f"&cpa=not.is.null"
+        f"&select=id,creative_id,cpa,spend,environment_ctx,window_end,decision_id"
+        f"&limit={limit}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def resolve_idea_for_outcome(outcome: dict) -> Optional[str]:
@@ -128,36 +130,32 @@ async def resolve_idea_for_outcome(outcome: dict) -> Optional[str]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # First try direct idea_id column
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=idea_id",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    # First try direct idea_id column
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives?creative_id=eq.{creative_id}&select=idea_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data and data[0].get("idea_id"):
-            return data[0]["idea_id"]
+    if data and data[0].get("idea_id"):
+        return data[0]["idea_id"]
 
-        # Fallback: extract from payload
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=payload",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    # Fallback: extract from payload
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives?creative_id=eq.{creative_id}&select=payload",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data and data[0].get("payload"):
-            payload = data[0]["payload"]
-            if isinstance(payload, dict):
-                return payload.get("idea_id")
+    if data and data[0].get("payload"):
+        payload = data[0]["payload"]
+        if isinstance(payload, dict):
+            return payload.get("idea_id")
 
-        return None
+    return None
 
 
 async def get_current_confidence(idea_id: str) -> tuple[float, int]:
@@ -169,22 +167,22 @@ async def get_current_confidence(idea_id: str) -> tuple[float, int]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/idea_confidence_versions"
-            f"?idea_id=eq.{idea_id}"
-            f"&select=confidence_value,version"
-            f"&order=version.desc"
-            f"&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/idea_confidence_versions"
+        f"?idea_id=eq.{idea_id}"
+        f"&select=confidence_value,version"
+        f"&order=version.desc"
+        f"&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return float(data[0]["confidence_value"]), int(data[0]["version"])
+    if data:
+        return float(data[0]["confidence_value"]), int(data[0]["version"])
 
-        return 0.0, 0
+    return 0.0, 0
 
 
 async def get_current_fatigue(idea_id: str) -> tuple[float, int]:
@@ -197,22 +195,22 @@ async def get_current_fatigue(idea_id: str) -> tuple[float, int]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/fatigue_state_versions"
-            f"?idea_id=eq.{idea_id}"
-            f"&select=fatigue_value,version"
-            f"&order=version.desc"
-            f"&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/fatigue_state_versions"
+        f"?idea_id=eq.{idea_id}"
+        f"&select=fatigue_value,version"
+        f"&order=version.desc"
+        f"&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return float(data[0]["fatigue_value"]), int(data[0]["version"])
+    if data:
+        return float(data[0]["fatigue_value"]), int(data[0]["version"])
 
-        return 0.0, 0
+    return 0.0, 0
 
 
 async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
@@ -220,35 +218,35 @@ async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Get outcomes via decomposed_creatives
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives?idea_id=eq.{idea_id}&select=creative_id",
-            headers=headers,
-        )
-        response.raise_for_status()
-        creatives = response.json()
+    client = get_http_client()
+    # Get outcomes via decomposed_creatives
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives?idea_id=eq.{idea_id}&select=creative_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    creatives = response.json()
 
-        if not creatives:
-            return []
+    if not creatives:
+        return []
 
-        creative_ids = [c["creative_id"] for c in creatives if c.get("creative_id")]
-        if not creative_ids:
-            return []
+    creative_ids = [c["creative_id"] for c in creatives if c.get("creative_id")]
+    if not creative_ids:
+        return []
 
-        # Fetch outcomes for these creatives
-        creative_filter = ",".join(creative_ids)
-        response = await client.get(
-            f"{rest_url}/outcome_aggregates"
-            f"?creative_id=in.({creative_filter})"
-            f"&origin_type=eq.system"
-            f"&select=id,cpa,window_end"
-            f"&order=window_end.desc"
-            f"&limit={limit}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    # Fetch outcomes for these creatives
+    creative_filter = ",".join(creative_ids)
+    response = await client.get(
+        f"{rest_url}/outcome_aggregates"
+        f"?creative_id=in.({creative_filter})"
+        f"&origin_type=eq.system"
+        f"&select=id,cpa,window_end"
+        f"&order=window_end.desc"
+        f"&limit={limit}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def calculate_confidence_delta(
@@ -328,20 +326,20 @@ async def insert_confidence_version(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/idea_confidence_versions",
-            headers=headers,
-            json={
-                "idea_id": idea_id,
-                "confidence_value": confidence_value,
-                "version": version,
-                "source_outcome_id": outcome_id,
-                "change_reason": change_reason,
-            },
-        )
-        response.raise_for_status()
-        return response.json()[0]
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/idea_confidence_versions",
+        headers=headers,
+        json={
+            "idea_id": idea_id,
+            "confidence_value": confidence_value,
+            "version": version,
+            "source_outcome_id": outcome_id,
+            "change_reason": change_reason,
+        },
+    )
+    response.raise_for_status()
+    return response.json()[0]
 
 
 async def insert_fatigue_version(
@@ -355,19 +353,19 @@ async def insert_fatigue_version(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/fatigue_state_versions",
-            headers=headers,
-            json={
-                "idea_id": idea_id,
-                "fatigue_value": fatigue_value,
-                "version": version,
-                "source_outcome_id": outcome_id,
-            },
-        )
-        response.raise_for_status()
-        return response.json()[0]
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/fatigue_state_versions",
+        headers=headers,
+        json={
+            "idea_id": idea_id,
+            "fatigue_value": fatigue_value,
+            "version": version,
+            "source_outcome_id": outcome_id,
+        },
+    )
+    response.raise_for_status()
+    return response.json()[0]
 
 
 async def update_idea_death_state(idea_id: str, death_state: str) -> dict:
@@ -375,14 +373,14 @@ async def update_idea_death_state(idea_id: str, death_state: str) -> dict:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/ideas?id=eq.{idea_id}",
-            headers=headers,
-            json={"death_state": death_state},
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/ideas?id=eq.{idea_id}",
+        headers=headers,
+        json={"death_state": death_state},
+    )
+    response.raise_for_status()
+    return response.json()[0] if response.json() else {}
 
 
 async def mark_outcome_processed(outcome_id: str) -> None:
@@ -390,13 +388,38 @@ async def mark_outcome_processed(outcome_id: str) -> None:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/outcome_aggregates?id=eq.{outcome_id}",
-            headers=headers,
-            json={"learning_applied": True},
-        )
-        response.raise_for_status()
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/outcome_aggregates?id=eq.{outcome_id}",
+        headers=headers,
+        json={"learning_applied": True},
+    )
+    response.raise_for_status()
+
+
+async def is_outcome_already_processed(outcome_id: str) -> bool:
+    """
+    Check if outcome was already processed by learning loop.
+
+    Idempotency check: looks for existing confidence_version with this source_outcome_id.
+    This prevents duplicate processing on Temporal activity retries.
+
+    Issue #473: Learning Loop idempotency fix.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/idea_confidence_versions"
+        f"?source_outcome_id=eq.{outcome_id}"
+        f"&select=id"
+        f"&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return len(data) > 0
 
 
 async def emit_learning_event(
@@ -420,23 +443,28 @@ async def emit_learning_event(
     if death_state:
         payload["death_state"] = death_state
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/event_log",
-            headers=headers,
-            json={
-                "event_type": "learning.applied",
-                "entity_type": "idea",
-                "entity_id": idea_id,
-                "payload": payload,
-            },
-        )
-        response.raise_for_status()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/event_log",
+        headers=headers,
+        json={
+            "event_type": "learning.applied",
+            "entity_type": "idea",
+            "entity_id": idea_id,
+            "payload": payload,
+        },
+    )
+    response.raise_for_status()
 
 
 async def process_single_outcome(outcome: dict) -> dict:
     """
     Process a single outcome and apply learning.
+
+    Idempotent - safe to retry. If outcome was already processed,
+    returns early with skipped=True.
+
+    Issue #473: Learning Loop idempotency fix.
 
     Returns dict with result info or error
     """
@@ -446,6 +474,16 @@ async def process_single_outcome(outcome: dict) -> dict:
     spend = float(outcome.get("spend") or 0)
     env_ctx = outcome.get("environment_ctx")
     window_end = outcome.get("window_end", datetime.now().isoformat())
+
+    # Idempotency check: skip if already processed (issue #473)
+    if await is_outcome_already_processed(outcome_id):
+        # Mark as processed in case learning_applied flag wasn't set
+        await mark_outcome_processed(outcome_id)
+        return {
+            "skipped": True,
+            "reason": "already_processed",
+            "outcome_id": outcome_id,
+        }
 
     # Resolve idea
     idea_id = await resolve_idea_for_outcome(outcome)
@@ -566,6 +604,9 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
 
                 if "error" in learn_result:
                     result.errors.append(learn_result["error"])
+                elif learn_result.get("skipped"):
+                    # Already processed - idempotency check (issue #473)
+                    result.skipped_count += 1
                 else:
                     result.processed_count += 1
                     result.updated_ideas.append(learn_result["idea_id"])

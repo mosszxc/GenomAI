@@ -20,7 +20,7 @@ from typing import Dict, List
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
-import httpx
+from src.core.http_client import get_http_client
 
 
 SCHEMA = "genomai"
@@ -90,24 +90,24 @@ async def check_supabase_connection() -> Dict:
 
     start = time.time()
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{rest_url}/buyers?select=id&limit=1",
-                headers=headers,
-            )
+        client = get_http_client()
+        response = await client.get(
+            f"{rest_url}/buyers?select=id&limit=1",
+            headers=headers,
+        )
 
-            latency_ms = (time.time() - start) * 1000
+        latency_ms = (time.time() - start) * 1000
 
-            if response.status_code == 200:
-                activity.logger.info(f"Supabase connected, latency: {latency_ms:.0f}ms")
-                return {"connected": True, "latency_ms": latency_ms}
-            else:
-                activity.logger.warning(f"Supabase returned {response.status_code}")
-                return {
-                    "connected": False,
-                    "latency_ms": latency_ms,
-                    "error": response.text,
-                }
+        if response.status_code == 200:
+            activity.logger.info(f"Supabase connected, latency: {latency_ms:.0f}ms")
+            return {"connected": True, "latency_ms": latency_ms}
+        else:
+            activity.logger.warning(f"Supabase returned {response.status_code}")
+            return {
+                "connected": False,
+                "latency_ms": latency_ms,
+                "error": response.text,
+            }
 
     except Exception as e:
         latency_ms = (time.time() - start) * 1000
@@ -129,28 +129,28 @@ async def get_table_sizes() -> Dict[str, int]:
 
     sizes = {}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        for table in MONITORED_TABLES:
-            try:
-                response = await client.head(
-                    f"{rest_url}/{table}?select=id",
-                    headers=headers,
-                )
+    client = get_http_client()
+    for table in MONITORED_TABLES:
+        try:
+            response = await client.head(
+                f"{rest_url}/{table}?select=id",
+                headers=headers,
+            )
 
-                # Extract count from content-range header
-                content_range = response.headers.get("content-range", "")
-                if "/" in content_range:
-                    try:
-                        count = int(content_range.split("/")[1])
-                        sizes[table] = count
-                    except (ValueError, IndexError):
-                        sizes[table] = -1
-                else:
+            # Extract count from content-range header
+            content_range = response.headers.get("content-range", "")
+            if "/" in content_range:
+                try:
+                    count = int(content_range.split("/")[1])
+                    sizes[table] = count
+                except (ValueError, IndexError):
                     sizes[table] = -1
-
-            except Exception as e:
-                activity.logger.warning(f"Could not get size for {table}: {e}")
+            else:
                 sizes[table] = -1
+
+        except Exception as e:
+            activity.logger.warning(f"Could not get size for {table}: {e}")
+            sizes[table] = -1
 
     activity.logger.info(f"Table sizes: {sizes}")
     return sizes
@@ -170,29 +170,29 @@ async def get_pending_counts() -> Dict[str, int]:
 
     counts = {}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        for table, check in PENDING_CHECKS.items():
-            try:
-                # Build filter for pending values
-                values_filter = ",".join(check["values"])
-                response = await client.head(
-                    f"{rest_url}/{table}?{check['column']}=in.({values_filter})",
-                    headers=headers,
-                )
+    client = get_http_client()
+    for table, check in PENDING_CHECKS.items():
+        try:
+            # Build filter for pending values
+            values_filter = ",".join(check["values"])
+            response = await client.head(
+                f"{rest_url}/{table}?{check['column']}=in.({values_filter})",
+                headers=headers,
+            )
 
-                content_range = response.headers.get("content-range", "")
-                if "/" in content_range:
-                    try:
-                        count = int(content_range.split("/")[1])
-                        counts[table] = count
-                    except (ValueError, IndexError):
-                        counts[table] = 0
-                else:
+            content_range = response.headers.get("content-range", "")
+            if "/" in content_range:
+                try:
+                    count = int(content_range.split("/")[1])
+                    counts[table] = count
+                except (ValueError, IndexError):
                     counts[table] = 0
-
-            except Exception as e:
-                activity.logger.warning(f"Could not get pending for {table}: {e}")
+            else:
                 counts[table] = 0
+
+        except Exception as e:
+            activity.logger.warning(f"Could not get pending for {table}: {e}")
+            counts[table] = 0
 
     activity.logger.info(f"Pending counts: {counts}")
     return counts
@@ -242,31 +242,31 @@ async def send_admin_alert(
 
     activity.logger.info(f"Sending {severity} alert to admin: {title}")
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": message,
-                    "parse_mode": "HTML",
-                },
+    client = get_http_client()
+    try:
+        response = await client.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            },
+        )
+
+        data = response.json()
+
+        if data.get("ok"):
+            activity.logger.info(
+                f"Alert sent: message_id={data['result']['message_id']}"
             )
-
-            data = response.json()
-
-            if data.get("ok"):
-                activity.logger.info(
-                    f"Alert sent: message_id={data['result']['message_id']}"
-                )
-                return True
-            else:
-                activity.logger.error(f"Telegram error: {data.get('description')}")
-                return False
-
-        except Exception as e:
-            activity.logger.error(f"Failed to send alert: {e}")
+            return True
+        else:
+            activity.logger.error(f"Telegram error: {data.get('description')}")
             return False
+
+    except Exception as e:
+        activity.logger.error(f"Failed to send alert: {e}")
+        return False
 
 
 @activity.defn
@@ -287,19 +287,19 @@ async def save_hygiene_report(report: Dict) -> str:
     report["id"] = report_id
     report["created_at"] = datetime.utcnow().isoformat()
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            f"{rest_url}/hygiene_reports",
-            headers=headers,
-            json=report,
-        )
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/hygiene_reports",
+        headers=headers,
+        json=report,
+    )
 
-        if response.status_code not in (200, 201):
-            activity.logger.error(f"Failed to save report: {response.text}")
-            raise ApplicationError(f"Failed to save hygiene report: {response.text}")
+    if response.status_code not in (200, 201):
+        activity.logger.error(f"Failed to save report: {response.text}")
+        raise ApplicationError(f"Failed to save hygiene report: {response.text}")
 
-        activity.logger.info(f"Saved hygiene report: {report_id}")
-        return report_id
+    activity.logger.info(f"Saved hygiene report: {report_id}")
+    return report_id
 
 
 # ─────────────────────────────────────────────────────────────────────────────

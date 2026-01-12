@@ -21,6 +21,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from temporal.models.creative import CreativeInput, PipelineResult
     from temporal.models.decision import DecisionResult
+    from temporal.tracing import get_workflow_logger
 
 
 @workflow.defn
@@ -47,6 +48,7 @@ class CreativePipelineWorkflow:
         self._decision: Optional[str] = None
         self._hypothesis_count: int = 0
         self._error: Optional[str] = None
+        self._log = None  # Initialized in run() with context
 
     @workflow.run
     async def run(self, input: CreativeInput) -> PipelineResult:
@@ -62,14 +64,20 @@ class CreativePipelineWorkflow:
         self._creative_id = input.creative_id
         self._status = "started"
 
+        # Initialize structured logger with trace context
+        self._log = get_workflow_logger(
+            creative_id=input.creative_id,
+            buyer_id=input.buyer_id,
+        )
+        self._log.info("Pipeline started", status=self._status)
+
         try:
             # Import activities inside workflow with pass-through to avoid sandbox restrictions
             with workflow.unsafe.imports_passed_through():
                 from temporal.activities.supabase import (
                     get_creative,
                     save_decomposed_creative,
-                    check_idea_exists,
-                    create_idea,
+                    upsert_idea,
                     update_creative_status,
                     emit_event,
                     save_transcript,
@@ -142,9 +150,10 @@ class CreativePipelineWorkflow:
                 )
                 # Convert bigint id to string for type compatibility
                 saved_transcript_id = str(existing_transcript["id"])
-                workflow.logger.info(
-                    f"Using existing transcript version={existing_transcript.get('version')} "
-                    f"for creative={input.creative_id}"
+                self._log.info(
+                    "Using existing transcript",
+                    transcript_version=existing_transcript.get("version"),
+                    transcript_id=saved_transcript_id,
                 )
             else:
                 # Step 2b: Transcription (AssemblyAI with heartbeats)
@@ -163,7 +172,7 @@ class CreativePipelineWorkflow:
                         input.creative_id,
                     ],  # url, language, creative_id
                     start_to_close_timeout=timedelta(minutes=15),
-                    heartbeat_timeout=timedelta(seconds=60),
+                    heartbeat_timeout=timedelta(minutes=5),
                     retry_policy=long_running_retry,
                 )
 
@@ -260,29 +269,22 @@ class CreativePipelineWorkflow:
                 retry_policy=default_retry,
             )
 
-            # Step 4: Idea Registry
+            # Step 4: Idea Registry (atomic upsert - fixes TOCTOU race condition #471)
             self._status = "registering_idea"
 
-            # Check if idea already exists
-            existing_idea = await workflow.execute_activity(
-                check_idea_exists,
-                canonical_hash,
-                start_to_close_timeout=timedelta(seconds=10),
+            # Atomically find or create idea by canonical_hash
+            # Uses INSERT ... ON CONFLICT DO NOTHING pattern
+            idea_result = await workflow.execute_activity(
+                upsert_idea,
+                args=[canonical_hash, decomposed["id"], input.buyer_id],
+                start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
 
-            idea_status = "reused"
-            if existing_idea:
-                self._idea_id = existing_idea["id"]
-            else:
-                idea_status = "new"
-                new_idea = await workflow.execute_activity(
-                    create_idea,
-                    args=[canonical_hash, decomposed["id"], input.buyer_id],
-                    start_to_close_timeout=timedelta(seconds=30),
-                    retry_policy=default_retry,
-                )
-                self._idea_id = new_idea["id"]
+            self._idea_id = idea_result["id"]
+            idea_status = (
+                "new" if idea_result.get("upsert_status") == "created" else "reused"
+            )
 
             # Emit idea event
             await workflow.execute_activity(
@@ -324,9 +326,10 @@ class CreativePipelineWorkflow:
                 start_to_close_timeout=timedelta(seconds=10),
             )
 
-            # Step 6: Hypothesis Generation (only for APPROVE)
+            # Step 6: Hypothesis Generation (only for APPROVE with buyer)
+            # Skip if no buyer_id to prevent orphaned hypotheses (#475)
             hypothesis_id = None
-            if decision_result.is_approved:
+            if decision_result.is_approved and input.buyer_id:
                 self._status = "generating_hypothesis"
 
                 # Step 6a: Select premise for hypothesis generation
@@ -345,9 +348,10 @@ class CreativePipelineWorkflow:
 
                 selected_premise_id = premise_result.get("premise_id")
 
-                workflow.logger.info(
-                    f"Selected premise: id={selected_premise_id}, "
-                    f"reason={premise_result.get('selection_reason')}"
+                self._log.info(
+                    "Premise selected",
+                    premise_id=selected_premise_id,
+                    selection_reason=premise_result.get("selection_reason"),
                 )
 
                 # Step 6b: Generate hypotheses
@@ -434,6 +438,13 @@ class CreativePipelineWorkflow:
                             start_to_close_timeout=timedelta(seconds=10),
                         )
 
+            elif decision_result.is_approved:
+                # APPROVE but no buyer_id - skip hypothesis to prevent orphans (#475)
+                workflow.logger.info(
+                    f"Skipping hypothesis generation: APPROVE but no buyer_id "
+                    f"(idea_id={self._idea_id})"
+                )
+
             # Update creative status
             await workflow.execute_activity(
                 update_creative_status,
@@ -449,8 +460,39 @@ class CreativePipelineWorkflow:
             )
 
         except Exception as e:
+            failed_at_stage = self._status  # Capture stage before overwriting
             self._status = "failed"
             self._error = str(e)
+
+            # CRITICAL: Mark creative as failed in DB (Issue #472)
+            # Without this, creative stays in 'processing' forever
+            try:
+                await workflow.execute_activity(
+                    update_creative_status,
+                    args=[input.creative_id, "failed", str(e)],
+                    start_to_close_timeout=timedelta(seconds=30),
+                )
+
+                # Emit failure event for monitoring
+                await workflow.execute_activity(
+                    emit_event,
+                    args=[
+                        "CreativeFailed",
+                        {
+                            "creative_id": input.creative_id,
+                            "error": str(e)[:500],
+                            "failed_at_stage": failed_at_stage,
+                        },
+                    ],
+                    start_to_close_timeout=timedelta(seconds=10),
+                )
+            except Exception:
+                # Don't fail the workflow if status update fails
+                # The workflow result already contains the error
+                workflow.logger.warning(
+                    f"Failed to update creative status to 'failed': {e}"
+                )
+
             return self._build_result()
 
     def _build_result(

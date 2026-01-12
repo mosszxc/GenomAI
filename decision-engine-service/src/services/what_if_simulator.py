@@ -10,7 +10,7 @@ Issue: #298 - Telegram Admin Dashboard - What-If Simulator
 import os
 import re
 from typing import Optional
-import httpx
+from src.core.http_client import get_http_client
 
 SCHEMA = "genomai"
 
@@ -83,17 +83,17 @@ async def identify_component_types(components: list[str]) -> dict[str, str]:
     # Query component_learnings for these values
     values_list = ",".join(f'"{v}"' for v in components)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?component_value=in.({values_list})"
-            f"&avatar_id=is.null"
-            f"&select=component_type,component_value"
-            f"&order=sample_size.desc",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?component_value=in.({values_list})"
+        f"&avatar_id=is.null"
+        f"&select=component_type,component_value"
+        f"&order=sample_size.desc",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     # Map value -> type (take first occurrence, highest sample_size)
     result = {}
@@ -133,41 +133,37 @@ async def find_similar_ideas(
     # We'll search for creatives that have at least one of the components
     similar_ideas = []
 
-    async with httpx.AsyncClient() as client:
-        # Get decomposed creatives
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?select=creative_id,idea_id,payload"
-            f"&limit=200",
-            headers=headers,
-        )
-        response.raise_for_status()
-        decomposed = response.json()
+    client = get_http_client()
+    # Get decomposed creatives
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives?select=creative_id,idea_id,payload&limit=200",
+        headers=headers,
+    )
+    response.raise_for_status()
+    decomposed = response.json()
 
-        if not decomposed:
-            return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
+    if not decomposed:
+        return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
 
-        # Get creatives with test results
-        creative_ids = list(
-            set(d["creative_id"] for d in decomposed if d.get("creative_id"))
-        )
-        if not creative_ids:
-            return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
+    # Get creatives with test results
+    creative_ids = list(
+        set(d["creative_id"] for d in decomposed if d.get("creative_id"))
+    )
+    if not creative_ids:
+        return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
 
-        creative_list = ",".join(f'"{cid}"' for cid in creative_ids[:100])
+    creative_list = ",".join(f'"{cid}"' for cid in creative_ids[:100])
 
-        filter_parts = [f"id=in.({creative_list})", "test_result=not.is.null"]
-        if geo:
-            filter_parts.append(f"target_geo=eq.{geo}")
+    filter_parts = [f"id=in.({creative_list})", "test_result=not.is.null"]
+    if geo:
+        filter_parts.append(f"target_geo=eq.{geo}")
 
-        response = await client.get(
-            f"{rest_url}/creatives"
-            f"?{'&'.join(filter_parts)}"
-            f"&select=id,test_result,idea_id",
-            headers=headers,
-        )
-        response.raise_for_status()
-        creatives = response.json()
+    response = await client.get(
+        f"{rest_url}/creatives?{'&'.join(filter_parts)}&select=id,test_result,idea_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    creatives = response.json()
 
     # Build creative_id -> test_result map
     creative_results = {c["id"]: c.get("test_result") for c in creatives}
@@ -263,15 +259,15 @@ async def get_component_stats(
     if geo:
         filters.append(f"geo=eq.{geo}")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?{'&'.join(filters)}"
-            f"&select=component_type,component_value,win_rate,sample_size",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?{'&'.join(filters)}"
+        f"&select=component_type,component_value,win_rate,sample_size",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     # Aggregate data across geos for each component
     aggregated = {}

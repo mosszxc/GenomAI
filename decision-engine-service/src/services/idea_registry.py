@@ -17,7 +17,7 @@ Flow:
 
 import os
 import json
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass
 
@@ -100,20 +100,20 @@ async def load_decomposed_creative(creative_id: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=id,creative_id,payload,idea_id",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives"
+        f"?creative_id=eq.{creative_id}"
+        f"&select=id,creative_id,payload,idea_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data and len(data) > 0:
-            return data[0]
+    if data and len(data) > 0:
+        return data[0]
 
-        return None
+    return None
 
 
 async def load_buyer_by_creative(creative_id: str) -> Optional[dict]:
@@ -129,33 +129,33 @@ async def load_buyer_by_creative(creative_id: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # First get creative to get buyer_id
-        response = await client.get(
-            f"{rest_url}/creatives?id=eq.{creative_id}&select=buyer_id", headers=headers
-        )
-        response.raise_for_status()
-        creative_data = response.json()
+    client = get_http_client()
+    # First get creative to get buyer_id
+    response = await client.get(
+        f"{rest_url}/creatives?id=eq.{creative_id}&select=buyer_id", headers=headers
+    )
+    response.raise_for_status()
+    creative_data = response.json()
 
-        if not creative_data or not creative_data[0].get("buyer_id"):
-            return None
-
-        buyer_id = creative_data[0]["buyer_id"]
-
-        # Load buyer by telegram_id (buyer_id in creatives is telegram_id)
-        response = await client.get(
-            f"{rest_url}/buyers"
-            f"?telegram_id=eq.{buyer_id}"
-            f"&select=id,telegram_id,vertical,geo",
-            headers=headers,
-        )
-        response.raise_for_status()
-        buyer_data = response.json()
-
-        if buyer_data and len(buyer_data) > 0:
-            return buyer_data[0]
-
+    if not creative_data or not creative_data[0].get("buyer_id"):
         return None
+
+    buyer_id = creative_data[0]["buyer_id"]
+
+    # Load buyer by telegram_id (buyer_id in creatives is telegram_id)
+    response = await client.get(
+        f"{rest_url}/buyers"
+        f"?telegram_id=eq.{buyer_id}"
+        f"&select=id,telegram_id,vertical,geo",
+        headers=headers,
+    )
+    response.raise_for_status()
+    buyer_data = response.json()
+
+    if buyer_data and len(buyer_data) > 0:
+        return buyer_data[0]
+
+    return None
 
 
 async def find_idea_by_hash(canonical_hash: str) -> Optional[dict]:
@@ -171,20 +171,20 @@ async def find_idea_by_hash(canonical_hash: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/ideas"
-            f"?canonical_hash=eq.{canonical_hash}"
-            f"&select=id,canonical_hash,avatar_id,status",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/ideas"
+        f"?canonical_hash=eq.{canonical_hash}"
+        f"&select=id,canonical_hash,avatar_id,status",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data and len(data) > 0:
-            return data[0]
+    if data and len(data) > 0:
+        return data[0]
 
-        return None
+    return None
 
 
 async def create_idea(
@@ -192,6 +192,8 @@ async def create_idea(
 ) -> dict:
     """
     Create new idea record.
+
+    DEPRECATED: Use upsert_idea() for race-safe operations.
 
     Args:
         canonical_hash: SHA256 hash
@@ -208,25 +210,74 @@ async def create_idea(
     if avatar_id:
         payload["avatar_id"] = avatar_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{rest_url}/ideas", headers=headers, json=payload)
+    client = get_http_client()
+    response = await client.post(f"{rest_url}/ideas", headers=headers, json=payload)
 
-        if response.status_code == 409:
-            # Duplicate key - race condition, try to find existing
-            existing = await find_idea_by_hash(canonical_hash)
-            if existing:
-                return existing
-            raise SupabaseError(
-                f"Idea with hash {canonical_hash} already exists but not found"
-            )
+    if response.status_code == 409:
+        # Duplicate key - race condition, try to find existing
+        existing = await find_idea_by_hash(canonical_hash)
+        if existing:
+            return existing
+        raise SupabaseError(
+            f"Idea with hash {canonical_hash} already exists but not found"
+        )
 
-        response.raise_for_status()
-        data = response.json()
+    response.raise_for_status()
+    data = response.json()
 
-        if data and len(data) > 0:
-            return data[0]
+    if data and len(data) > 0:
+        return data[0]
 
-        raise SupabaseError("Failed to create idea: no data returned")
+    raise SupabaseError("Failed to create idea: no data returned")
+
+
+async def upsert_idea(
+    canonical_hash: str, avatar_id: Optional[str] = None, status: str = "active"
+) -> tuple[dict, str]:
+    """
+    Atomically find or create idea by canonical_hash.
+
+    Uses INSERT ... ON CONFLICT DO NOTHING + SELECT pattern.
+    Safe from TOCTOU race conditions (fixes issue #471).
+
+    Args:
+        canonical_hash: SHA256 hash
+        avatar_id: Optional linked avatar ID
+        status: Initial status (default: active)
+
+    Returns:
+        Tuple of (idea dict, status: "created" or "existing")
+    """
+    rest_url, supabase_key = _get_credentials()
+
+    # Step 1: Try INSERT with resolution=ignore-duplicates
+    # This does INSERT ... ON CONFLICT DO NOTHING atomically
+    headers = _get_headers(supabase_key, for_write=True)
+    headers["Prefer"] = "return=representation,resolution=ignore-duplicates"
+
+    payload = {"canonical_hash": canonical_hash, "status": status}
+    if avatar_id:
+        payload["avatar_id"] = avatar_id
+
+    client = get_http_client()
+    response = await client.post(f"{rest_url}/ideas", headers=headers, json=payload)
+    response.raise_for_status()
+    data = response.json()
+
+    if data and len(data) > 0:
+        # INSERT succeeded - this is a new idea
+        return data[0], "created"
+
+    # Step 2: INSERT returned empty (conflict) - fetch existing
+    existing = await find_idea_by_hash(canonical_hash)
+    if existing:
+        return existing, "existing"
+
+    # This should not happen - UNIQUE conflict but no record found
+    raise SupabaseError(
+        f"Race condition recovery failed: idea with hash {canonical_hash} "
+        "not found after conflict"
+    )
 
 
 async def link_idea_to_decomposed(decomposed_id: str, idea_id: str) -> None:
@@ -241,13 +292,13 @@ async def link_idea_to_decomposed(decomposed_id: str, idea_id: str) -> None:
     headers = _get_headers(supabase_key, for_write=True)
     headers["Prefer"] = "return=minimal"
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/decomposed_creatives?id=eq.{decomposed_id}",
-            headers=headers,
-            json={"idea_id": idea_id},
-        )
-        response.raise_for_status()
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/decomposed_creatives?id=eq.{decomposed_id}",
+        headers=headers,
+        json={"idea_id": idea_id},
+    )
+    response.raise_for_status()
 
 
 async def emit_idea_registered_event(
@@ -268,18 +319,18 @@ async def emit_idea_registered_event(
     if avatar_id:
         payload["avatar_id"] = avatar_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/event_log",
-            headers=headers,
-            json={
-                "event_type": "IdeaRegistered",
-                "entity_type": "idea",
-                "entity_id": idea_id,
-                "payload": payload,
-            },
-        )
-        response.raise_for_status()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/event_log",
+        headers=headers,
+        json={
+            "event_type": "IdeaRegistered",
+            "entity_type": "idea",
+            "entity_id": idea_id,
+            "payload": payload,
+        },
+    )
+    response.raise_for_status()
 
 
 async def register_idea(
@@ -338,15 +389,15 @@ async def register_idea(
     # Step 4: Compute canonical hash
     canonical_hash = compute_canonical_hash(payload)
 
-    # Step 5: Find or create idea
-    existing_idea = await find_idea_by_hash(canonical_hash)
+    # Step 5: Atomically find or create idea (fixes TOCTOU race condition #471)
+    # First try upsert without avatar_id to avoid creating unnecessary avatars
+    idea, upsert_status = await upsert_idea(canonical_hash=canonical_hash)
+    idea_id = idea["id"]
 
-    if existing_idea:
-        idea_id = existing_idea["id"]
-        idea_status = "reused"
-    else:
-        # First create/find avatar, then create idea with avatar_id
-        # Step 6a: Find or create avatar (before idea)
+    if upsert_status == "created":
+        idea_status = "new"
+
+        # Step 6a: Create avatar for new idea
         avatar_id, avatar_status = await find_or_create_avatar(
             vertical=vertical,
             geo=geo,
@@ -355,29 +406,22 @@ async def register_idea(
             awareness_level=payload.get("awareness_level"),
         )
 
-        # Create idea with avatar linked
-        new_idea = await create_idea(canonical_hash=canonical_hash, avatar_id=avatar_id)
-        idea_id = new_idea["id"]
-        idea_status = "new"
-
-        # Step 7: Link idea to decomposed
-        await link_idea_to_decomposed(decomposed["id"], idea_id)
-
-        # Step 8: Emit event
-        await emit_idea_registered_event(idea_id, idea_status, avatar_id)
-
-        return IdeaRegistryResult(
-            idea_id=idea_id,
-            status=idea_status,
-            canonical_hash=canonical_hash,
-            avatar_id=avatar_id,
-            avatar_status=avatar_status,
-        )
-
-    # For reused idea, still need to link and emit
-    # Step 6b: Get avatar info from existing idea
-    avatar_id = existing_idea.get("avatar_id")
-    avatar_status = "existing" if avatar_id else None
+        # Update idea with avatar_id
+        if avatar_id:
+            rest_url, supabase_key = _get_credentials()
+            headers = _get_headers(supabase_key, for_write=True)
+            headers["Prefer"] = "return=minimal"
+            client = get_http_client()
+            await client.patch(
+                f"{rest_url}/ideas?id=eq.{idea_id}",
+                headers=headers,
+                json={"avatar_id": avatar_id},
+            )
+    else:
+        idea_status = "reused"
+        # Step 6b: Get avatar info from existing idea
+        avatar_id = idea.get("avatar_id")
+        avatar_status = "existing" if avatar_id else None
 
     # Step 7: Link idea to decomposed
     await link_idea_to_decomposed(decomposed["id"], idea_id)

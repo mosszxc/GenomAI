@@ -16,7 +16,7 @@ Metrics:
 import os
 from typing import Optional
 from dataclasses import dataclass
-import httpx
+from src.core.http_client import get_http_client
 
 SCHEMA = "genomai"
 
@@ -151,37 +151,37 @@ async def discover_correlations(
             "message_structure",
         ]
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Step 1: Get all creatives with test results and their components
-        creatives_resp = await client.get(
-            f"{rest_url}/creatives?test_result=not.is.null&select=id,test_result",
+    client = get_http_client()
+    # Step 1: Get all creatives with test results and their components
+    creatives_resp = await client.get(
+        f"{rest_url}/creatives?test_result=not.is.null&select=id,test_result",
+        headers=headers,
+    )
+    creatives_resp.raise_for_status()
+    creatives = creatives_resp.json()
+
+    if not creatives:
+        return []
+
+    # Build creative_id -> test_result map
+    creative_results = {c["id"]: c["test_result"] for c in creatives}
+    creative_ids = list(creative_results.keys())
+
+    # Step 2: Get decomposed components for these creatives
+    # Batch in groups of 50 to avoid URL length limits
+    all_decomposed = []
+    for i in range(0, len(creative_ids), 50):
+        batch_ids = creative_ids[i : i + 50]
+        ids_param = ",".join(f'"{cid}"' for cid in batch_ids)
+
+        decomposed_resp = await client.get(
+            f"{rest_url}/decomposed_creatives"
+            f"?creative_id=in.({ids_param})"
+            f"&select=creative_id,payload",
             headers=headers,
         )
-        creatives_resp.raise_for_status()
-        creatives = creatives_resp.json()
-
-        if not creatives:
-            return []
-
-        # Build creative_id -> test_result map
-        creative_results = {c["id"]: c["test_result"] for c in creatives}
-        creative_ids = list(creative_results.keys())
-
-        # Step 2: Get decomposed components for these creatives
-        # Batch in groups of 50 to avoid URL length limits
-        all_decomposed = []
-        for i in range(0, len(creative_ids), 50):
-            batch_ids = creative_ids[i : i + 50]
-            ids_param = ",".join(f'"{cid}"' for cid in batch_ids)
-
-            decomposed_resp = await client.get(
-                f"{rest_url}/decomposed_creatives"
-                f"?creative_id=in.({ids_param})"
-                f"&select=creative_id,payload",
-                headers=headers,
-            )
-            if decomposed_resp.status_code == 200:
-                all_decomposed.extend(decomposed_resp.json())
+        if decomposed_resp.status_code == 200:
+            all_decomposed.extend(decomposed_resp.json())
 
     # Step 3: Build component occurrence maps
     # Map: (component_type, component_value) -> set of creative_ids

@@ -12,7 +12,7 @@ Issue: #124
 
 import os
 import random
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass
 
@@ -138,16 +138,16 @@ async def get_avatar_name(avatar_id: str) -> Optional[str]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/avatars?id=eq.{avatar_id}&select=name", headers=headers
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/avatars?id=eq.{avatar_id}&select=name", headers=headers
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0].get("name")
-        return None
+    if data:
+        return data[0].get("name")
+    return None
 
 
 async def get_top_components(
@@ -177,16 +177,16 @@ async def get_top_components(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings?{filter_str}"
-            f"&select=component_value,win_rate,sample_size"
-            f"&order=win_rate.desc"
-            f"&limit={limit}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings?{filter_str}"
+        f"&select=component_value,win_rate,sample_size"
+        f"&order=win_rate.desc"
+        f"&limit={limit}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def get_all_component_values(component_type: str) -> list[str]:
@@ -196,22 +196,22 @@ async def get_all_component_values(component_type: str) -> list[str]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?component_type=eq.{component_type}"
-            f"&select=component_value"
-            f"&limit=100",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?component_type=eq.{component_type}"
+        f"&select=component_value"
+        f"&limit=100",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        values = set()
-        for row in data:
-            if row.get("component_value"):
-                values.add(row["component_value"])
-        return list(values)
+    values = set()
+    for row in data:
+        if row.get("component_value"):
+            values.add(row["component_value"])
+    return list(values)
 
 
 async def generate_exploitation_recommendation(
@@ -386,16 +386,16 @@ async def save_recommendation(recommendation: Recommendation) -> str:
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/recommendations", headers=headers, json=payload
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/recommendations", headers=headers, json=payload
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0]["id"]
-        raise SupabaseError("Failed to save recommendation")
+    if data:
+        return data[0]["id"]
+    raise SupabaseError("Failed to save recommendation")
 
 
 async def generate_recommendation(
@@ -486,18 +486,18 @@ async def mark_recommendation_executed(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/recommendations?id=eq.{recommendation_id}",
-            headers=headers,
-            json={
-                "status": "executed",
-                "creative_id": creative_id,
-                "executed_at": "now()",
-            },
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/recommendations?id=eq.{recommendation_id}",
+        headers=headers,
+        json={
+            "status": "executed",
+            "creative_id": creative_id,
+            "executed_at": "now()",
+        },
+    )
+    response.raise_for_status()
+    return response.json()[0] if response.json() else {}
 
 
 async def record_recommendation_outcome(
@@ -524,14 +524,14 @@ async def record_recommendation_outcome(
     }
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/recommendations?id=eq.{recommendation_id}",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/recommendations?id=eq.{recommendation_id}",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    return response.json()[0] if response.json() else {}
 
 
 async def get_recommendation(recommendation_id: str) -> Optional[dict]:
@@ -539,16 +539,16 @@ async def get_recommendation(recommendation_id: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/recommendations?id=eq.{recommendation_id}", headers=headers
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/recommendations?id=eq.{recommendation_id}", headers=headers
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0]
-        return None
+    if data:
+        return data[0]
+    return None
 
 
 async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[dict]:
@@ -562,13 +562,13 @@ async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[di
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/recommendations?{filter_str}&order=created_at.desc&limit=10",
-            headers=headers,
-        )
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/recommendations?{filter_str}&order=created_at.desc&limit=10",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 async def get_recommendation_stats() -> dict:
@@ -578,37 +578,37 @@ async def get_recommendation_stats() -> dict:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Total recommendations
-        response = await client.get(
-            f"{rest_url}/recommendations?select=id",
-            headers={**headers, "Prefer": "count=exact"},
-        )
-        total = int(response.headers.get("content-range", "*/0").split("/")[-1])
+    client = get_http_client()
+    # Total recommendations
+    response = await client.get(
+        f"{rest_url}/recommendations?select=id",
+        headers={**headers, "Prefer": "count=exact"},
+    )
+    total = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
-        # By mode
-        response = await client.get(
-            f"{rest_url}/recommendations?select=mode&limit=1000", headers=headers
-        )
-        data = response.json()
-        by_mode = {"exploitation": 0, "exploration": 0}
-        for row in data:
-            mode = row.get("mode")
-            if mode in by_mode:
-                by_mode[mode] += 1
+    # By mode
+    response = await client.get(
+        f"{rest_url}/recommendations?select=mode&limit=1000", headers=headers
+    )
+    data = response.json()
+    by_mode = {"exploitation": 0, "exploration": 0}
+    for row in data:
+        mode = row.get("mode")
+        if mode in by_mode:
+            by_mode[mode] += 1
 
-        # Success rate
-        response = await client.get(
-            f"{rest_url}/recommendations?was_successful=eq.true&select=id",
-            headers={**headers, "Prefer": "count=exact"},
-        )
-        successful = int(response.headers.get("content-range", "*/0").split("/")[-1])
+    # Success rate
+    response = await client.get(
+        f"{rest_url}/recommendations?was_successful=eq.true&select=id",
+        headers={**headers, "Prefer": "count=exact"},
+    )
+    successful = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
-        response = await client.get(
-            f"{rest_url}/recommendations?was_successful=is.not.null&select=id",
-            headers={**headers, "Prefer": "count=exact"},
-        )
-        with_outcome = int(response.headers.get("content-range", "*/0").split("/")[-1])
+    response = await client.get(
+        f"{rest_url}/recommendations?was_successful=is.not.null&select=id",
+        headers={**headers, "Prefer": "count=exact"},
+    )
+    with_outcome = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
     return {
         "total_recommendations": total,

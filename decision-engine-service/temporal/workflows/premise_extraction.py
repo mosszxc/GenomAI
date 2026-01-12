@@ -223,6 +223,7 @@ class BatchPremiseExtractionWorkflow:
                     PremiseExtractionWorkflow.run,
                     PremiseExtractionInput(creative_id=creative_id),
                     id=f"premise-extract-{creative_id}",
+                    parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
                 )
 
                 results["processed"] += 1

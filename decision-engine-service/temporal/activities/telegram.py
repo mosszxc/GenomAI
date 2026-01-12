@@ -12,6 +12,7 @@ from typing import Optional
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 import httpx
+from src.core.http_client import get_http_client
 
 # Telegram API base URL
 TELEGRAM_API_BASE = "https://api.telegram.org"
@@ -48,53 +49,51 @@ async def send_hypothesis_to_telegram(
     # Format message
     message_text = _format_hypothesis_message(hypothesis_content, idea_id)
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": message_text,
-                    "parse_mode": "HTML",
-                },
-                timeout=30.0,
-            )
-
-            data = response.json()
-
-            if not data.get("ok"):
-                error_desc = data.get("description", "Unknown Telegram error")
-                activity.logger.error(f"Telegram API error: {error_desc}")
-                raise ApplicationError(
-                    f"Telegram API error: {error_desc}",
-                    type="TELEGRAM_ERROR",
-                )
-
-            result = data.get("result", {})
-            message_id = result.get("message_id")
-
-            activity.logger.info(
-                f"Hypothesis sent successfully: message_id={message_id}"
-            )
-
-            return {
-                "hypothesis_id": hypothesis_id,
-                "message_id": message_id,
+    client = get_http_client()
+    try:
+        response = await client.post(
+            f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage",
+            json={
                 "chat_id": chat_id,
-                "status": "delivered",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+                "text": message_text,
+                "parse_mode": "HTML",
+            },
+            timeout=30.0,
+        )
 
-        except httpx.TimeoutException:
+        data = response.json()
+
+        if not data.get("ok"):
+            error_desc = data.get("description", "Unknown Telegram error")
+            activity.logger.error(f"Telegram API error: {error_desc}")
             raise ApplicationError(
-                "Telegram API timeout",
-                type="TELEGRAM_TIMEOUT",
+                f"Telegram API error: {error_desc}",
+                type="TELEGRAM_ERROR",
             )
-        except httpx.RequestError as e:
-            raise ApplicationError(
-                f"Telegram request error: {e}",
-                type="TELEGRAM_REQUEST_ERROR",
-            )
+
+        result = data.get("result", {})
+        message_id = result.get("message_id")
+
+        activity.logger.info(f"Hypothesis sent successfully: message_id={message_id}")
+
+        return {
+            "hypothesis_id": hypothesis_id,
+            "message_id": message_id,
+            "chat_id": chat_id,
+            "status": "delivered",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    except httpx.TimeoutException:
+        raise ApplicationError(
+            "Telegram API timeout",
+            type="TELEGRAM_TIMEOUT",
+        )
+    except httpx.RequestError as e:
+        raise ApplicationError(
+            f"Telegram request error: {e}",
+            type="TELEGRAM_REQUEST_ERROR",
+        )
 
 
 def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> str:
@@ -140,18 +139,18 @@ async def get_buyer_chat_id(buyer_id: str) -> Optional[str]:
         "Accept-Profile": "genomai",
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/buyers?id=eq.{buyer_id}&select=telegram_id",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/buyers?id=eq.{buyer_id}&select=telegram_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            return None
+    if not data:
+        return None
 
-        return data[0].get("telegram_id")
+    return data[0].get("telegram_id")
 
 
 @activity.defn
@@ -198,12 +197,12 @@ async def update_hypothesis_delivery_status(
     if error:
         update_data["delivery_error"] = error
 
-    async with httpx.AsyncClient() as client:
-        await client.patch(
-            f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
-            headers=headers,
-            json=update_data,
-        )
+    client = get_http_client()
+    await client.patch(
+        f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
+        headers=headers,
+        json=update_data,
+    )
 
     activity.logger.info(
         f"Updated hypothesis delivery status: {hypothesis_id} -> {status}"
@@ -261,13 +260,13 @@ async def emit_delivery_event(
         "occurred_at": datetime.utcnow().isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/event_log",
-            headers=headers,
-            json=event,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/event_log",
+        headers=headers,
+        json=event,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return data[0] if data else event
+    return data[0] if data else event

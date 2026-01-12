@@ -20,6 +20,10 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
 
 from src.utils.parsing import safe_float
+from temporal.models.buyer import VALID_GEOS
+from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +146,6 @@ async def send_telegram_message(
 
     Max 3 attempts with exponential backoff (1s, 2s, 4s).
     """
-    import httpx
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not bot_token:
@@ -162,8 +165,8 @@ async def send_telegram_message(
 
     for attempt in range(TELEGRAM_MAX_RETRIES):
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=30.0)
+            client = get_http_client()
+            response = await client.post(url, json=payload, timeout=30.0)
 
             data = response.json()
 
@@ -235,7 +238,6 @@ async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -
 
     Max 3 attempts with exponential backoff (1s, 2s, 4s).
     """
-    import httpx
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not bot_token:
@@ -254,8 +256,8 @@ async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -
 
     for attempt in range(TELEGRAM_MAX_RETRIES):
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=30.0)
+            client = get_http_client()
+            response = await client.post(url, json=payload, timeout=30.0)
 
             data = response.json()
 
@@ -435,20 +437,13 @@ async def log_buyer_interaction(
         context: Optional context dict
         buyer_id: Optional buyer UUID to associate system messages with a buyer
     """
-    import httpx
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Content-Profile": "genomai",
-        "Prefer": "return=minimal",
-    }
+    headers = sb.get_headers(for_write=True)
+    headers["Prefer"] = "return=minimal"
 
     payload = {
         "telegram_id": telegram_id,
@@ -461,20 +456,19 @@ async def log_buyer_interaction(
         payload["buyer_id"] = buyer_id
 
     try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"{supabase_url}/rest/v1/buyer_interactions",
-                headers=headers,
-                json=payload,
-                timeout=10.0,
-            )
+        client = get_http_client()
+        await client.post(
+            f"{sb.rest_url}/buyer_interactions",
+            headers=headers,
+            json=payload,
+            timeout=10.0,
+        )
     except Exception as e:
         logger.error(f"Failed to log buyer interaction: {e}")
 
 
 async def handle_stats_command(message: TelegramMessage) -> None:
     """Handle /stats command - show user stats."""
-    import httpx
 
     # Log incoming command
     await log_buyer_interaction(
@@ -484,121 +478,112 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         content="/stats",
     )
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Статистика временно недоступна.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get buyer
-            buyer_resp = await client.get(
-                f"{supabase_url}/rest/v1/buyers"
-                f"?telegram_id=eq.{message.user_id}"
-                f"&select=id,name,geos,verticals",
+        client = get_http_client()
+        # Get buyer
+        buyer_resp = await client.get(
+            f"{sb.rest_url}/buyers"
+            f"?telegram_id=eq.{message.user_id}"
+            f"&select=id,name,geos,verticals",
+            headers=headers,
+        )
+        buyers = buyer_resp.json()
+
+        if not buyers:
+            await send_telegram_message(
+                message.chat_id,
+                "Вы ещё не зарегистрированы. Отправьте /start для начала.",
+            )
+            return
+
+        buyer = buyers[0]
+        buyer_id = buyer["id"]
+
+        # Get creatives with test results and tracker_ids
+        creatives_resp = await client.get(
+            f"{sb.rest_url}/creatives"
+            f"?buyer_id=eq.{buyer_id}"
+            f"&select=id,status,test_result,tracking_status,tracker_id",
+            headers=headers,
+        )
+        creatives = creatives_resp.json()
+
+        total = len(creatives)
+        wins = len([c for c in creatives if c.get("test_result") == "win"])
+        losses = len([c for c in creatives if c.get("test_result") == "loss"])
+        testing = len([c for c in creatives if c.get("tracking_status") == "tracking"])
+
+        # Calculate win rate
+        concluded = wins + losses
+        win_rate = (wins / concluded * 100) if concluded > 0 else 0
+
+        # Get spend/revenue from metrics
+        tracker_ids = [c.get("tracker_id") for c in creatives if c.get("tracker_id")]
+        total_spend = 0.0
+        total_revenue = 0.0
+
+        if tracker_ids:
+            # Fetch metrics for all tracker_ids
+            tracker_list = ",".join(tracker_ids)
+            metrics_resp = await client.get(
+                f"{sb.rest_url}/raw_metrics_current"
+                f"?tracker_id=in.({tracker_list})"
+                f"&select=metrics",
                 headers=headers,
             )
-            buyers = buyer_resp.json()
+            metrics_rows = metrics_resp.json()
 
-            if not buyers:
-                await send_telegram_message(
-                    message.chat_id,
-                    "Вы ещё не зарегистрированы. Отправьте /start для начала.",
-                )
-                return
+            if isinstance(metrics_rows, list):
+                for row in metrics_rows:
+                    metrics = row.get("metrics") or {}
+                    total_spend += safe_float(metrics.get("spend", 0))
+                    total_revenue += safe_float(metrics.get("revenue", 0))
 
-            buyer = buyers[0]
-            buyer_id = buyer["id"]
+        # Calculate ROI
+        roi = (
+            ((total_revenue - total_spend) / total_spend * 100)
+            if total_spend > 0
+            else 0
+        )
+        roi_sign = "+" if roi >= 0 else ""
 
-            # Get creatives with test results and tracker_ids
-            creatives_resp = await client.get(
-                f"{supabase_url}/rest/v1/creatives"
-                f"?buyer_id=eq.{buyer_id}"
-                f"&select=id,status,test_result,tracking_status,tracker_id",
-                headers=headers,
-            )
-            creatives = creatives_resp.json()
+        stats_message = (
+            f"📊 <b>Твоя статистика:</b>\n\n"
+            f"Креативов: {total}\n"
+            f"✅ Побед: {wins} ({win_rate:.0f}%)\n"
+            f"❌ Поражений: {losses}\n"
+            f"⏳ Тестируется: {testing}\n\n"
+            f"ROI: {roi_sign}{roi:.1f}%\n"
+            f"Расход: ${total_spend:.0f}\n"
+            f"Доход: ${total_revenue:.0f}"
+        )
 
-            total = len(creatives)
-            wins = len([c for c in creatives if c.get("test_result") == "win"])
-            losses = len([c for c in creatives if c.get("test_result") == "loss"])
-            testing = len(
-                [c for c in creatives if c.get("tracking_status") == "tracking"]
-            )
+        await send_telegram_message(message.chat_id, stats_message)
 
-            # Calculate win rate
-            concluded = wins + losses
-            win_rate = (wins / concluded * 100) if concluded > 0 else 0
-
-            # Get spend/revenue from metrics
-            tracker_ids = [
-                c.get("tracker_id") for c in creatives if c.get("tracker_id")
-            ]
-            total_spend = 0.0
-            total_revenue = 0.0
-
-            if tracker_ids:
-                # Fetch metrics for all tracker_ids
-                tracker_list = ",".join(tracker_ids)
-                metrics_resp = await client.get(
-                    f"{supabase_url}/rest/v1/raw_metrics_current"
-                    f"?tracker_id=in.({tracker_list})"
-                    f"&select=metrics",
-                    headers=headers,
-                )
-                metrics_rows = metrics_resp.json()
-
-                if isinstance(metrics_rows, list):
-                    for row in metrics_rows:
-                        metrics = row.get("metrics") or {}
-                        total_spend += safe_float(metrics.get("spend", 0))
-                        total_revenue += safe_float(metrics.get("revenue", 0))
-
-            # Calculate ROI
-            roi = (
-                ((total_revenue - total_spend) / total_spend * 100)
-                if total_spend > 0
-                else 0
-            )
-            roi_sign = "+" if roi >= 0 else ""
-
-            stats_message = (
-                f"📊 <b>Твоя статистика:</b>\n\n"
-                f"Креативов: {total}\n"
-                f"✅ Побед: {wins} ({win_rate:.0f}%)\n"
-                f"❌ Поражений: {losses}\n"
-                f"⏳ Тестируется: {testing}\n\n"
-                f"ROI: {roi_sign}{roi:.1f}%\n"
-                f"Расход: ${total_spend:.0f}\n"
-                f"Доход: ${total_revenue:.0f}"
-            )
-
-            await send_telegram_message(message.chat_id, stats_message)
-
-            # Log outgoing response
-            await log_buyer_interaction(
-                telegram_id=message.user_id,
-                direction="out",
-                message_type="system",
-                content=stats_message,
-                context={
-                    "total": total,
-                    "wins": wins,
-                    "losses": losses,
-                    "testing": testing,
-                    "spend": total_spend,
-                    "revenue": total_revenue,
-                    "roi": roi,
-                },
-            )
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=stats_message,
+            context={
+                "total": total,
+                "wins": wins,
+                "losses": losses,
+                "testing": testing,
+                "spend": total_spend,
+                "revenue": total_revenue,
+                "roi": roi,
+            },
+        )
 
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
@@ -678,11 +663,21 @@ async def handle_genome_command(message: TelegramMessage) -> None:
 
     if "--by" in parts:
         by_index = parts.index("--by")
-        if by_index + 1 < len(parts):
-            segment_by = parts[by_index + 1].lower()
-            # Everything before --by is the component value
-            if by_index > 1:
-                component_value = parts[1]
+        if by_index + 1 >= len(parts):
+            await send_telegram_message(
+                message.chat_id,
+                "Укажите тип сегментации после --by.\n\n"
+                "Usage: /genome fear --by <geo|avatar|week>\n\n"
+                "Примеры:\n"
+                "  /genome fear --by geo\n"
+                "  /genome hope --by avatar\n"
+                "  /genome curiosity --by week",
+            )
+            return
+        segment_by = parts[by_index + 1].lower()
+        # Everything before --by is the component value
+        if by_index > 1:
+            component_value = parts[1]
 
     # Log incoming command
     await log_buyer_interaction(
@@ -854,18 +849,18 @@ async def handle_trends_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
         # Generate emotion win rate chart
+        # Note: charts.py still uses old signature
         chart_url = await generate_win_rate_chart_url(
-            supabase_url=supabase_url,
-            supabase_key=supabase_key,
+            supabase_url=sb.base_url,
+            supabase_key=sb.service_key,
             chart_type="emotions",
             days=7,
         )
@@ -939,6 +934,17 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
         if len(parts) > 1:
             geo_part = parts[1].strip().split()[0] if parts[1].strip() else None
             geo = geo_part.upper() if geo_part else None
+
+    # Validate geo against allowed values
+    if geo and geo not in VALID_GEOS:
+        sample_geos = ", ".join(VALID_GEOS[:10])
+        await send_telegram_message(
+            message.chat_id,
+            f"❌ Неизвестный geo-код: <code>{geo}</code>\n\n"
+            f"Доступные geo: {sample_geos}...\n\n"
+            "Пример: <code>/simulate fear --geo US</code>",
+        )
+        return
 
     # Parse components
     components = parse_components(text)
@@ -1191,7 +1197,6 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
 
 async def handle_buyers_command(message: TelegramMessage) -> None:
     """Handle /buyers command - list all buyers with stats."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -1199,55 +1204,50 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get all buyers
-            buyers_resp = await client.get(
-                f"{supabase_url}/rest/v1/buyers"
-                f"?select=id,telegram_id,name,telegram_username,geos,verticals,status,created_at"
-                f"&order=created_at.desc&limit=10",
-                headers=headers,
-            )
-            buyers = buyers_resp.json()
+        client = get_http_client()
+        # Get all buyers
+        buyers_resp = await client.get(
+            f"{sb.rest_url}/buyers"
+            f"?select=id,telegram_id,name,telegram_username,geos,verticals,status,created_at"
+            f"&order=created_at.desc&limit=10",
+            headers=headers,
+        )
+        buyers = buyers_resp.json()
 
-            if not buyers:
-                await send_telegram_message(message.chat_id, "Баеров пока нет.")
-                return
+        if not buyers:
+            await send_telegram_message(message.chat_id, "Баеров пока нет.")
+            return
 
-            # Get creative counts for each buyer
-            buyer_ids = [b["id"] for b in buyers]
-            creatives_resp = await client.get(
-                f"{supabase_url}/rest/v1/creatives"
-                f"?buyer_id=in.({','.join(buyer_ids)})"
-                f"&select=buyer_id,test_result",
-                headers=headers,
-            )
-            creatives = creatives_resp.json()
+        # Get creative counts for each buyer
+        buyer_ids = [b["id"] for b in buyers]
+        creatives_resp = await client.get(
+            f"{sb.rest_url}/creatives"
+            f"?buyer_id=in.({','.join(buyer_ids)})"
+            f"&select=buyer_id,test_result",
+            headers=headers,
+        )
+        creatives = creatives_resp.json()
 
-            # Aggregate stats per buyer
-            buyer_stats = {}
-            for c in creatives:
-                bid = c["buyer_id"]
-                if bid not in buyer_stats:
-                    buyer_stats[bid] = {"total": 0, "wins": 0, "losses": 0}
-                buyer_stats[bid]["total"] += 1
-                if c.get("test_result") == "win":
-                    buyer_stats[bid]["wins"] += 1
-                elif c.get("test_result") == "loss":
-                    buyer_stats[bid]["losses"] += 1
+        # Aggregate stats per buyer
+        buyer_stats = {}
+        for c in creatives:
+            bid = c["buyer_id"]
+            if bid not in buyer_stats:
+                buyer_stats[bid] = {"total": 0, "wins": 0, "losses": 0}
+            buyer_stats[bid]["total"] += 1
+            if c.get("test_result") == "win":
+                buyer_stats[bid]["wins"] += 1
+            elif c.get("test_result") == "loss":
+                buyer_stats[bid]["losses"] += 1
 
         # Format response
         lines = [f"👥 <b>Баеры ({len(buyers)})</b>\n"]
@@ -1294,7 +1294,6 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
 
 async def handle_activity_command(message: TelegramMessage) -> None:
     """Handle /activity command - show recent buyer interactions."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -1302,43 +1301,38 @@ async def handle_activity_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get recent interactions
-            response = await client.get(
-                f"{supabase_url}/rest/v1/buyer_interactions"
-                f"?select=telegram_id,direction,message_type,content,created_at"
-                f"&order=created_at.desc&limit=15",
-                headers=headers,
-            )
-            interactions = response.json()
+        client = get_http_client()
+        # Get recent interactions
+        response = await client.get(
+            f"{sb.rest_url}/buyer_interactions"
+            f"?select=telegram_id,direction,message_type,content,created_at"
+            f"&order=created_at.desc&limit=15",
+            headers=headers,
+        )
+        interactions = response.json()
 
-            if not interactions:
-                await send_telegram_message(message.chat_id, "Активности пока нет.")
-                return
+        if not interactions:
+            await send_telegram_message(message.chat_id, "Активности пока нет.")
+            return
 
-            # Get buyer names for telegram_ids
-            telegram_ids = list(set(i["telegram_id"] for i in interactions))
-            buyers_resp = await client.get(
-                f"{supabase_url}/rest/v1/buyers"
-                f"?telegram_id=in.({','.join(telegram_ids)})"
-                f"&select=telegram_id,telegram_username,name",
-                headers=headers,
-            )
-            buyers = {b["telegram_id"]: b for b in buyers_resp.json()}
+        # Get buyer names for telegram_ids
+        telegram_ids = list(set(i["telegram_id"] for i in interactions))
+        buyers_resp = await client.get(
+            f"{sb.rest_url}/buyers"
+            f"?telegram_id=in.({','.join(telegram_ids)})"
+            f"&select=telegram_id,telegram_username,name",
+            headers=headers,
+        )
+        buyers = {b["telegram_id"]: b for b in buyers_resp.json()}
 
         # Format response
         lines = ["📋 <b>Активность (последние 15)</b>\n"]
@@ -1377,56 +1371,49 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
     - telegram_id: Direct messages from/to buyer
     - buyer_id: System messages associated with buyer (creatives, hypotheses, etc.)
     """
-    import httpx
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get buyer info including id for buyer_id search
-            buyer_resp = await client.get(
-                f"{supabase_url}/rest/v1/buyers"
-                f"?telegram_id=eq.{buyer_telegram_id}"
-                f"&select=id,name,telegram_username"
-                f"&limit=1",
+        client = get_http_client()
+        # Get buyer info including id for buyer_id search
+        buyer_resp = await client.get(
+            f"{sb.rest_url}/buyers"
+            f"?telegram_id=eq.{buyer_telegram_id}"
+            f"&select=id,name,telegram_username"
+            f"&limit=1",
+            headers=headers,
+        )
+        buyers = buyer_resp.json()
+        buyer = buyers[0] if buyers else {}
+        buyer_uuid = buyer.get("id")
+
+        # Get last 20 messages by telegram_id OR buyer_id
+        # This captures both direct messages and system notifications about buyer
+        if buyer_uuid:
+            # Search by both telegram_id and buyer_id
+            response = await client.get(
+                f"{sb.rest_url}/buyer_interactions"
+                f"?or=(telegram_id.eq.{buyer_telegram_id},buyer_id.eq.{buyer_uuid})"
+                f"&select=direction,message_type,content,created_at"
+                f"&order=created_at.desc&limit=20",
                 headers=headers,
             )
-            buyers = buyer_resp.json()
-            buyer = buyers[0] if buyers else {}
-            buyer_uuid = buyer.get("id")
-
-            # Get last 20 messages by telegram_id OR buyer_id
-            # This captures both direct messages and system notifications about buyer
-            if buyer_uuid:
-                # Search by both telegram_id and buyer_id
-                response = await client.get(
-                    f"{supabase_url}/rest/v1/buyer_interactions"
-                    f"?or=(telegram_id.eq.{buyer_telegram_id},buyer_id.eq.{buyer_uuid})"
-                    f"&select=direction,message_type,content,created_at"
-                    f"&order=created_at.desc&limit=20",
-                    headers=headers,
-                )
-            else:
-                # Fallback: search only by telegram_id
-                response = await client.get(
-                    f"{supabase_url}/rest/v1/buyer_interactions"
-                    f"?telegram_id=eq.{buyer_telegram_id}"
-                    f"&select=direction,message_type,content,created_at"
-                    f"&order=created_at.desc&limit=20",
-                    headers=headers,
-                )
-            interactions = response.json()
+        else:
+            # Fallback: search only by telegram_id
+            response = await client.get(
+                f"{sb.rest_url}/buyer_interactions"
+                f"?telegram_id=eq.{buyer_telegram_id}"
+                f"&select=direction,message_type,content,created_at"
+                f"&order=created_at.desc&limit=20",
+                headers=headers,
+            )
+        interactions = response.json()
 
         if not interactions:
             await send_telegram_message(chat_id, "Сообщений с этим байером нет.")
@@ -1462,7 +1449,6 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
 
 async def handle_decisions_command(message: TelegramMessage) -> None:
     """Handle /decisions command - show Decision Engine stats."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -1470,30 +1456,25 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get decisions from last 24 hours
-            response = await client.get(
-                f"{supabase_url}/rest/v1/decisions"
-                f"?select=id,decision,created_at"
-                f"&created_at=gte.{datetime.utcnow().replace(hour=0, minute=0, second=0).isoformat()}"
-                f"&order=created_at.desc&limit=50",
-                headers=headers,
-            )
-            decisions = response.json()
+        client = get_http_client()
+        # Get decisions from last 24 hours
+        response = await client.get(
+            f"{sb.rest_url}/decisions"
+            f"?select=id,decision,created_at"
+            f"&created_at=gte.{datetime.utcnow().replace(hour=0, minute=0, second=0).isoformat()}"
+            f"&order=created_at.desc&limit=50",
+            headers=headers,
+        )
+        decisions = response.json()
 
         # Count by decision type
         counts = {"approve": 0, "reject": 0, "defer": 0}
@@ -1533,7 +1514,6 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
 
 async def handle_creatives_command(message: TelegramMessage) -> None:
     """Handle /creatives command - list all creatives."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -1541,34 +1521,29 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get recent creatives with buyer info
-            response = await client.get(
-                f"{supabase_url}/rest/v1/creatives"
-                f"?select=id,buyer_id,status,tracking_status,test_result,created_at,"
-                f"buyers(name,telegram_username)"
-                f"&order=created_at.desc&limit=10",
-                headers=headers,
-            )
-            creatives = response.json()
+        client = get_http_client()
+        # Get recent creatives with buyer info
+        response = await client.get(
+            f"{sb.rest_url}/creatives"
+            f"?select=id,buyer_id,status,tracking_status,test_result,created_at,"
+            f"buyers(name,telegram_username)"
+            f"&order=created_at.desc&limit=10",
+            headers=headers,
+        )
+        creatives = response.json()
 
-            if not creatives:
-                await send_telegram_message(message.chat_id, "Креативов пока нет.")
-                return
+        if not creatives:
+            await send_telegram_message(message.chat_id, "Креативов пока нет.")
+            return
 
         # Format response
         lines = [f"🎬 <b>Креативы ({len(creatives)})</b>\n"]
@@ -1604,7 +1579,6 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
 
 async def handle_status_command(message: TelegramMessage) -> None:
     """Handle /status command - show system status."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -1612,52 +1586,47 @@ async def handle_status_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get counts from various tables
-            buyers_resp = await client.get(
-                f"{supabase_url}/rest/v1/buyers?select=id",
-                headers={**headers, "Prefer": "count=exact"},
-            )
-            buyers_count = buyers_resp.headers.get("content-range", "0").split("/")[-1]
+        client = get_http_client()
+        # Get counts from various tables
+        buyers_resp = await client.get(
+            f"{sb.rest_url}/buyers?select=id",
+            headers={**headers, "Prefer": "count=exact"},
+        )
+        buyers_count = buyers_resp.headers.get("content-range", "0").split("/")[-1]
 
-            creatives_resp = await client.get(
-                f"{supabase_url}/rest/v1/creatives?select=id",
-                headers={**headers, "Prefer": "count=exact"},
-            )
-            creatives_count = creatives_resp.headers.get("content-range", "0").split(
-                "/"
-            )[-1]
+        creatives_resp = await client.get(
+            f"{sb.rest_url}/creatives?select=id",
+            headers={**headers, "Prefer": "count=exact"},
+        )
+        creatives_count = creatives_resp.headers.get("content-range", "0").split("/")[
+            -1
+        ]
 
-            decisions_resp = await client.get(
-                f"{supabase_url}/rest/v1/decisions?select=id",
-                headers={**headers, "Prefer": "count=exact"},
-            )
-            decisions_count = decisions_resp.headers.get("content-range", "0").split(
-                "/"
-            )[-1]
+        decisions_resp = await client.get(
+            f"{sb.rest_url}/decisions?select=id",
+            headers={**headers, "Prefer": "count=exact"},
+        )
+        decisions_count = decisions_resp.headers.get("content-range", "0").split("/")[
+            -1
+        ]
 
-            # Get pending hypotheses
-            hypotheses_resp = await client.get(
-                f"{supabase_url}/rest/v1/hypotheses?status=is.null&select=id",
-                headers={**headers, "Prefer": "count=exact"},
-            )
-            pending_hypotheses = hypotheses_resp.headers.get(
-                "content-range", "0"
-            ).split("/")[-1]
+        # Get pending hypotheses
+        hypotheses_resp = await client.get(
+            f"{sb.rest_url}/hypotheses?status=is.null&select=id",
+            headers={**headers, "Prefer": "count=exact"},
+        )
+        pending_hypotheses = hypotheses_resp.headers.get("content-range", "0").split(
+            "/"
+        )[-1]
 
         # Format response
         status_message = (
@@ -1678,7 +1647,6 @@ async def handle_status_command(message: TelegramMessage) -> None:
 
 async def handle_errors_command(message: TelegramMessage) -> None:
     """Handle /errors command - show recent errors."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -1686,29 +1654,24 @@ async def handle_errors_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get failed hypotheses (with retry errors)
-            response = await client.get(
-                f"{supabase_url}/rest/v1/hypotheses"
-                f"?status=eq.failed&select=id,last_error,retry_count,last_retry_at"
-                f"&order=last_retry_at.desc&limit=10",
-                headers=headers,
-            )
-            failed = response.json()
+        client = get_http_client()
+        # Get failed hypotheses (with retry errors)
+        response = await client.get(
+            f"{sb.rest_url}/hypotheses"
+            f"?status=eq.failed&select=id,last_error,retry_count,last_retry_at"
+            f"&order=last_retry_at.desc&limit=10",
+            headers=headers,
+        )
+        failed = response.json()
 
         if not failed:
             await send_telegram_message(
@@ -1742,55 +1705,38 @@ async def handle_errors_command(message: TelegramMessage) -> None:
 
 async def get_pending_modular_hypotheses() -> list[dict]:
     """Get modular hypotheses awaiting human review."""
-    import httpx
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return []
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-    }
+    headers = sb.get_headers()
 
-    async with httpx.AsyncClient() as client:
-        # Get pending review hypotheses with module info
-        response = await client.get(
-            f"{supabase_url}/rest/v1/hypotheses"
-            f"?generation_mode=eq.modular&review_status=eq.pending"
-            f"&select=id,content,created_at,"
-            f"hook_module:module_bank!hook_module_id(text_content),"
-            f"promise_module:module_bank!promise_module_id(text_content),"
-            f"proof_module:module_bank!proof_module_id(text_content)"
-            f"&order=created_at.desc&limit=10",
-            headers=headers,
-        )
-        return response.json() if response.status_code == 200 else []
+    client = get_http_client()
+    # Get pending review hypotheses with module info
+    response = await client.get(
+        f"{sb.rest_url}/hypotheses"
+        f"?generation_mode=eq.modular&review_status=eq.pending"
+        f"&select=id,content,created_at,"
+        f"hook_module:module_bank!hook_module_id(text_content),"
+        f"promise_module:module_bank!promise_module_id(text_content),"
+        f"proof_module:module_bank!proof_module_id(text_content)"
+        f"&order=created_at.desc&limit=10",
+        headers=headers,
+    )
+    return response.json() if response.status_code == 200 else []
 
 
 async def update_hypothesis_review_status(
     hypothesis_id: str, review_status: str
 ) -> bool:
     """Update hypothesis review status (approved/rejected)."""
-    import httpx
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return False
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-        "Content-Profile": "genomai",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+    headers = sb.get_headers(for_write=True)
 
     update_data = {
         "review_status": review_status,
@@ -1804,13 +1750,13 @@ async def update_hypothesis_review_status(
     if review_status == "rejected":
         update_data["status"] = "rejected"
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{supabase_url}/rest/v1/hypotheses?id=eq.{hypothesis_id}",
-            headers=headers,
-            json=update_data,
-        )
-        return response.status_code in [200, 204]
+    client = get_http_client()
+    response = await client.patch(
+        f"{sb.rest_url}/hypotheses?id=eq.{hypothesis_id}",
+        headers=headers,
+        json=update_data,
+    )
+    return response.status_code in [200, 204]
 
 
 async def handle_pending_command(message: TelegramMessage) -> None:
@@ -2103,7 +2049,6 @@ def is_admin(telegram_id: str) -> bool:
 
 async def handle_knowledge_command(message: TelegramMessage) -> None:
     """Handle /knowledge command - show pending extractions."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -2111,46 +2056,41 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as client:
-            # Get pending extractions
-            response = await client.get(
-                f"{supabase_url}/rest/v1/knowledge_extractions"
-                f"?status=eq.pending&order=created_at.asc&limit=5",
-                headers=headers,
+        client = get_http_client()
+        # Get pending extractions
+        response = await client.get(
+            f"{sb.rest_url}/knowledge_extractions"
+            f"?status=eq.pending&order=created_at.asc&limit=5",
+            headers=headers,
+        )
+        extractions = response.json()
+
+        if not extractions:
+            await send_telegram_message(
+                message.chat_id,
+                "Нет ожидающих извлечений знаний.\n\n"
+                "Загрузите .txt или .md файл с транскриптом для извлечения.",
             )
-            extractions = response.json()
+            return
 
-            if not extractions:
-                await send_telegram_message(
-                    message.chat_id,
-                    "Нет ожидающих извлечений знаний.\n\n"
-                    "Загрузите .txt или .md файл с транскриптом для извлечения.",
-                )
-                return
+        # Send first pending extraction for review
+        ext = extractions[0]
+        await send_extraction_review_card(message.chat_id, ext)
 
-            # Send first pending extraction for review
-            ext = extractions[0]
-            await send_extraction_review_card(message.chat_id, ext)
-
-            if len(extractions) > 1:
-                await send_telegram_message(
-                    message.chat_id,
-                    f"<i>+{len(extractions) - 1} ещё ожидают</i>",
-                )
+        if len(extractions) > 1:
+            await send_telegram_message(
+                message.chat_id,
+                f"<i>+{len(extractions) - 1} ещё ожидают</i>",
+            )
 
     except Exception as e:
         logger.error(f"Failed to get knowledge extractions: {e}")
@@ -2159,7 +2099,6 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
 
 async def send_extraction_review_card(chat_id: str, extraction: dict) -> None:
     """Send extraction review card with inline buttons."""
-    import httpx
 
     emoji_map = {
         "premise": "📖",
@@ -2212,17 +2151,17 @@ async def send_extraction_review_card(chat_id: str, extraction: dict) -> None:
         ]
     }
 
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": card,
-                "parse_mode": "HTML",
-                "reply_markup": keyboard,
-            },
-            timeout=30.0,
-        )
+    client = get_http_client()
+    await client.post(
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        json={
+            "chat_id": chat_id,
+            "text": card,
+            "parse_mode": "HTML",
+            "reply_markup": keyboard,
+        },
+        timeout=30.0,
+    )
 
 
 async def handle_feedback_command(message: TelegramMessage) -> None:
@@ -2286,37 +2225,27 @@ async def handle_feedback_command(message: TelegramMessage) -> None:
 
 async def get_buyer_name(telegram_id: str) -> str | None:
     """Get buyer name by Telegram ID."""
-    import httpx
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return None
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-    }
+    headers = sb.get_headers()
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{supabase_url}/rest/v1/buyers"
-                f"?telegram_id=eq.{telegram_id}"
-                f"&select=name",
-                headers=headers,
-            )
-            buyers = response.json()
-            return buyers[0].get("name") if buyers else None
+        client = get_http_client()
+        response = await client.get(
+            f"{sb.rest_url}/buyers?telegram_id=eq.{telegram_id}&select=name",
+            headers=headers,
+        )
+        buyers = response.json()
+        return buyers[0].get("name") if buyers else None
     except Exception:
         return None
 
 
 async def handle_document_upload(message: TelegramMessage) -> None:
     """Handle document upload - start knowledge extraction for .txt/.md files."""
-    import httpx
 
     if not is_admin(message.user_id):
         await send_telegram_message(
@@ -2345,30 +2274,28 @@ async def handle_document_upload(message: TelegramMessage) -> None:
         return
 
     try:
-        async with httpx.AsyncClient() as client:
-            # Get file info
-            file_id = document.get("file_id")
-            file_resp = await client.get(
-                f"https://api.telegram.org/bot{bot_token}/getFile",
-                params={"file_id": file_id},
-                timeout=30.0,
-            )
-            file_data = file_resp.json()
+        client = get_http_client()
+        # Get file info
+        file_id = document.get("file_id")
+        file_resp = await client.get(
+            f"https://api.telegram.org/bot{bot_token}/getFile",
+            params={"file_id": file_id},
+            timeout=30.0,
+        )
+        file_data = file_resp.json()
 
-            if not file_data.get("ok"):
-                await send_telegram_message(
-                    message.chat_id, "Не удалось получить файл."
-                )
-                return
+        if not file_data.get("ok"):
+            await send_telegram_message(message.chat_id, "Не удалось получить файл.")
+            return
 
-            file_path = file_data["result"]["file_path"]
+        file_path = file_data["result"]["file_path"]
 
-            # Download file content
-            content_resp = await client.get(
-                f"https://api.telegram.org/file/bot{bot_token}/{file_path}",
-                timeout=60.0,
-            )
-            content = content_resp.text
+        # Download file content
+        content_resp = await client.get(
+            f"https://api.telegram.org/file/bot{bot_token}/{file_path}",
+            timeout=60.0,
+        )
+        content = content_resp.text
 
         await send_telegram_message(
             message.chat_id,
@@ -2413,7 +2340,6 @@ async def handle_document_upload(message: TelegramMessage) -> None:
 
 async def handle_callback_query(update: dict) -> None:
     """Handle callback query from inline buttons."""
-    import httpx
 
     callback_query = update.get("callback_query")
     if not callback_query:
@@ -2430,12 +2356,12 @@ async def handle_callback_query(update: dict) -> None:
         return
 
     # Answer callback to remove loading state
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
-            json={"callback_query_id": callback_id},
-            timeout=10.0,
-        )
+    client = get_http_client()
+    await client.post(
+        f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+        json={"callback_query_id": callback_id},
+        timeout=10.0,
+    )
 
     # Check admin permission
     if not is_admin(user_id):
@@ -2465,7 +2391,6 @@ async def handle_extraction_approve(
     chat_id: str, message_id: int, extraction_id: str, user_id: str
 ) -> None:
     """Handle extraction approval."""
-    import httpx
 
     try:
         # Start application workflow
@@ -2490,17 +2415,17 @@ async def handle_extraction_approve(
         # Update message
         bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
         if bot_token:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{bot_token}/editMessageText",
-                    json={
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "text": "✅ <b>Одобрено</b>\n\nПрименяю знания...",
-                        "parse_mode": "HTML",
-                    },
-                    timeout=10.0,
-                )
+            client = get_http_client()
+            await client.post(
+                f"https://api.telegram.org/bot{bot_token}/editMessageText",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": "✅ <b>Одобрено</b>\n\nПрименяю знания...",
+                    "parse_mode": "HTML",
+                },
+                timeout=10.0,
+            )
 
         logger.info(f"Started knowledge application: {workflow_id}")
 
@@ -2513,49 +2438,43 @@ async def handle_extraction_reject(
     chat_id: str, message_id: int, extraction_id: str, user_id: str
 ) -> None:
     """Handle extraction rejection."""
-    import httpx
     from datetime import datetime
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Content-Profile": "genomai",
-            "Prefer": "return=minimal",
-        }
+        headers = sb.get_headers(for_write=True)
+        headers["Prefer"] = "return=minimal"
 
-        async with httpx.AsyncClient() as client:
-            await client.patch(
-                f"{supabase_url}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
-                headers=headers,
-                json={
-                    "status": "rejected",
-                    "reviewed_by": user_id,
-                    "reviewed_at": datetime.utcnow().isoformat(),
-                },
-                timeout=10.0,
-            )
+        client = get_http_client()
+        await client.patch(
+            f"{sb.rest_url}/knowledge_extractions?id=eq.{extraction_id}",
+            headers=headers,
+            json={
+                "status": "rejected",
+                "reviewed_by": user_id,
+                "reviewed_at": datetime.utcnow().isoformat(),
+            },
+            timeout=10.0,
+        )
 
         # Update message
         bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
         if bot_token:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{bot_token}/editMessageText",
-                    json={
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "text": "❌ <b>Отклонено</b>",
-                        "parse_mode": "HTML",
-                    },
-                    timeout=10.0,
-                )
+            client = get_http_client()
+            await client.post(
+                f"https://api.telegram.org/bot{bot_token}/editMessageText",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": "❌ <b>Отклонено</b>",
+                    "parse_mode": "HTML",
+                },
+                timeout=10.0,
+            )
 
         logger.info(f"Rejected extraction: {extraction_id}")
 
@@ -2566,41 +2485,33 @@ async def handle_extraction_reject(
 
 async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
     """Handle video URL - start creative registration."""
-    import httpx
     from temporal.workflows.historical_import import CreativeRegistrationWorkflow
 
     # Check if user is registered
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
-        async with httpx.AsyncClient() as http_client:
-            buyer_resp = await http_client.get(
-                f"{supabase_url}/rest/v1/buyers"
-                f"?telegram_id=eq.{message.user_id}"
-                f"&select=id",
-                headers=headers,
+        http_client = get_http_client()
+        buyer_resp = await http_client.get(
+            f"{sb.rest_url}/buyers?telegram_id=eq.{message.user_id}&select=id",
+            headers=headers,
+        )
+        buyers = buyer_resp.json()
+
+        if not buyers:
+            await send_telegram_message(
+                message.chat_id,
+                "Сначала нужно зарегистрироваться. Отправьте /start.",
             )
-            buyers = buyer_resp.json()
+            return
 
-            if not buyers:
-                await send_telegram_message(
-                    message.chat_id,
-                    "Сначала нужно зарегистрироваться. Отправьте /start.",
-                )
-                return
-
-            buyer_id = buyers[0]["id"]
+        buyer_id = buyers[0]["id"]
 
         # Start creative registration workflow
         client = await get_temporal_client()
@@ -2800,7 +2711,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 @router.get("/webhook/telegram/status")
 async def telegram_webhook_status():
     """Check Telegram webhook configuration status."""
-    import httpx
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not bot_token:
@@ -2810,24 +2720,24 @@ async def telegram_webhook_status():
         }
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://api.telegram.org/bot{bot_token}/getWebhookInfo",
-                timeout=10.0,
-            )
-            data = response.json()
+        client = get_http_client()
+        response = await client.get(
+            f"https://api.telegram.org/bot{bot_token}/getWebhookInfo",
+            timeout=10.0,
+        )
+        data = response.json()
 
-            if data.get("ok"):
-                result = data.get("result", {})
-                return {
-                    "status": "configured" if result.get("url") else "not_set",
-                    "url": result.get("url"),
-                    "pending_update_count": result.get("pending_update_count", 0),
-                    "last_error_date": result.get("last_error_date"),
-                    "last_error_message": result.get("last_error_message"),
-                }
+        if data.get("ok"):
+            result = data.get("result", {})
+            return {
+                "status": "configured" if result.get("url") else "not_set",
+                "url": result.get("url"),
+                "pending_update_count": result.get("pending_update_count", 0),
+                "last_error_date": result.get("last_error_date"),
+                "last_error_message": result.get("last_error_message"),
+            }
 
-            return {"status": "error", "error": data.get("description")}
+        return {"status": "error", "error": data.get("description")}
 
     except Exception as e:
         return {"status": "error", "error": str(e)}

@@ -68,6 +68,30 @@ async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
+@app.get("/health/metrics")
+async def metrics_health_check():
+    """
+    Metrics health check endpoint (Issue #474)
+
+    Returns metrics staleness information and circuit breaker state.
+    Use this to monitor if the metrics pipeline is healthy.
+
+    Response:
+    - status: "healthy" | "degraded" | "error"
+    - metrics_staleness_minutes: minutes since last metrics update
+    - is_stale: true if metrics are older than 30 minutes
+    - circuit_breaker: current circuit breaker state
+
+    Alert if:
+    - status != "healthy"
+    - is_stale == true
+    - circuit_breaker.state == "open"
+    """
+    from temporal.circuit_breaker import get_metrics_staleness
+
+    return await get_metrics_staleness()
+
+
 @app.exception_handler(DecisionEngineError)
 async def decision_engine_error_handler(request, exc: DecisionEngineError):
     """Handle DecisionEngineError exceptions"""

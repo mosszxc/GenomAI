@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from temporalio import activity
 
 from temporal.config import settings
+from src.core.http_client import get_http_client
 
 
 @dataclass
@@ -31,6 +32,7 @@ class ProcessLearningOutput:
     """Output from process_learning activity"""
 
     processed_count: int
+    skipped_count: int  # Issue #473: idempotency - already processed outcomes
     updated_ideas: list[str]
     new_deaths: list[dict]
     component_updates: int
@@ -64,12 +66,14 @@ async def process_learning_batch(input: ProcessLearningInput) -> ProcessLearning
         activity.logger.info(
             f"Learning batch complete: "
             f"{result.processed_count} processed, "
+            f"{result.skipped_count} skipped (idempotent), "
             f"{len(result.new_deaths)} deaths, "
             f"{len(result.errors)} errors"
         )
 
         return ProcessLearningOutput(
             processed_count=result.processed_count,
+            skipped_count=result.skipped_count,
             updated_ideas=result.updated_ideas,
             new_deaths=result.new_deaths,
             component_updates=result.component_updates,
@@ -82,6 +86,7 @@ async def process_learning_batch(input: ProcessLearningInput) -> ProcessLearning
         activity.logger.error(f"Learning batch error: {str(e)}")
         return ProcessLearningOutput(
             processed_count=0,
+            skipped_count=0,
             updated_ideas=[],
             new_deaths=[],
             component_updates=0,
@@ -343,8 +348,6 @@ async def emit_learning_event(input: EmitLearningEventInput) -> bool:
     """
     activity.logger.info(f"Emitting learning event: {input.event_type}")
 
-    import httpx
-
     SCHEMA = "genomai"
 
     headers = {
@@ -367,9 +370,9 @@ async def emit_learning_event(input: EmitLearningEventInput) -> bool:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+        client = get_http_client()
+        response = await client.post(url, headers=headers, json=payload, timeout=15.0)
+        response.raise_for_status()
 
         activity.logger.info(f"Learning event emitted: {input.event_type}")
         return True

@@ -1,18 +1,23 @@
 #!/bin/bash
-# Finish task: commit, push, create PR to develop
-# Usage: ./scripts/task-done.sh <issue-number> [--no-pr] [--skip-tests]
+# Finish task: commit, push, create PR, wait for CI, merge, close issue
+# Usage: ./scripts/task-done.sh <issue-number> [--no-pr] [--no-merge] [--skip-tests]
 
 set -e
 
 # Parse arguments
 ISSUE_NUM=""
 NO_PR=""
+NO_MERGE=""
 SKIP_TESTS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --no-pr)
             NO_PR="true"
+            shift
+            ;;
+        --no-merge)
+            NO_MERGE="true"
             shift
             ;;
         --skip-tests)
@@ -32,10 +37,11 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 WORKTREES_DIR="$PROJECT_ROOT/.worktrees"
 
 if [ -z "$ISSUE_NUM" ]; then
-    echo "Usage: $0 <issue-number> [--no-pr] [--skip-tests]"
+    echo "Usage: $0 <issue-number> [--no-pr] [--no-merge] [--skip-tests]"
     echo ""
     echo "Options:"
-    echo "  --no-pr       Skip PR creation"
+    echo "  --no-pr       Skip PR creation and merge"
+    echo "  --no-merge    Create PR but skip CI wait and merge"
     echo "  --skip-tests  Skip pre-merge tests"
     echo ""
     echo "Active worktrees:"
@@ -132,21 +138,80 @@ echo "Pushing branch..."
 git push -u origin "$BRANCH_NAME"
 
 # Create PR to develop
+PR_NUMBER=""
 if [ "$NO_PR" != "true" ]; then
     echo ""
     echo "Creating PR to develop..."
+
+    # Generate PR title and body from qa-notes
+    PR_TITLE=$(head -1 "$QA_NOTE" | sed 's/^# //' | head -c 60)
+    if [ -z "$PR_TITLE" ]; then
+        PR_TITLE="Closes #$ISSUE_NUM"
+    else
+        PR_TITLE="$PR_TITLE (#$ISSUE_NUM)"
+    fi
+
+    # Extract "Что изменено" section for PR body
+    PR_BODY=$(sed -n '/^## Что изменено/,/^## /p' "$QA_NOTE" | grep -v '^## ' | head -10)
+    if [ -z "$PR_BODY" ]; then
+        PR_BODY="Closes #$ISSUE_NUM"
+    else
+        PR_BODY="$PR_BODY
+
+Closes #$ISSUE_NUM"
+    fi
+
     PR_URL=$(gh pr create \
-        --title "Closes #$ISSUE_NUM" \
-        --body "Closes #$ISSUE_NUM" \
+        --title "$PR_TITLE" \
+        --body "$PR_BODY" \
         --head "$BRANCH_NAME" \
         --base develop \
         2>/dev/null || echo "")
 
     if [ -n "$PR_URL" ]; then
         echo "PR created: $PR_URL"
+        PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
     else
-        echo "PR already exists or couldn't be created"
-        gh pr view "$BRANCH_NAME" --web 2>/dev/null || true
+        echo "PR already exists, getting PR number..."
+        PR_NUMBER=$(gh pr view "$BRANCH_NAME" --json number -q '.number' 2>/dev/null || echo "")
+        if [ -n "$PR_NUMBER" ]; then
+            echo "Found existing PR #$PR_NUMBER"
+        fi
+    fi
+fi
+
+# Wait for CI and merge
+if [ "$NO_PR" != "true" ] && [ "$NO_MERGE" != "true" ] && [ -n "$PR_NUMBER" ]; then
+    echo ""
+    echo "=== Waiting for CI ==="
+    if gh pr checks "$PR_NUMBER" --watch; then
+        echo "✓ CI checks passed"
+    else
+        echo "✗ CI checks failed"
+        exit 1
+    fi
+
+    echo ""
+    echo "=== Merging PR ==="
+    if gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+        echo "✓ PR #$PR_NUMBER merged"
+    else
+        echo "Trying auto-merge..."
+        gh pr merge "$PR_NUMBER" --squash --delete-branch --auto || true
+    fi
+
+    # Verify issue is closed
+    echo ""
+    echo "=== Verifying issue closure ==="
+    sleep 2
+    ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
+
+    if [ "$ISSUE_STATE" = "CLOSED" ]; then
+        echo "✓ Issue #$ISSUE_NUM closed automatically"
+    else
+        echo "Issue still open, closing manually..."
+        gh issue close "$ISSUE_NUM" --comment "Fixed in PR #$PR_NUMBER (merged to develop)" || true
+        echo "✓ Issue #$ISSUE_NUM closed"
     fi
 fi
 
@@ -207,5 +272,9 @@ fi
 
 echo ""
 echo "=== Done ==="
-echo "Issue #$ISSUE_NUM closed. PR merged to develop."
-echo "Run ./scripts/deploy.sh when ready to deploy."
+if [ "$NO_MERGE" = "true" ]; then
+    echo "PR created. Run 'gh pr merge <number> --squash' when ready."
+else
+    echo "Issue #$ISSUE_NUM completed and merged to develop."
+fi
+echo "Run ./scripts/deploy.sh when ready to deploy to production."

@@ -6,14 +6,13 @@ Issue: #300
 
 import os
 import httpx
+from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Literal
 
 router = APIRouter()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 
 async def verify_api_key(authorization: Optional[str] = Header(None)):
@@ -34,18 +33,6 @@ async def verify_api_key(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     return True
-
-
-def get_headers():
-    """Get Supabase REST API headers for genomai schema."""
-    return {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-        "Accept-Profile": "genomai",
-        "Content-Profile": "genomai",
-    }
 
 
 # Request/Response models
@@ -167,33 +154,35 @@ async def list_extractions(
 
     Returns list of extractions.
     """
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
         url = (
-            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
+            f"{sb.rest_url}/knowledge_extractions"
             f"?status=eq.{status}&order=created_at.desc&limit={limit}"
         )
 
         if knowledge_type:
             url += f"&knowledge_type=eq.{knowledge_type}"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=get_headers())
+        client = get_http_client()
+        response = await client.get(url, headers=sb.get_headers())
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Supabase error: {response.text}",
-                )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Supabase error: {response.text}",
+            )
 
-            extractions = response.json()
-            return {
-                "extractions": extractions,
-                "count": len(extractions),
-                "status_filter": status,
-            }
+        extractions = response.json()
+        return {
+            "extractions": extractions,
+            "count": len(extractions),
+            "status_filter": status,
+        }
 
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
@@ -206,27 +195,29 @@ async def get_extraction(extraction_id: str, _: bool = Depends(verify_api_key)):
 
     Get single extraction by ID.
     """
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
-                headers=get_headers(),
+        client = get_http_client()
+        response = await client.get(
+            f"{sb.rest_url}/knowledge_extractions?id=eq.{extraction_id}",
+            headers=sb.get_headers(),
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Supabase error: {response.text}",
             )
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Supabase error: {response.text}",
-                )
+        results = response.json()
+        if not results:
+            raise HTTPException(status_code=404, detail="Extraction not found")
 
-            results = response.json()
-            if not results:
-                raise HTTPException(status_code=404, detail="Extraction not found")
-
-            return results[0]
+        return results[0]
 
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
@@ -286,7 +277,9 @@ async def reject_extraction(
 
     Reject extraction with optional reason.
     """
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     from datetime import datetime
@@ -303,23 +296,23 @@ async def reject_extraction(
         if request.reason:
             update_data["review_notes"] = request.reason
 
-        async with httpx.AsyncClient() as client:
-            response = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
-                headers=get_headers(),
-                json=update_data,
+        client = get_http_client()
+        response = await client.patch(
+            f"{sb.rest_url}/knowledge_extractions?id=eq.{extraction_id}",
+            headers=sb.get_headers(for_write=True),
+            json=update_data,
+        )
+
+        if response.status_code not in (200, 204):
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Supabase error: {response.text}",
             )
 
-            if response.status_code not in (200, 204):
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Supabase error: {response.text}",
-                )
-
-            return {
-                "extraction_id": extraction_id,
-                "status": "rejected",
-            }
+        return {
+            "extraction_id": extraction_id,
+            "status": "rejected",
+        }
 
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
@@ -332,47 +325,50 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
 
     Get source with its extractions.
     """
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        async with httpx.AsyncClient() as client:
-            # Get source
-            source_response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/knowledge_sources?id=eq.{source_id}",
-                headers=get_headers(),
+        client = get_http_client()
+        headers = sb.get_headers()
+        # Get source
+        source_response = await client.get(
+            f"{sb.rest_url}/knowledge_sources?id=eq.{source_id}",
+            headers=headers,
+        )
+
+        if source_response.status_code != 200:
+            raise HTTPException(
+                status_code=source_response.status_code,
+                detail=f"Supabase error: {source_response.text}",
             )
 
-            if source_response.status_code != 200:
-                raise HTTPException(
-                    status_code=source_response.status_code,
-                    detail=f"Supabase error: {source_response.text}",
-                )
+        sources = source_response.json()
+        if not sources:
+            raise HTTPException(status_code=404, detail="Source not found")
 
-            sources = source_response.json()
-            if not sources:
-                raise HTTPException(status_code=404, detail="Source not found")
+        source = sources[0]
 
-            source = sources[0]
+        # Get extractions for this source
+        extractions_response = await client.get(
+            f"{sb.rest_url}/knowledge_extractions"
+            f"?source_id=eq.{source_id}&order=created_at.asc",
+            headers=headers,
+        )
 
-            # Get extractions for this source
-            extractions_response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
-                f"?source_id=eq.{source_id}&order=created_at.asc",
-                headers=get_headers(),
-            )
+        extractions = (
+            extractions_response.json()
+            if extractions_response.status_code == 200
+            else []
+        )
 
-            extractions = (
-                extractions_response.json()
-                if extractions_response.status_code == 200
-                else []
-            )
-
-            return {
-                "source": source,
-                "extractions": extractions,
-                "extraction_count": len(extractions),
-            }
+        return {
+            "source": source,
+            "extractions": extractions,
+            "extraction_count": len(extractions),
+        }
 
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")

@@ -13,7 +13,9 @@ import json
 import hashlib
 from typing import Optional, Dict, Any
 from temporalio import activity
-import httpx
+from src.core.http_client import get_http_client
+
+from temporal.tracing import get_activity_logger
 
 # Schema name for all operations
 SCHEMA = "genomai"
@@ -158,50 +160,50 @@ async def get_creative_metrics(creative_id: str) -> Dict[str, Any]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Get latest outcome aggregate for this creative
-        response = await client.get(
-            f"{rest_url}/outcome_aggregates"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=impressions,conversions,spend,cpa"
-            f"&order=created_at.desc"
-            f"&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    # Get latest outcome aggregate for this creative
+    response = await client.get(
+        f"{rest_url}/outcome_aggregates"
+        f"?creative_id=eq.{creative_id}"
+        f"&select=impressions,conversions,spend,cpa"
+        f"&order=created_at.desc"
+        f"&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            # No metrics yet - return zeros
-            return {
-                "sample_size": 0,
-                "win_count": 0,
-                "loss_count": 0,
-                "total_spend": 0,
-                "total_revenue": 0,
-            }
-
-        metrics = data[0]
-        impressions = metrics.get("impressions", 0) or 0
-        conversions = metrics.get("conversions", 0) or 0
-        spend = float(metrics.get("spend", 0) or 0)
-        cpa = float(metrics.get("cpa", 0) or 0)
-
-        # Estimate revenue from conversions (simplified)
-        # In production, this should come from actual revenue data
-        estimated_revenue = conversions * cpa if cpa > 0 else 0
-
-        # Simple win/loss heuristic: win if CPA below threshold
-        # This is a placeholder - real logic should use actual test results
-        is_win = cpa > 0 and cpa < 50  # Placeholder threshold
-
+    if not data:
+        # No metrics yet - return zeros
         return {
-            "sample_size": impressions,
-            "win_count": conversions if is_win else 0,
-            "loss_count": conversions if not is_win else 0,
-            "total_spend": spend,
-            "total_revenue": estimated_revenue,
+            "sample_size": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "total_spend": 0,
+            "total_revenue": 0,
         }
+
+    metrics = data[0]
+    impressions = metrics.get("impressions", 0) or 0
+    conversions = metrics.get("conversions", 0) or 0
+    spend = float(metrics.get("spend", 0) or 0)
+    cpa = float(metrics.get("cpa", 0) or 0)
+
+    # Estimate revenue from conversions (simplified)
+    # In production, this should come from actual revenue data
+    estimated_revenue = conversions * cpa if cpa > 0 else 0
+
+    # Simple win/loss heuristic: win if CPA below threshold
+    # This is a placeholder - real logic should use actual test results
+    is_win = cpa > 0 and cpa < 50  # Placeholder threshold
+
+    return {
+        "sample_size": impressions,
+        "win_count": conversions if is_win else 0,
+        "loss_count": conversions if not is_win else 0,
+        "total_spend": spend,
+        "total_revenue": estimated_revenue,
+    }
 
 
 @activity.defn
@@ -243,79 +245,83 @@ async def upsert_module(
     headers = _get_headers(supabase_key, for_write=True)
 
     # Check if module already exists
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/module_bank"
-            f"?module_type=eq.{module_type}"
-            f"&module_key=eq.{module_key}"
-            f"&select=id,sample_size",
-            headers=_get_headers(supabase_key),
-        )
-        response.raise_for_status()
-        existing = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/module_bank"
+        f"?module_type=eq.{module_type}"
+        f"&module_key=eq.{module_key}"
+        f"&select=id,sample_size",
+        headers=_get_headers(supabase_key),
+    )
+    response.raise_for_status()
+    existing = response.json()
 
-        if existing:
-            # Module exists - only update if new creative has more data
-            existing_module = existing[0]
-            existing_sample = existing_module.get("sample_size", 0) or 0
-            new_sample = metrics.get("sample_size", 0) or 0
+    if existing:
+        # Module exists - only update if new creative has more data
+        existing_module = existing[0]
+        existing_sample = existing_module.get("sample_size", 0) or 0
+        new_sample = metrics.get("sample_size", 0) or 0
 
-            if new_sample > existing_sample:
-                # Update with newer metrics
-                response = await client.patch(
-                    f"{rest_url}/module_bank?id=eq.{existing_module['id']}",
-                    headers=headers,
-                    json={
-                        "sample_size": new_sample,
-                        "win_count": metrics.get("win_count", 0),
-                        "loss_count": metrics.get("loss_count", 0),
-                        "total_spend": metrics.get("total_spend", 0),
-                        "total_revenue": metrics.get("total_revenue", 0),
-                    },
-                )
-                response.raise_for_status()
-                activity.logger.info(
-                    f"Updated module {existing_module['id']} with new metrics"
-                )
+        if new_sample > existing_sample:
+            # Update with newer metrics
+            response = await client.patch(
+                f"{rest_url}/module_bank?id=eq.{existing_module['id']}",
+                headers=headers,
+                json={
+                    "sample_size": new_sample,
+                    "win_count": metrics.get("win_count", 0),
+                    "loss_count": metrics.get("loss_count", 0),
+                    "total_spend": metrics.get("total_spend", 0),
+                    "total_revenue": metrics.get("total_revenue", 0),
+                },
+            )
+            response.raise_for_status()
+            log = get_activity_logger(module_type=module_type)
+            log.info(
+                "Updated module with new metrics",
+                module_id=existing_module["id"],
+                new_sample_size=new_sample,
+            )
 
-            return existing_module
+        return existing_module
 
-        # Insert new module
-        module = {
-            "id": str(uuid.uuid4()),
-            "module_type": module_type,
-            "module_key": module_key,
-            "content": json.dumps(content),
-            "source_creative_id": source_creative_id,
-            "source_decomposed_id": source_decomposed_id,
-            "sample_size": metrics.get("sample_size", 0),
-            "win_count": metrics.get("win_count", 0),
-            "loss_count": metrics.get("loss_count", 0),
-            "total_spend": metrics.get("total_spend", 0),
-            "total_revenue": metrics.get("total_revenue", 0),
-            "status": "emerging",
-        }
+    # Insert new module
+    module = {
+        "id": str(uuid.uuid4()),
+        "module_type": module_type,
+        "module_key": module_key,
+        "content": json.dumps(content),
+        "source_creative_id": source_creative_id,
+        "source_decomposed_id": source_decomposed_id,
+        "sample_size": metrics.get("sample_size", 0),
+        "win_count": metrics.get("win_count", 0),
+        "loss_count": metrics.get("loss_count", 0),
+        "total_spend": metrics.get("total_spend", 0),
+        "total_revenue": metrics.get("total_revenue", 0),
+        "status": "emerging",
+    }
 
-        if text_content:
-            module["text_content"] = text_content
-        if vertical:
-            module["vertical"] = vertical
-        if geo:
-            module["geo"] = geo
+    if text_content:
+        module["text_content"] = text_content
+    if vertical:
+        module["vertical"] = vertical
+    if geo:
+        module["geo"] = geo
 
-        response = await client.post(
-            f"{rest_url}/module_bank",
-            headers=headers,
-            json=module,
-        )
-        response.raise_for_status()
-        data = response.json()
+    response = await client.post(
+        f"{rest_url}/module_bank",
+        headers=headers,
+        json=module,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise RuntimeError("Failed to insert module: no data returned")
+    if not data:
+        raise RuntimeError("Failed to insert module: no data returned")
 
-        activity.logger.info(f"Created new {module_type} module: {data[0]['id']}")
-        return data[0]
+    log = get_activity_logger(module_type=module_type)
+    log.info("Created new module", module_id=data[0]["id"])
+    return data[0]
 
 
 @activity.defn
@@ -345,14 +351,17 @@ async def extract_modules_from_decomposition(
     Returns:
         Dict with module IDs: {"hook_id": uuid, "promise_id": uuid, "proof_id": uuid}
     """
-    activity.logger.info(
-        f"Extracting modules from decomposition: creative={creative_id}, "
-        f"decomposed={decomposed_id}"
+    log = get_activity_logger(
+        creative_id=creative_id,
+        decomposed_id=decomposed_id,
+        vertical=vertical,
+        geo=geo,
     )
+    log.info("Extracting modules from decomposition")
 
     # 1. Get parent creative metrics for cold start
     metrics = await get_creative_metrics(creative_id)
-    activity.logger.info(f"Source creative metrics: {metrics}")
+    log.info("Source creative metrics loaded", metrics=metrics)
 
     result = {
         "hook_id": None,
@@ -367,9 +376,7 @@ async def extract_modules_from_decomposition(
 
         # Skip if no meaningful content
         if not content or all(v is None for v in content.values()):
-            activity.logger.warning(
-                f"No content for {module_type} in decomposed={decomposed_id}"
-            )
+            log.warning("No content for module type", module_type=module_type)
             continue
 
         # Compute deduplication key
@@ -393,5 +400,10 @@ async def extract_modules_from_decomposition(
 
         result[f"{module_type}_id"] = module["id"]
 
-    activity.logger.info(f"Module extraction complete: {result}")
+    log.info(
+        "Module extraction complete",
+        hook_id=result["hook_id"],
+        promise_id=result["promise_id"],
+        proof_id=result["proof_id"],
+    )
     return result

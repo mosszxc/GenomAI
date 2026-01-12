@@ -14,6 +14,7 @@ Replaces n8n workflows:
 """
 
 import re
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Optional, List
 from temporalio import workflow
@@ -161,6 +162,29 @@ def is_video_url(text: str) -> bool:
     return any(re.search(pattern, text_lower) for pattern in VIDEO_URL_PATTERNS)
 
 
+@dataclass(frozen=True)
+class WorkflowStateSnapshot:
+    """
+    Immutable state snapshot for thread-safe query access.
+
+    Signal handlers create new snapshot instances atomically.
+    Query handlers read current snapshot without race conditions.
+    frozen=True ensures immutability after creation.
+    """
+
+    state: str
+    telegram_id: str = ""
+    buyer_id: Optional[str] = None
+    name: Optional[str] = None
+    geos: tuple = field(default_factory=tuple)  # Immutable tuple instead of list
+    verticals: tuple = field(default_factory=tuple)
+    keitaro_source: Optional[str] = None
+    campaigns_count: int = 0
+    videos_count: int = 0
+    error: Optional[str] = None
+    pending_message_exists: bool = False
+
+
 @workflow.defn
 class BuyerOnboardingWorkflow:
     """
@@ -188,6 +212,43 @@ class BuyerOnboardingWorkflow:
         self._campaigns_count: int = 0
         self._videos_count: int = 0
         self._error: Optional[str] = None
+
+        # Immutable snapshot for thread-safe query access (fixes race condition #483)
+        self._snapshot = WorkflowStateSnapshot(
+            state=OnboardingState.AWAITING_NAME.value
+        )
+
+    def _update_snapshot(self) -> None:
+        """
+        Create new immutable snapshot atomically.
+
+        This is the ONLY place where _snapshot is modified.
+        Single assignment = atomic operation in Python.
+        Query handlers read _snapshot safely without locks.
+        """
+        self._snapshot = WorkflowStateSnapshot(
+            state=self._state.value,
+            telegram_id=self._telegram_id,
+            buyer_id=self._buyer_id,
+            name=self._name,
+            geos=tuple(self._geos),
+            verticals=tuple(self._verticals),
+            keitaro_source=self._keitaro_source,
+            campaigns_count=self._campaigns_count,
+            videos_count=self._videos_count,
+            error=self._error,
+            pending_message_exists=self._pending_message is not None,
+        )
+
+    def _set_state(self, new_state: OnboardingState) -> None:
+        """
+        Set workflow state with atomic snapshot update.
+
+        All state transitions MUST go through this method
+        to ensure query handlers see consistent state.
+        """
+        self._state = new_state
+        self._update_snapshot()
 
     async def _log_outgoing(self, message: str, step: str) -> None:
         """Log outgoing bot message."""
@@ -268,7 +329,7 @@ class BuyerOnboardingWorkflow:
                     self._geos = existing_buyer.geos or []
                     self._verticals = existing_buyer.verticals or []
                     self._keitaro_source = existing_buyer.keitaro_source
-                self._state = OnboardingState.COMPLETED
+                self._set_state(OnboardingState.COMPLETED)
 
                 welcome_back_msg = f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."
                 await workflow.execute_activity(
@@ -282,7 +343,7 @@ class BuyerOnboardingWorkflow:
                 return self._build_result()
 
             # Step 1: Send welcome message and wait for name
-            self._state = OnboardingState.AWAITING_NAME
+            self._set_state(OnboardingState.AWAITING_NAME)
             await workflow.execute_activity(
                 send_telegram_message,
                 args=[self._chat_id, MESSAGES["welcome"]],
@@ -308,7 +369,7 @@ class BuyerOnboardingWorkflow:
             self._pending_message = None
 
             # Step 2: Ask for GEOs
-            self._state = OnboardingState.AWAITING_GEO
+            self._set_state(OnboardingState.AWAITING_GEO)
             ask_geo_msg = MESSAGES["ask_geo"].format(name=self._name)
             await workflow.execute_activity(
                 send_telegram_message,
@@ -348,7 +409,7 @@ class BuyerOnboardingWorkflow:
                 await self._log_outgoing(MESSAGES["invalid_geo"], "invalid_geo")
 
             # Step 3: Ask for verticals
-            self._state = OnboardingState.AWAITING_VERTICAL
+            self._set_state(OnboardingState.AWAITING_VERTICAL)
             ask_vertical_msg = MESSAGES["ask_vertical"].format(
                 geos=", ".join(self._geos)
             )
@@ -392,7 +453,7 @@ class BuyerOnboardingWorkflow:
                 )
 
             # Step 4: Ask for Keitaro source with validation
-            self._state = OnboardingState.AWAITING_KEITARO
+            self._set_state(OnboardingState.AWAITING_KEITARO)
             ask_keitaro_msg = MESSAGES["ask_keitaro"].format(
                 verticals=", ".join(self._verticals)
             )
@@ -478,12 +539,12 @@ class BuyerOnboardingWorkflow:
                     await self._log_outgoing(
                         MESSAGES["sub10_retries_exhausted"], "sub10_retries_exhausted"
                     )
-                    self._state = OnboardingState.CANCELLED
                     self._error = "sub10 validation failed after max retries"
+                    self._set_state(OnboardingState.CANCELLED)
                     return self._build_result()
 
             # Step 5: Create buyer and load history
-            self._state = OnboardingState.LOADING_HISTORY
+            self._set_state(OnboardingState.LOADING_HISTORY)
             loading_msg = MESSAGES["loading_history"].format(
                 keitaro_source=self._keitaro_source
             )
@@ -527,6 +588,7 @@ class BuyerOnboardingWorkflow:
                 id=f"historical-import-{self._buyer_id}",
                 task_queue="telegram",
                 execution_timeout=timedelta(hours=2),
+                parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
             )
 
             self._campaigns_count = (
@@ -545,7 +607,7 @@ class BuyerOnboardingWorkflow:
             )
 
             if pending_campaigns:
-                self._state = OnboardingState.AWAITING_VIDEOS
+                self._set_state(OnboardingState.AWAITING_VIDEOS)
                 total_campaigns = len(pending_campaigns)
 
                 # Send intro message
@@ -628,6 +690,7 @@ class BuyerOnboardingWorkflow:
                                 ],
                                 id=f"onboarding-video-{self._buyer_id}-{campaign['campaign_id']}",
                                 task_queue="telegram",
+                                parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
                             )
 
                             self._videos_count += 1
@@ -665,7 +728,7 @@ class BuyerOnboardingWorkflow:
                 await self._log_outgoing(MESSAGES["no_campaigns"], "no_campaigns")
 
             # Step 7: Completed
-            self._state = OnboardingState.COMPLETED
+            self._set_state(OnboardingState.COMPLETED)
             completed_msg = MESSAGES["completed"].format(
                 name=self._name,
                 geos=", ".join(self._geos),
@@ -686,13 +749,13 @@ class BuyerOnboardingWorkflow:
 
         except Exception as e:
             self._error = str(e)
-            self._state = OnboardingState.CANCELLED
+            self._set_state(OnboardingState.CANCELLED)
             return self._build_result()
 
     async def _handle_timeout(self) -> BuyerOnboardingResult:
         """Handle step timeout."""
-        self._state = OnboardingState.TIMED_OUT
         self._error = "Session timed out"
+        self._set_state(OnboardingState.TIMED_OUT)
 
         await workflow.execute_activity(
             send_telegram_message,
@@ -721,33 +784,51 @@ class BuyerOnboardingWorkflow:
         Signal handler for user messages.
 
         Called by Telegram webhook when user sends a message.
+        Updates snapshot atomically after state change.
 
         Args:
             message: BuyerMessage with text and metadata
         """
         self._pending_message = message
+        self._update_snapshot()  # Atomic snapshot update
 
     @workflow.signal
     async def cancel(self) -> None:
-        """Cancel the onboarding workflow."""
-        self._state = OnboardingState.CANCELLED
+        """
+        Cancel the onboarding workflow.
+
+        Uses _set_state for atomic snapshot update.
+        """
+        self._set_state(OnboardingState.CANCELLED)
 
     @workflow.query
     def get_state(self) -> str:
-        """Query current onboarding state."""
-        return self._state.value
+        """
+        Query current onboarding state.
+
+        Reads from immutable snapshot for thread-safe access.
+        No locks needed - snapshot is replaced atomically.
+        """
+        return self._snapshot.state
 
     @workflow.query
     def get_progress(self) -> dict:
-        """Query workflow progress details."""
+        """
+        Query workflow progress details.
+
+        Reads from immutable snapshot for thread-safe access.
+        Snapshot is frozen dataclass - no mutation possible.
+        Lists converted to tuples in snapshot, converted back here.
+        """
+        snapshot = self._snapshot  # Single read - atomic
         return {
-            "state": self._state.value,
-            "telegram_id": self._telegram_id,
-            "buyer_id": self._buyer_id,
-            "name": self._name,
-            "geos": self._geos,
-            "verticals": self._verticals,
-            "keitaro_source": self._keitaro_source,
-            "campaigns_count": self._campaigns_count,
-            "error": self._error,
+            "state": snapshot.state,
+            "telegram_id": snapshot.telegram_id,
+            "buyer_id": snapshot.buyer_id,
+            "name": snapshot.name,
+            "geos": list(snapshot.geos),  # Convert tuple back to list for API compat
+            "verticals": list(snapshot.verticals),
+            "keitaro_source": snapshot.keitaro_source,
+            "campaigns_count": snapshot.campaigns_count,
+            "error": snapshot.error,
         }

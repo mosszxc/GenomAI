@@ -10,7 +10,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
-import httpx
+from src.core.http_client import get_http_client
 
 
 # Z-score for 95% confidence interval
@@ -144,13 +144,13 @@ async def get_component_confidence_data(
     if component_type:
         query += f"&component_type=eq.{component_type}"
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(query, headers=headers)
+    client = get_http_client()
+    response = await client.get(query, headers=headers)
 
-        if response.status_code != 200:
-            return []
+    if response.status_code != 200:
+        return []
 
-        components = response.json()
+    components = response.json()
 
     results = []
     for comp in components:
@@ -266,18 +266,18 @@ async def get_available_component_types() -> list[str]:
         "Accept-Profile": "genomai",
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{supabase_url}/rest/v1/component_learnings"
-            f"?select=component_type"
-            f"&sample_size=gt.0",
-            headers=headers,
-        )
+    client = get_http_client()
+    response = await client.get(
+        f"{supabase_url}/rest/v1/component_learnings"
+        f"?select=component_type"
+        f"&sample_size=gt.0",
+        headers=headers,
+    )
 
-        if response.status_code != 200:
-            return []
+    if response.status_code != 200:
+        return []
 
-        rows = response.json()
+    rows = response.json()
 
     # Get unique types
     types = sorted(set(r["component_type"] for r in rows if r.get("component_type")))

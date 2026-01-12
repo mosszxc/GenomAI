@@ -14,11 +14,10 @@ from typing import Optional
 from dataclasses import dataclass
 
 from temporalio import activity
+import httpx
 
-from temporal.config import settings
-
-
-SCHEMA = "genomai"
+from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 
 
 @dataclass
@@ -72,77 +71,66 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
     Returns:
         UpdateModuleStatsOutput with new stats
     """
-    import httpx
 
     activity.logger.info(
         f"Updating module stats: {input.module_id}, win={input.is_win}"
     )
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Profile": SCHEMA,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers(for_write=True)
 
     # First get current stats
     get_url = (
-        f"{settings.supabase.url}/rest/v1/module_bank"
+        f"{sb.rest_url}/module_bank"
         f"?id=eq.{input.module_id}&select=sample_size,win_count,loss_count,total_spend,total_revenue"
     )
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(get_url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+        client = get_http_client()
+        response = await client.get(get_url, headers=headers, timeout=15.0)
+        response.raise_for_status()
+        data = response.json()
 
-            if not data:
-                activity.logger.warning(f"Module not found: {input.module_id}")
-                return UpdateModuleStatsOutput(
-                    success=False,
-                    module_id=input.module_id,
-                    error=f"Module not found: {input.module_id}",
-                )
-
-            current = data[0]
-            sample_size = (current.get("sample_size") or 0) + 1
-            win_count = (current.get("win_count") or 0) + (1 if input.is_win else 0)
-            loss_count = (current.get("loss_count") or 0) + (0 if input.is_win else 1)
-            total_spend = float(current.get("total_spend") or 0) + input.spend
-            total_revenue = float(current.get("total_revenue") or 0) + input.revenue
-
-            # Update stats
-            update_url = (
-                f"{settings.supabase.url}/rest/v1/module_bank?id=eq.{input.module_id}"
-            )
-            update_payload = {
-                "sample_size": sample_size,
-                "win_count": win_count,
-                "loss_count": loss_count,
-                "total_spend": total_spend,
-                "total_revenue": total_revenue,
-                "updated_at": datetime.utcnow().isoformat(),
-            }
-
-            response = await client.patch(
-                update_url, headers=headers, json=update_payload
-            )
-            response.raise_for_status()
-
-            activity.logger.info(
-                f"Module stats updated: {input.module_id}, "
-                f"sample_size={sample_size}, win_count={win_count}"
-            )
-
+        if not data:
+            activity.logger.warning(f"Module not found: {input.module_id}")
             return UpdateModuleStatsOutput(
-                success=True,
+                success=False,
                 module_id=input.module_id,
-                new_sample_size=sample_size,
-                new_win_count=win_count,
+                error=f"Module not found: {input.module_id}",
             )
+
+        current = data[0]
+        sample_size = (current.get("sample_size") or 0) + 1
+        win_count = (current.get("win_count") or 0) + (1 if input.is_win else 0)
+        loss_count = (current.get("loss_count") or 0) + (0 if input.is_win else 1)
+        total_spend = float(current.get("total_spend") or 0) + input.spend
+        total_revenue = float(current.get("total_revenue") or 0) + input.revenue
+
+        # Update stats
+        update_url = f"{sb.rest_url}/module_bank?id=eq.{input.module_id}"
+        update_payload = {
+            "sample_size": sample_size,
+            "win_count": win_count,
+            "loss_count": loss_count,
+            "total_spend": total_spend,
+            "total_revenue": total_revenue,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+        response = await client.patch(update_url, headers=headers, json=update_payload)
+        response.raise_for_status()
+
+        activity.logger.info(
+            f"Module stats updated: {input.module_id}, "
+            f"sample_size={sample_size}, win_count={win_count}"
+        )
+
+        return UpdateModuleStatsOutput(
+            success=True,
+            module_id=input.module_id,
+            new_sample_size=sample_size,
+            new_win_count=win_count,
+        )
 
     except httpx.HTTPStatusError as e:
         activity.logger.error(f"HTTP error updating module: {e.response.status_code}")
@@ -200,7 +188,6 @@ async def update_compatibility_stats(
     Returns:
         UpdateCompatibilityOutput with new stats
     """
-    import httpx
 
     # Ensure consistent ordering (smaller UUID first)
     module_a_id, module_b_id = sorted([input.module_a_id, input.module_b_id])
@@ -209,79 +196,70 @@ async def update_compatibility_stats(
         f"Updating compatibility: {module_a_id} <-> {module_b_id}, win={input.is_win}"
     )
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Profile": SCHEMA,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers(for_write=True)
 
     # Check if pair exists
     get_url = (
-        f"{settings.supabase.url}/rest/v1/module_compatibility"
+        f"{sb.rest_url}/module_compatibility"
         f"?module_a_id=eq.{module_a_id}&module_b_id=eq.{module_b_id}"
         f"&select=id,sample_size,win_count"
     )
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(get_url, headers=headers)
+        client = get_http_client()
+        response = await client.get(get_url, headers=headers, timeout=15.0)
+        response.raise_for_status()
+        data = response.json()
+
+        if data:
+            # Update existing
+            current = data[0]
+            sample_size = (current.get("sample_size") or 0) + 1
+            win_count = (current.get("win_count") or 0) + (1 if input.is_win else 0)
+            record_id = current["id"]
+
+            update_url = f"{sb.rest_url}/module_compatibility?id=eq.{record_id}"
+            update_payload = {
+                "sample_size": sample_size,
+                "win_count": win_count,
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+
+            response = await client.patch(
+                update_url, headers=headers, json=update_payload
+            )
             response.raise_for_status()
-            data = response.json()
+        else:
+            # Create new
+            sample_size = 1
+            win_count = 1 if input.is_win else 0
 
-            if data:
-                # Update existing
-                current = data[0]
-                sample_size = (current.get("sample_size") or 0) + 1
-                win_count = (current.get("win_count") or 0) + (1 if input.is_win else 0)
-                record_id = current["id"]
+            create_url = f"{sb.rest_url}/module_compatibility"
+            create_payload = {
+                "module_a_id": module_a_id,
+                "module_b_id": module_b_id,
+                "sample_size": sample_size,
+                "win_count": win_count,
+            }
 
-                update_url = (
-                    f"{settings.supabase.url}/rest/v1/module_compatibility"
-                    f"?id=eq.{record_id}"
-                )
-                update_payload = {
-                    "sample_size": sample_size,
-                    "win_count": win_count,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-
-                response = await client.patch(
-                    update_url, headers=headers, json=update_payload
-                )
-                response.raise_for_status()
-            else:
-                # Create new
-                sample_size = 1
-                win_count = 1 if input.is_win else 0
-
-                create_url = f"{settings.supabase.url}/rest/v1/module_compatibility"
-                create_payload = {
-                    "module_a_id": module_a_id,
-                    "module_b_id": module_b_id,
-                    "sample_size": sample_size,
-                    "win_count": win_count,
-                }
-
-                response = await client.post(
-                    create_url, headers=headers, json=create_payload
-                )
-                response.raise_for_status()
-
-            activity.logger.info(
-                f"Compatibility updated: {module_a_id} <-> {module_b_id}, "
-                f"sample_size={sample_size}, win_count={win_count}"
+            response = await client.post(
+                create_url, headers=headers, json=create_payload
             )
+            response.raise_for_status()
 
-            return UpdateCompatibilityOutput(
-                success=True,
-                module_a_id=module_a_id,
-                module_b_id=module_b_id,
-                new_sample_size=sample_size,
-                new_win_count=win_count,
-            )
+        activity.logger.info(
+            f"Compatibility updated: {module_a_id} <-> {module_b_id}, "
+            f"sample_size={sample_size}, win_count={win_count}"
+        )
+
+        return UpdateCompatibilityOutput(
+            success=True,
+            module_a_id=module_a_id,
+            module_b_id=module_b_id,
+            new_sample_size=sample_size,
+            new_win_count=win_count,
+        )
 
     except httpx.HTTPStatusError as e:
         activity.logger.error(
@@ -337,85 +315,78 @@ async def get_modules_for_creative(
     Returns:
         GetModulesForCreativeOutput with module IDs
     """
-    import httpx
 
     activity.logger.info(f"Getting modules for creative: {input.creative_id}")
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers()
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            # Get idea_id from decomposed_creatives
-            # Flow: creative_id → decomposed_creatives → idea_id
-            decomposed_url = (
-                f"{settings.supabase.url}/rest/v1/decomposed_creatives"
-                f"?creative_id=eq.{input.creative_id}"
-                f"&select=idea_id"
-                f"&limit=1"
-            )
-            response = await client.get(decomposed_url, headers=headers)
-            response.raise_for_status()
-            decomposed = response.json()
+        client = get_http_client()
+        # Get idea_id from decomposed_creatives
+        # Flow: creative_id → decomposed_creatives → idea_id
+        decomposed_url = (
+            f"{sb.rest_url}/decomposed_creatives"
+            f"?creative_id=eq.{input.creative_id}"
+            f"&select=idea_id"
+            f"&limit=1"
+        )
+        response = await client.get(decomposed_url, headers=headers, timeout=15.0)
+        response.raise_for_status()
+        decomposed = response.json()
 
-            if not decomposed or not decomposed[0].get("idea_id"):
-                activity.logger.info(
-                    f"No decomposed creative with idea for creative: {input.creative_id}"
-                )
-                return GetModulesForCreativeOutput(
-                    creative_id=input.creative_id,
-                    module_ids=[],
-                )
-
-            idea_id = decomposed[0]["idea_id"]
-
-            # Get hypothesis with module IDs via idea_id
-            hypothesis_url = (
-                f"{settings.supabase.url}/rest/v1/hypotheses"
-                f"?idea_id=eq.{idea_id}"
-                f"&select=hook_module_id,promise_module_id,proof_module_id,generation_mode"
-                f"&order=created_at.desc"
-                f"&limit=1"
-            )
-            response = await client.get(hypothesis_url, headers=headers)
-            response.raise_for_status()
-            hypotheses = response.json()
-
-            if not hypotheses:
-                activity.logger.info(f"No hypothesis found for idea: {idea_id}")
-                return GetModulesForCreativeOutput(
-                    creative_id=input.creative_id,
-                    module_ids=[],
-                )
-
-            hypothesis = hypotheses[0]
-            hook_id = hypothesis.get("hook_module_id")
-            promise_id = hypothesis.get("promise_module_id")
-            proof_id = hypothesis.get("proof_module_id")
-            generation_mode = hypothesis.get("generation_mode")
-
-            # Collect non-null module IDs
-            module_ids = [
-                mid for mid in [hook_id, promise_id, proof_id] if mid is not None
-            ]
-
+        if not decomposed or not decomposed[0].get("idea_id"):
             activity.logger.info(
-                f"Found {len(module_ids)} modules for creative {input.creative_id}: "
-                f"mode={generation_mode}"
+                f"No decomposed creative with idea for creative: {input.creative_id}"
             )
-
             return GetModulesForCreativeOutput(
                 creative_id=input.creative_id,
-                module_ids=module_ids,
-                hook_module_id=hook_id,
-                promise_module_id=promise_id,
-                proof_module_id=proof_id,
-                generation_mode=generation_mode,
+                module_ids=[],
             )
+
+        idea_id = decomposed[0]["idea_id"]
+
+        # Get hypothesis with module IDs via idea_id
+        hypothesis_url = (
+            f"{sb.rest_url}/hypotheses"
+            f"?idea_id=eq.{idea_id}"
+            f"&select=hook_module_id,promise_module_id,proof_module_id,generation_mode"
+            f"&order=created_at.desc"
+            f"&limit=1"
+        )
+        response = await client.get(hypothesis_url, headers=headers, timeout=15.0)
+        response.raise_for_status()
+        hypotheses = response.json()
+
+        if not hypotheses:
+            activity.logger.info(f"No hypothesis found for idea: {idea_id}")
+            return GetModulesForCreativeOutput(
+                creative_id=input.creative_id,
+                module_ids=[],
+            )
+
+        hypothesis = hypotheses[0]
+        hook_id = hypothesis.get("hook_module_id")
+        promise_id = hypothesis.get("promise_module_id")
+        proof_id = hypothesis.get("proof_module_id")
+        generation_mode = hypothesis.get("generation_mode")
+
+        # Collect non-null module IDs
+        module_ids = [mid for mid in [hook_id, promise_id, proof_id] if mid is not None]
+
+        activity.logger.info(
+            f"Found {len(module_ids)} modules for creative {input.creative_id}: "
+            f"mode={generation_mode}"
+        )
+
+        return GetModulesForCreativeOutput(
+            creative_id=input.creative_id,
+            module_ids=module_ids,
+            hook_module_id=hook_id,
+            promise_module_id=promise_id,
+            proof_module_id=proof_id,
+            generation_mode=generation_mode,
+        )
 
     except httpx.HTTPStatusError as e:
         activity.logger.error(f"HTTP error getting modules: {e.response.status_code}")
@@ -581,19 +552,14 @@ async def process_module_learning_batch(
     Returns:
         ProcessModuleLearningBatchOutput with counts
     """
-    import httpx
-    from datetime import datetime, timedelta as td
+    from datetime import timedelta as td
 
     activity.logger.info(
         f"Processing module learning batch (lookback: {input.hours_lookback}h)"
     )
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers()
 
     errors: list[str] = []
     creatives_processed = 0
@@ -604,69 +570,69 @@ async def process_module_learning_batch(
     TARGET_CPA = 20.0
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Get recently processed outcomes
-            cutoff = datetime.utcnow() - td(hours=input.hours_lookback)
-            cutoff_iso = cutoff.isoformat()
+        client = get_http_client()
+        # Get recently processed outcomes
+        cutoff = datetime.utcnow() - td(hours=input.hours_lookback)
+        cutoff_iso = cutoff.isoformat()
 
-            outcomes_url = (
-                f"{settings.supabase.url}/rest/v1/outcome_aggregates"
-                f"?learning_applied=eq.true"
-                f"&created_at=gte.{cutoff_iso}"
-                f"&select=creative_id,cpa,spend"
-                f"&limit=100"
-            )
-            response = await client.get(outcomes_url, headers=headers)
-            response.raise_for_status()
-            outcomes = response.json()
+        outcomes_url = (
+            f"{sb.rest_url}/outcome_aggregates"
+            f"?learning_applied=eq.true"
+            f"&created_at=gte.{cutoff_iso}"
+            f"&select=creative_id,cpa,spend"
+            f"&limit=100"
+        )
+        response = await client.get(outcomes_url, headers=headers, timeout=30.0)
+        response.raise_for_status()
+        outcomes = response.json()
 
-            activity.logger.info(f"Found {len(outcomes)} recent outcomes to process")
+        activity.logger.info(f"Found {len(outcomes)} recent outcomes to process")
 
-            # Deduplicate by creative_id (take latest outcome per creative)
-            creative_outcomes: dict[str, dict] = {}
-            for outcome in outcomes:
-                creative_id = outcome.get("creative_id")
-                if creative_id and creative_id not in creative_outcomes:
-                    creative_outcomes[creative_id] = outcome
+        # Deduplicate by creative_id (take latest outcome per creative)
+        creative_outcomes: dict[str, dict] = {}
+        for outcome in outcomes:
+            creative_id = outcome.get("creative_id")
+            if creative_id and creative_id not in creative_outcomes:
+                creative_outcomes[creative_id] = outcome
 
-            # Process each creative
-            for creative_id, outcome in creative_outcomes.items():
-                try:
-                    # Get modules for this creative
-                    modules_result = await get_modules_for_creative(
-                        GetModulesForCreativeInput(creative_id=creative_id)
+        # Process each creative
+        for creative_id, outcome in creative_outcomes.items():
+            try:
+                # Get modules for this creative
+                modules_result = await get_modules_for_creative(
+                    GetModulesForCreativeInput(creative_id=creative_id)
+                )
+
+                if not modules_result.module_ids:
+                    continue  # No modules associated with this creative
+
+                # Determine win/loss based on CPA
+                cpa = float(outcome.get("cpa") or 0)
+                spend = float(outcome.get("spend") or 0)
+                is_win = cpa > 0 and cpa < TARGET_CPA
+
+                # Process module learning
+                learning_result = await process_module_learning(
+                    ProcessModuleLearningInput(
+                        creative_id=creative_id,
+                        module_ids=modules_result.module_ids,
+                        is_win=is_win,
+                        spend=spend,
+                        revenue=spend / cpa if cpa > 0 else 0,  # Estimate revenue
                     )
+                )
 
-                    if not modules_result.module_ids:
-                        continue  # No modules associated with this creative
-
-                    # Determine win/loss based on CPA
-                    cpa = float(outcome.get("cpa") or 0)
-                    spend = float(outcome.get("spend") or 0)
-                    is_win = cpa > 0 and cpa < TARGET_CPA
-
-                    # Process module learning
-                    learning_result = await process_module_learning(
-                        ProcessModuleLearningInput(
-                            creative_id=creative_id,
-                            module_ids=modules_result.module_ids,
-                            is_win=is_win,
-                            spend=spend,
-                            revenue=spend / cpa if cpa > 0 else 0,  # Estimate revenue
-                        )
+                if learning_result.success:
+                    creatives_processed += 1
+                    total_modules_updated += learning_result.modules_updated
+                    total_compatibilities_updated += (
+                        learning_result.compatibilities_updated
                     )
+                else:
+                    errors.extend(learning_result.errors)
 
-                    if learning_result.success:
-                        creatives_processed += 1
-                        total_modules_updated += learning_result.modules_updated
-                        total_compatibilities_updated += (
-                            learning_result.compatibilities_updated
-                        )
-                    else:
-                        errors.extend(learning_result.errors)
-
-                except Exception as e:
-                    errors.append(f"Creative {creative_id}: {str(e)}")
+            except Exception as e:
+                errors.append(f"Creative {creative_id}: {str(e)}")
 
         activity.logger.info(
             f"Module learning batch complete: {creatives_processed} creatives, "

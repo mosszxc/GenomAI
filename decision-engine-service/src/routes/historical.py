@@ -11,6 +11,8 @@ import logging
 from typing import Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -184,40 +186,32 @@ async def get_pending_imports(buyer_id: str):
     Returns:
         List of pending import records
     """
-    import httpx
-    import os
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return {"success": False, "error": "Supabase not configured"}
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-    }
+    headers = sb.get_headers()
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{supabase_url}/rest/v1/historical_import_queue"
-                f"?buyer_id=eq.{buyer_id}"
-                f"&status=in.(pending_video,ready,processing)"
-                f"&order=created_at.asc"
-                f"&limit=50",
-                headers=headers,
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            data = response.json()
+        client = get_http_client()
+        response = await client.get(
+            f"{sb.rest_url}/historical_import_queue"
+            f"?buyer_id=eq.{buyer_id}"
+            f"&status=in.(pending_video,ready,processing)"
+            f"&order=created_at.asc"
+            f"&limit=50",
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
 
-            return {
-                "success": True,
-                "count": len(data),
-                "imports": data,
-            }
+        return {
+            "success": True,
+            "count": len(data),
+            "imports": data,
+        }
 
     except Exception as e:
         logger.error(f"Failed to get pending imports: {e}")

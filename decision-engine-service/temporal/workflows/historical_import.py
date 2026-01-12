@@ -291,6 +291,7 @@ class CreativeRegistrationWorkflow:
                 id=f"creative-pipeline-{self._creative_id}",
                 task_queue="creative-pipeline",
                 execution_timeout=timedelta(hours=1),
+                parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
             )
 
             self._status = "processed"
@@ -466,6 +467,7 @@ class HistoricalVideoHandlerWorkflow:
                 id=f"historical-creative-pipeline-{self._creative_id}",
                 task_queue="creative-pipeline",
                 execution_timeout=timedelta(hours=1),
+                parent_close_policy=workflow.ParentClosePolicy.TERMINATE,
             )
 
             # Step 7: Update queue status to completed

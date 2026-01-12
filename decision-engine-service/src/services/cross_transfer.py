@@ -11,7 +11,7 @@ Issue: Inspiration System
 """
 
 import os
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional, List
 from dataclasses import dataclass
 from datetime import datetime
@@ -120,18 +120,18 @@ async def find_transfer_candidates(
     ]
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        # Get high performing components from other segments
-        response = await client.get(
-            f"{rest_url}/component_learnings?"
-            f"{filter_str}"
-            f"&select=id,component_type,component_value,win_rate,sample_size,avatar_id,geo"
-            f"&order=win_rate.desc"
-            f"&limit=50",  # Get more than needed for filtering
-            headers=headers,
-        )
-        response.raise_for_status()
-        source_components = response.json()
+    client = get_http_client()
+    # Get high performing components from other segments
+    response = await client.get(
+        f"{rest_url}/component_learnings?"
+        f"{filter_str}"
+        f"&select=id,component_type,component_value,win_rate,sample_size,avatar_id,geo"
+        f"&order=win_rate.desc"
+        f"&limit=50",  # Get more than needed for filtering
+        headers=headers,
+    )
+    response.raise_for_status()
+    source_components = response.json()
 
     if not source_components:
         return []
@@ -139,55 +139,55 @@ async def find_transfer_candidates(
     # Check which ones are missing or low-sample in target segment
     candidates = []
 
-    async with httpx.AsyncClient() as client:
-        for comp in source_components:
-            # Build filter for target segment
-            target_filters = [
-                f"component_type=eq.{comp['component_type']}",
-                f"component_value=eq.{comp['component_value']}",
-            ]
-            if target_avatar_id:
-                target_filters.append(f"avatar_id=eq.{target_avatar_id}")
-            else:
-                target_filters.append("avatar_id=is.null")
-            if target_geo:
-                target_filters.append(f"geo=eq.{target_geo}")
+    client = get_http_client()
+    for comp in source_components:
+        # Build filter for target segment
+        target_filters = [
+            f"component_type=eq.{comp['component_type']}",
+            f"component_value=eq.{comp['component_value']}",
+        ]
+        if target_avatar_id:
+            target_filters.append(f"avatar_id=eq.{target_avatar_id}")
+        else:
+            target_filters.append("avatar_id=is.null")
+        if target_geo:
+            target_filters.append(f"geo=eq.{target_geo}")
 
-            target_filter_str = "&".join(target_filters)
+        target_filter_str = "&".join(target_filters)
 
-            # Check if exists in target
-            response = await client.get(
-                f"{rest_url}/component_learnings?{target_filter_str}&select=id,sample_size",
-                headers=headers,
+        # Check if exists in target
+        response = await client.get(
+            f"{rest_url}/component_learnings?{target_filter_str}&select=id,sample_size",
+            headers=headers,
+        )
+        response.raise_for_status()
+        target_data = response.json()
+
+        # Skip if target already has sufficient data
+        if (
+            target_data
+            and target_data[0].get("sample_size", 0) >= MAX_TARGET_SAMPLE_SIZE
+        ):
+            continue
+
+        # This is a candidate!
+        source_win_rate = float(comp["win_rate"] or 0)
+        candidates.append(
+            TransferCandidate(
+                component_type=comp["component_type"],
+                component_value=comp["component_value"],
+                source_win_rate=source_win_rate,
+                source_sample_size=comp["sample_size"],
+                source_avatar_id=comp.get("avatar_id"),
+                source_geo=comp.get("geo"),
+                target_avatar_id=target_avatar_id,
+                target_geo=target_geo,
+                transfer_confidence=source_win_rate * TRANSFER_CONFIDENCE_DISCOUNT,
             )
-            response.raise_for_status()
-            target_data = response.json()
+        )
 
-            # Skip if target already has sufficient data
-            if (
-                target_data
-                and target_data[0].get("sample_size", 0) >= MAX_TARGET_SAMPLE_SIZE
-            ):
-                continue
-
-            # This is a candidate!
-            source_win_rate = float(comp["win_rate"] or 0)
-            candidates.append(
-                TransferCandidate(
-                    component_type=comp["component_type"],
-                    component_value=comp["component_value"],
-                    source_win_rate=source_win_rate,
-                    source_sample_size=comp["sample_size"],
-                    source_avatar_id=comp.get("avatar_id"),
-                    source_geo=comp.get("geo"),
-                    target_avatar_id=target_avatar_id,
-                    target_geo=target_geo,
-                    transfer_confidence=source_win_rate * TRANSFER_CONFIDENCE_DISCOUNT,
-                )
-            )
-
-            if len(candidates) >= limit:
-                break
+        if len(candidates) >= limit:
+            break
 
     # Sort by transfer confidence
     candidates.sort(key=lambda c: c.transfer_confidence, reverse=True)
@@ -243,14 +243,14 @@ async def inject_component(
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/component_learnings",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/component_learnings",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     return data[0] if data else {}
 
@@ -316,36 +316,34 @@ async def get_transfer_stats() -> dict:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Count total cross-transfers
-        response = await client.get(
-            f"{rest_url}/component_learnings?origin_type=eq.cross_transfer&select=id",
-            headers={**headers, "Prefer": "count=exact"},
-        )
-        total_transfers = int(
-            response.headers.get("content-range", "*/0").split("/")[-1]
-        )
+    client = get_http_client()
+    # Count total cross-transfers
+    response = await client.get(
+        f"{rest_url}/component_learnings?origin_type=eq.cross_transfer&select=id",
+        headers={**headers, "Prefer": "count=exact"},
+    )
+    total_transfers = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
-        # Get transfers with outcomes
-        response = await client.get(
-            f"{rest_url}/component_learnings?"
-            "origin_type=eq.cross_transfer"
-            "&sample_size=gt.0"
-            "&select=id,win_rate,sample_size",
-            headers=headers,
-        )
-        response.raise_for_status()
-        tested = response.json()
+    # Get transfers with outcomes
+    response = await client.get(
+        f"{rest_url}/component_learnings?"
+        "origin_type=eq.cross_transfer"
+        "&sample_size=gt.0"
+        "&select=id,win_rate,sample_size",
+        headers=headers,
+    )
+    response.raise_for_status()
+    tested = response.json()
 
-        # Calculate success rate
-        tested_count = len(tested)
-        if tested_count > 0:
-            avg_win_rate = sum(float(t["win_rate"] or 0) for t in tested) / tested_count
-            successful = sum(1 for t in tested if float(t.get("win_rate") or 0) >= 0.5)
-            success_rate = successful / tested_count
-        else:
-            avg_win_rate = 0
-            success_rate = 0
+    # Calculate success rate
+    tested_count = len(tested)
+    if tested_count > 0:
+        avg_win_rate = sum(float(t["win_rate"] or 0) for t in tested) / tested_count
+        successful = sum(1 for t in tested if float(t.get("win_rate") or 0) >= 0.5)
+        success_rate = successful / tested_count
+    else:
+        avg_win_rate = 0
+        success_rate = 0
 
     return {
         "total_transfers": total_transfers,
