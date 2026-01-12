@@ -1,30 +1,148 @@
-# Transcript Status Webhook
+# Transcript Webhook & Pipeline
 
-Вебхук для получения уведомлений об изменении статуса обработки транскриптов.
+Полный флоу транскрибации видео: от Google Drive до переведённого текста.
 
-## Обзор
+**Last tested:** 2026-01-12
 
-Supabase отправляет HTTP POST запрос на Render сервер при изменении статусов в таблице `genomai.transcripts`:
-- `ConvertStatus` (MP4 → MP3)
-- `TranscribeStatus` (MP3 → текст)
-- `TranslateStatus` (текст → перевод)
+---
+
+## Архитектура
 
 ```
-┌─────────────────┐     pg_net      ┌─────────────────────┐
-│    Supabase     │ ──────────────► │   Render Service    │
-│  transcripts    │   HTTP POST     │  /webhook/          │
-│  table UPDATE   │                 │  transcript-status  │
-└─────────────────┘                 └─────────────────────┘
+┌──────────────┐    INSERT     ┌──────────────┐    pg_cron     ┌──────────────┐
+│   Supabase   │ ◄──────────── │  User/API    │                │   n8n        │
+│  transcripts │               │              │                │  Workflows   │
+│  (queued)    │ ─────────────────────────────────────────────►│              │
+└──────────────┘                                               └──────────────┘
+       │                                                              │
+       │  UPDATE (status changes)                                     │
+       ▼                                                              ▼
+┌──────────────┐    pg_net     ┌──────────────┐              ┌──────────────┐
+│  pg_cron     │ ─────────────►│  n8n Render  │ ────────────►│ Render API   │
+│  worker      │   webhook     │  workflow    │  HTTP POST   │ /webhook/    │
+└──────────────┘               └──────────────┘              │ transcript-  │
+                                                             │ status       │
+                                                             └──────────────┘
 ```
 
-## Endpoint
+**Этапы обработки:**
+```
+ConvertStatus:   queued → processing → finish     (MP4 → MP3, Google Drive)
+TranscribeStatus: queued → sent → finish          (AssemblyAI)
+TranslateStatus:  queued → processing → finish    (перевод на русский)
+Status:           queued → processing → finish    (общий статус)
+```
+
+---
+
+## Как запустить транскрибацию
+
+### Вариант 1: Через SQL (напрямую)
+
+```sql
+-- 1. (Опционально) Создать креатив
+INSERT INTO genomai.creatives (video_url, source_type, status)
+VALUES ('https://drive.google.com/file/d/VIDEO_FILE_ID/view', 'user', 'pending')
+RETURNING id;
+
+-- 2. Создать запись в transcripts (ОБЯЗАТЕЛЬНЫЕ поля)
+INSERT INTO genomai.transcripts (
+  creative_id,      -- UUID креатива (опционально, но рекомендуется)
+  "Name",           -- Любое имя (ОБЯЗАТЕЛЬНО)
+  "VideoID",        -- Google Drive file ID (ОБЯЗАТЕЛЬНО)
+  "Status",         -- 'queued' (ОБЯЗАТЕЛЬНО)
+  "ConvertStatus",  -- 'queued' (ОБЯЗАТЕЛЬНО)
+  version
+) VALUES (
+  'uuid-from-step-1',           -- или NULL
+  'My Video Name',
+  '1_dYfD70ik8vAACQCLdJR3nVUR3vB9hQM',  -- извлечь из URL
+  'queued',
+  'queued',
+  1
+);
+```
+
+### Вариант 2: Через PostgREST API
+
+```bash
+# Создать transcript
+curl -X POST "https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/transcripts" \
+  -H "apikey: $SUPABASE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Content-Profile: genomai" \
+  -d '{
+    "creative_id": "uuid-or-null",
+    "Name": "My Video",
+    "VideoID": "GOOGLE_DRIVE_FILE_ID",
+    "Status": "queued",
+    "ConvertStatus": "queued",
+    "version": 1
+  }'
+```
+
+### Извлечение VideoID из URL
+
+```
+URL: https://drive.google.com/file/d/1_dYfD70ik8vAACQCLdJR3nVUR3vB9hQM/view
+                                     ▲
+                                     │
+VideoID: 1_dYfD70ik8vAACQCLdJR3nVUR3vB9hQM
+```
+
+---
+
+## Схема таблицы transcripts
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| `id` | bigint | PK, auto-increment |
+| `creative_id` | uuid | FK → creatives.id (nullable) |
+| `Name` | text | Имя для идентификации |
+| `VideoID` | text | Google Drive file ID |
+| `AudioID` | text | ID конвертированного MP3 (заполняется автоматически) |
+| `ConvertStatus` | text | queued → processing → finish |
+| `TranscribeStatus` | text | queued → sent → finish/error |
+| `TranslateStatus` | text | queued → processing → finish |
+| `Status` | text | Общий статус: queued → processing → finish |
+| `transcript_text` | text | Оригинальный транскрипт (AssemblyAI) |
+| `TranslateText` | text | Переведённый текст (русский) |
+| `RenderStatus` | text | Статус отправки в Render API |
+| `version` | int | Версия транскрипта |
+| `created_at` | timestamp | Время создания |
+
+---
+
+## n8n Workflows
+
+### 1. pg_cron Worker (в Supabase)
+- Выбирает записи с `ConvertStatus = 'queued'`
+- Вызывает n8n webhooks для обработки
+
+### 2. n8n Render Workflow
+- **ID:** `nDWwqaF58tPdJ2TZ`
+- **Webhook:** `https://kazamaqwe.app.n8n.cloud/webhook/Render`
+- **Функция:** Получает готовые транскрипты и отправляет в Render API
+
+```
+Webhook → Split Out → Update RenderStatus=processing
+                   → Loop → Edit Fields → HTTP Request (Render API)
+                         → Update RenderStatus=finish
+```
+
+---
+
+## Render API Endpoint
+
+### POST /webhook/transcript-status
 
 ```
 POST https://genomai.onrender.com/webhook/transcript-status
 Content-Type: application/json
 ```
 
-## Payload
+**Payload:**
 
 ```json
 {
