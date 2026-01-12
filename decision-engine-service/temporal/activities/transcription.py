@@ -17,6 +17,8 @@ from typing import Optional
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from temporal.tracing import get_activity_logger
+
 # Polling interval for transcription status (seconds)
 POLL_INTERVAL = 30
 
@@ -116,6 +118,8 @@ async def transcribe_via_n8n(
     """
     import httpx
 
+    log = get_activity_logger(creative_id=creative_id)
+
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -134,7 +138,7 @@ async def transcribe_via_n8n(
     }
 
     # Step 1: Create transcript record in DB
-    activity.logger.info(f"Creating transcript record for creative {creative_id}")
+    log.info("Creating transcript record")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Extract Google Drive file ID for VideoID field
@@ -178,14 +182,15 @@ async def transcribe_via_n8n(
                 if records:
                     transcript_db_id = records[0]["id"]
 
-        activity.logger.info(f"Created transcript record id={transcript_db_id}")
+        log.info("Created transcript record", transcript_db_id=transcript_db_id)
 
     # Step 2: Poll transcripts table for result
     # pg_cron worker will pick up the record and call webhooks:
     # ConvertStatus=queued → MP3MP4 webhook → AudioID
     # TranscribeStatus=queued → AudioTranscribe webhook → transcript_text
-    activity.logger.info(
-        f"Waiting for pg_cron worker to process transcript {transcript_db_id}"
+    log.info(
+        "Waiting for pg_cron worker to process transcript",
+        transcript_db_id=transcript_db_id,
     )
 
     elapsed = 0
@@ -222,7 +227,7 @@ async def transcribe_via_n8n(
                     status = record.get("TranscribeStatus", "")
 
                     if status == "finish":
-                        activity.logger.info("Transcription completed via n8n")
+                        log.info("Transcription completed via n8n")
 
                         # Update Status to finish to unblock pg_cron queue
                         # n8n webhook only sets TranscribeStatus, not Status
@@ -248,7 +253,7 @@ async def transcribe_via_n8n(
                             type="TRANSCRIPTION_ERROR",
                         )
 
-        activity.logger.info(f"Waiting for n8n transcription, elapsed={elapsed}s")
+        log.info("Waiting for n8n transcription", elapsed_seconds=elapsed)
         time.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
 
@@ -284,6 +289,8 @@ async def transcribe_audio(
     Raises:
         ApplicationError: If transcription fails or is cancelled
     """
+    log = get_activity_logger(creative_id=creative_id, audio_url=audio_url)
+
     # Check if Google Drive URL - use n8n path (MP4→MP3 conversion)
     if is_google_drive_url(audio_url):
         if not creative_id:
@@ -292,7 +299,7 @@ async def transcribe_audio(
                 type="MISSING_PARAM",
             )
 
-        activity.logger.info(f"Using n8n path for video URL: {audio_url}")
+        log.info("Using n8n path for video URL")
         return await transcribe_via_n8n(audio_url, creative_id)
 
     # Direct AssemblyAI path for non-Google Drive URLs
@@ -308,9 +315,9 @@ async def transcribe_audio(
     original_url = audio_url
     audio_url = convert_to_direct_url(audio_url)
     if audio_url != original_url:
-        activity.logger.info(f"Converted URL: {original_url} -> {audio_url}")
+        log.info("Converted URL for direct download", original_url=original_url)
 
-    activity.logger.info(f"Starting direct transcription for: {audio_url}")
+    log.info("Starting direct transcription")
 
     # Configure transcription
     config = aai.TranscriptionConfig(
@@ -323,7 +330,7 @@ async def transcribe_audio(
     transcript = transcriber.submit(audio_url)
     transcript_id = transcript.id
 
-    activity.logger.info(f"Submitted transcription job: {transcript_id}")
+    log.info("Submitted transcription job", transcript_id=transcript_id)
 
     # Send initial heartbeat with transcript ID for recovery
     activity.heartbeat({"transcript_id": transcript_id, "status": "submitted"})
@@ -333,7 +340,7 @@ async def transcribe_audio(
     while elapsed < MAX_WAIT_TIME:
         # Check for cancellation
         if activity.is_cancelled():
-            activity.logger.warning(f"Transcription cancelled: {transcript_id}")
+            log.warning("Transcription cancelled", transcript_id=transcript_id)
             raise ApplicationError(
                 f"Transcription cancelled: {transcript_id}",
                 type="CANCELLED",
@@ -343,7 +350,11 @@ async def transcribe_audio(
         transcript = aai.Transcript.get_by_id(transcript_id)
 
         if transcript.status == aai.TranscriptStatus.completed:
-            activity.logger.info(f"Transcription completed: {transcript_id}")
+            log.info(
+                "Transcription completed",
+                transcript_id=transcript_id,
+                words=len(transcript.text.split()) if transcript.text else 0,
+            )
             return {
                 "transcript_id": transcript_id,
                 "text": transcript.text,
@@ -353,7 +364,9 @@ async def transcribe_audio(
 
         if transcript.status == aai.TranscriptStatus.error:
             error_msg = transcript.error or "Unknown transcription error"
-            activity.logger.error(f"Transcription failed: {error_msg}")
+            log.error(
+                "Transcription failed", error=error_msg, transcript_id=transcript_id
+            )
             raise ApplicationError(
                 f"Transcription failed: {error_msg}",
                 type="TRANSCRIPTION_ERROR",
@@ -368,9 +381,11 @@ async def transcribe_audio(
             }
         )
 
-        activity.logger.info(
-            f"Transcription in progress: {transcript_id}, "
-            f"status={transcript.status}, elapsed={elapsed}s"
+        log.info(
+            "Transcription in progress",
+            transcript_id=transcript_id,
+            status=str(transcript.status),
+            elapsed_seconds=elapsed,
         )
 
         # Wait before next poll

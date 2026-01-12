@@ -15,6 +15,8 @@ from typing import Optional, Dict, Any
 from temporalio import activity
 import httpx
 
+from temporal.tracing import get_activity_logger
+
 # Schema name for all operations
 SCHEMA = "genomai"
 
@@ -274,8 +276,11 @@ async def upsert_module(
                     },
                 )
                 response.raise_for_status()
-                activity.logger.info(
-                    f"Updated module {existing_module['id']} with new metrics"
+                log = get_activity_logger(module_type=module_type)
+                log.info(
+                    "Updated module with new metrics",
+                    module_id=existing_module["id"],
+                    new_sample_size=new_sample,
                 )
 
             return existing_module
@@ -314,7 +319,8 @@ async def upsert_module(
         if not data:
             raise RuntimeError("Failed to insert module: no data returned")
 
-        activity.logger.info(f"Created new {module_type} module: {data[0]['id']}")
+        log = get_activity_logger(module_type=module_type)
+        log.info("Created new module", module_id=data[0]["id"])
         return data[0]
 
 
@@ -345,14 +351,17 @@ async def extract_modules_from_decomposition(
     Returns:
         Dict with module IDs: {"hook_id": uuid, "promise_id": uuid, "proof_id": uuid}
     """
-    activity.logger.info(
-        f"Extracting modules from decomposition: creative={creative_id}, "
-        f"decomposed={decomposed_id}"
+    log = get_activity_logger(
+        creative_id=creative_id,
+        decomposed_id=decomposed_id,
+        vertical=vertical,
+        geo=geo,
     )
+    log.info("Extracting modules from decomposition")
 
     # 1. Get parent creative metrics for cold start
     metrics = await get_creative_metrics(creative_id)
-    activity.logger.info(f"Source creative metrics: {metrics}")
+    log.info("Source creative metrics loaded", metrics=metrics)
 
     result = {
         "hook_id": None,
@@ -367,9 +376,7 @@ async def extract_modules_from_decomposition(
 
         # Skip if no meaningful content
         if not content or all(v is None for v in content.values()):
-            activity.logger.warning(
-                f"No content for {module_type} in decomposed={decomposed_id}"
-            )
+            log.warning("No content for module type", module_type=module_type)
             continue
 
         # Compute deduplication key
@@ -393,5 +400,10 @@ async def extract_modules_from_decomposition(
 
         result[f"{module_type}_id"] = module["id"]
 
-    activity.logger.info(f"Module extraction complete: {result}")
+    log.info(
+        "Module extraction complete",
+        hook_id=result["hook_id"],
+        promise_id=result["promise_id"],
+        proof_id=result["proof_id"],
+    )
     return result

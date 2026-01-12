@@ -21,6 +21,7 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from temporal.models.creative import CreativeInput, PipelineResult
     from temporal.models.decision import DecisionResult
+    from temporal.tracing import get_workflow_logger
 
 
 @workflow.defn
@@ -47,6 +48,7 @@ class CreativePipelineWorkflow:
         self._decision: Optional[str] = None
         self._hypothesis_count: int = 0
         self._error: Optional[str] = None
+        self._log = None  # Initialized in run() with context
 
     @workflow.run
     async def run(self, input: CreativeInput) -> PipelineResult:
@@ -61,6 +63,13 @@ class CreativePipelineWorkflow:
         """
         self._creative_id = input.creative_id
         self._status = "started"
+
+        # Initialize structured logger with trace context
+        self._log = get_workflow_logger(
+            creative_id=input.creative_id,
+            buyer_id=input.buyer_id,
+        )
+        self._log.info("Pipeline started", status=self._status)
 
         try:
             # Import activities inside workflow with pass-through to avoid sandbox restrictions
@@ -141,9 +150,10 @@ class CreativePipelineWorkflow:
                 )
                 # Convert bigint id to string for type compatibility
                 saved_transcript_id = str(existing_transcript["id"])
-                workflow.logger.info(
-                    f"Using existing transcript version={existing_transcript.get('version')} "
-                    f"for creative={input.creative_id}"
+                self._log.info(
+                    "Using existing transcript",
+                    transcript_version=existing_transcript.get("version"),
+                    transcript_id=saved_transcript_id,
                 )
             else:
                 # Step 2b: Transcription (AssemblyAI with heartbeats)
@@ -338,9 +348,10 @@ class CreativePipelineWorkflow:
 
                 selected_premise_id = premise_result.get("premise_id")
 
-                workflow.logger.info(
-                    f"Selected premise: id={selected_premise_id}, "
-                    f"reason={premise_result.get('selection_reason')}"
+                self._log.info(
+                    "Premise selected",
+                    premise_id=selected_premise_id,
+                    selection_reason=premise_result.get("selection_reason"),
                 )
 
                 # Step 6b: Generate hypotheses
