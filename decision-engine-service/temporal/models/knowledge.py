@@ -14,7 +14,7 @@ class KnowledgeSourceInput:
 
     title: str
     content: str
-    source_type: str  # 'youtube', 'file', 'manual'
+    source_type: str  # 'youtube', 'file', 'manual', 'transcript'
     url: Optional[str] = None
     created_by: Optional[str] = None  # admin telegram_id
 
