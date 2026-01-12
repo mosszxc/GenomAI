@@ -612,7 +612,7 @@ async def process_module_learning_batch(
             outcomes_url = (
                 f"{settings.supabase.url}/rest/v1/outcome_aggregates"
                 f"?learning_applied=eq.true"
-                f"&updated_at=gte.{cutoff_iso}"
+                f"&created_at=gte.{cutoff_iso}"
                 f"&select=creative_id,cpa,spend"
                 f"&limit=100"
             )
