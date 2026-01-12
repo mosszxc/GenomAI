@@ -11,7 +11,7 @@ import os
 from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import httpx
+from src.core.http_client import get_http_client
 
 from src.utils.errors import SupabaseError
 from src.services.statistical_validation import (
@@ -121,15 +121,15 @@ async def add_feature(
         "depends_on": depends_on or [],
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/feature_experiments",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data[0] if data else payload
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/feature_experiments",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data[0] if data else payload
 
 
 async def get_feature(name: str) -> Optional[dict]:
@@ -145,14 +145,14 @@ async def get_feature(name: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/feature_experiments?name=eq.{name}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data[0] if data else None
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/feature_experiments?name=eq.{name}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data[0] if data else None
 
 
 async def list_features(status: Optional[str] = None) -> list[dict]:
@@ -172,10 +172,10 @@ async def list_features(status: Optional[str] = None) -> list[dict]:
     if status:
         url += f"?status=eq.{status}"
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+    client = get_http_client()
+    response = await client.get(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
 
 async def count_features(status: str) -> int:
@@ -309,21 +309,21 @@ async def promote_feature(name: str) -> FeatureResult:
         "activated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/feature_experiments?name=eq.{name}",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/feature_experiments?name=eq.{name}",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return FeatureResult(
-            success=True,
-            feature_name=name,
-            message="Promoted to active",
-            data=data[0] if data else None,
-        )
+    return FeatureResult(
+        success=True,
+        feature_name=name,
+        message="Promoted to active",
+        data=data[0] if data else None,
+    )
 
 
 async def deprecate_feature(name: str, reason: str) -> FeatureResult:
@@ -361,21 +361,21 @@ async def deprecate_feature(name: str, reason: str) -> FeatureResult:
         "deprecation_reason": reason,
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/feature_experiments?name=eq.{name}",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/feature_experiments?name=eq.{name}",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return FeatureResult(
-            success=True,
-            feature_name=name,
-            message="Deprecated",
-            data=data[0] if data else None,
-        )
+    return FeatureResult(
+        success=True,
+        feature_name=name,
+        message="Deprecated",
+        data=data[0] if data else None,
+    )
 
 
 async def update_feature_metrics(
@@ -409,21 +409,21 @@ async def update_feature_metrics(
         "correlation_updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/feature_experiments?name=eq.{name}",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/feature_experiments?name=eq.{name}",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        return FeatureResult(
-            success=True,
-            feature_name=name,
-            message=f"Metrics updated: samples={sample_size}, correlation={correlation_cpa:.4f}",
-            data=data[0] if data else None,
-        )
+    return FeatureResult(
+        success=True,
+        feature_name=name,
+        message=f"Metrics updated: samples={sample_size}, correlation={correlation_cpa:.4f}",
+        data=data[0] if data else None,
+    )
 
 
 async def compute_feature_values(name: str, entity_type: str) -> int:
@@ -470,20 +470,20 @@ async def get_feature_value(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/derived_feature_values"
-            f"?feature_name=eq.{feature_name}"
-            f"&entity_type=eq.{entity_type}"
-            f"&entity_id=eq.{entity_id}",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/derived_feature_values"
+        f"?feature_name=eq.{feature_name}"
+        f"&entity_type=eq.{entity_type}"
+        f"&entity_id=eq.{entity_id}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0].get("value")
-        return None
+    if data:
+        return data[0].get("value")
+    return None
 
 
 async def store_feature_value(
@@ -513,12 +513,12 @@ async def store_feature_value(
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/derived_feature_values",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data[0] if data else payload
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/derived_feature_values",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data[0] if data else payload

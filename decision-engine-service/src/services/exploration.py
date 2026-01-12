@@ -9,7 +9,7 @@ Issue: #123
 
 import os
 import random
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass
 from numpy.random import beta as beta_sample
@@ -181,14 +181,14 @@ async def get_component_options(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings?{filter_str}"
-            f"&select=id,component_value,win_count,loss_count,sample_size,geo,avatar_id",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings?{filter_str}"
+        f"&select=id,component_value,win_count,loss_count,sample_size,geo,avatar_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     options = []
     for row in data:
@@ -241,12 +241,12 @@ async def log_exploration(
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/exploration_log", headers=headers, json=payload
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/exploration_log", headers=headers, json=payload
+    )
+    response.raise_for_status()
+    return response.json()[0] if response.json() else {}
 
 
 async def record_exploration_outcome(
@@ -278,14 +278,14 @@ async def record_exploration_outcome(
     }
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{rest_url}/exploration_log?id=eq.{exploration_id}",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    client = get_http_client()
+    response = await client.patch(
+        f"{rest_url}/exploration_log?id=eq.{exploration_id}",
+        headers=headers,
+        json=payload,
+    )
+    response.raise_for_status()
+    return response.json()[0] if response.json() else {}
 
 
 async def select_component_with_exploration(
@@ -375,31 +375,31 @@ async def get_exploration_stats() -> dict:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        # Total explorations
-        response = await client.get(
-            f"{rest_url}/exploration_log?select=id",
-            headers={**headers, "Prefer": "count=exact"},
-        )
-        total = int(response.headers.get("content-range", "*/0").split("/")[-1])
+    client = get_http_client()
+    # Total explorations
+    response = await client.get(
+        f"{rest_url}/exploration_log?select=id",
+        headers={**headers, "Prefer": "count=exact"},
+    )
+    total = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
-        # Successful explorations
-        response = await client.get(
-            f"{rest_url}/exploration_log?was_successful=eq.true&select=id",
-            headers={**headers, "Prefer": "count=exact"},
-        )
-        successful = int(response.headers.get("content-range", "*/0").split("/")[-1])
+    # Successful explorations
+    response = await client.get(
+        f"{rest_url}/exploration_log?was_successful=eq.true&select=id",
+        headers={**headers, "Prefer": "count=exact"},
+    )
+    successful = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
-        # By type
-        response = await client.get(
-            f"{rest_url}/exploration_log?select=exploration_type&limit=1000",
-            headers=headers,
-        )
-        data = response.json()
-        by_type = {}
-        for row in data:
-            t = row["exploration_type"]
-            by_type[t] = by_type.get(t, 0) + 1
+    # By type
+    response = await client.get(
+        f"{rest_url}/exploration_log?select=exploration_type&limit=1000",
+        headers=headers,
+    )
+    data = response.json()
+    by_type = {}
+    for row in data:
+        t = row["exploration_type"]
+        by_type[t] = by_type.get(t, 0) + 1
 
     return {
         "total_explorations": total,

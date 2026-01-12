@@ -9,7 +9,7 @@ Part of Modular Creative System (Phase 3).
 
 import os
 from typing import Optional, List, Dict, Any, Tuple
-import httpx
+from src.core.http_client import get_http_client
 
 # Schema name for all operations
 SCHEMA = "genomai"
@@ -86,28 +86,28 @@ async def check_modular_generation_ready(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        # Count by module type
-        counts = {}
-        for module_type in ["hook", "promise", "proof"]:
-            response = await client.get(
-                f"{rest_url}/module_bank"
-                f"?module_type=eq.{module_type}&{filter_str}"
-                f"&select=id",
-                headers=headers,
-            )
-            response.raise_for_status()
-            counts[module_type] = len(response.json())
-
-        # Count explored modules (sample_size >= 5)
+    client = get_http_client()
+    # Count by module type
+    counts = {}
+    for module_type in ["hook", "promise", "proof"]:
         response = await client.get(
             f"{rest_url}/module_bank"
-            f"?sample_size=gte.{EXPLORATION_SAMPLE_THRESHOLD}&{filter_str}"
+            f"?module_type=eq.{module_type}&{filter_str}"
             f"&select=id",
             headers=headers,
         )
         response.raise_for_status()
-        explored_count = len(response.json())
+        counts[module_type] = len(response.json())
+
+    # Count explored modules (sample_size >= 5)
+    response = await client.get(
+        f"{rest_url}/module_bank"
+        f"?sample_size=gte.{EXPLORATION_SAMPLE_THRESHOLD}&{filter_str}"
+        f"&select=id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    explored_count = len(response.json())
 
     # Check conditions
     hooks_ok = counts["hook"] >= MIN_HOOKS_REQUIRED
@@ -186,41 +186,41 @@ async def select_modules(
 
     selected = []
 
-    async with httpx.AsyncClient() as client:
-        # 1. Exploitation: top performers by win_rate
+    client = get_http_client()
+    # 1. Exploitation: top performers by win_rate
+    response = await client.get(
+        f"{rest_url}/module_bank"
+        f"?{base_filter}&status=eq.active{exclude_filter}"
+        f"&select=id,content,text_content,win_rate,sample_size,module_key"
+        f"&order=win_rate.desc"
+        f"&limit={exploitation_count}",
+        headers=headers,
+    )
+    response.raise_for_status()
+    exploitation_modules = response.json()
+    selected.extend(exploitation_modules)
+
+    # Track already selected IDs
+    selected_ids = [m["id"] for m in selected]
+    if exclude_ids:
+        selected_ids.extend(exclude_ids)
+
+    # 2. Exploration: under-explored modules
+    if exploration_count > 0 and selected_ids:
+        exclude_str = ",".join(selected_ids)
         response = await client.get(
             f"{rest_url}/module_bank"
-            f"?{base_filter}&status=eq.active{exclude_filter}"
+            f"?{base_filter}"
+            f"&sample_size=lt.{EXPLORATION_SAMPLE_THRESHOLD}"
+            f"&id=not.in.({exclude_str})"
             f"&select=id,content,text_content,win_rate,sample_size,module_key"
-            f"&order=win_rate.desc"
-            f"&limit={exploitation_count}",
+            f"&order=created_at.desc"
+            f"&limit={exploration_count}",
             headers=headers,
         )
         response.raise_for_status()
-        exploitation_modules = response.json()
-        selected.extend(exploitation_modules)
-
-        # Track already selected IDs
-        selected_ids = [m["id"] for m in selected]
-        if exclude_ids:
-            selected_ids.extend(exclude_ids)
-
-        # 2. Exploration: under-explored modules
-        if exploration_count > 0 and selected_ids:
-            exclude_str = ",".join(selected_ids)
-            response = await client.get(
-                f"{rest_url}/module_bank"
-                f"?{base_filter}"
-                f"&sample_size=lt.{EXPLORATION_SAMPLE_THRESHOLD}"
-                f"&id=not.in.({exclude_str})"
-                f"&select=id,content,text_content,win_rate,sample_size,module_key"
-                f"&order=created_at.desc"
-                f"&limit={exploration_count}",
-                headers=headers,
-            )
-            response.raise_for_status()
-            exploration_modules = response.json()
-            selected.extend(exploration_modules)
+        exploration_modules = response.json()
+        selected.extend(exploration_modules)
 
     return selected
 
@@ -248,19 +248,19 @@ async def get_compatibility_score(
     if module_a_id > module_b_id:
         module_a_id, module_b_id = module_b_id, module_a_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/module_compatibility"
-            f"?module_a_id=eq.{module_a_id}"
-            f"&module_b_id=eq.{module_b_id}"
-            f"&select=compatibility_score",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/module_compatibility"
+        f"?module_a_id=eq.{module_a_id}"
+        f"&module_b_id=eq.{module_b_id}"
+        f"&select=compatibility_score",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return float(data[0].get("compatibility_score", 0.5))
+    if data:
+        return float(data[0].get("compatibility_score", 0.5))
 
     return 0.5  # Default neutral score
 

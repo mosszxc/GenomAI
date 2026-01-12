@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Optional, List
 from decimal import Decimal
 import httpx
+from src.core.http_client import get_http_client
 
 from src.utils.errors import SupabaseError
 
@@ -220,36 +221,36 @@ class OutcomeService:
 
     async def get_snapshot(self, snapshot_id: str) -> Optional[dict]:
         """Load snapshot from daily_metrics_snapshot"""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.rest_url}/daily_metrics_snapshot?id=eq.{snapshot_id}&select=*",
-                headers=self._get_headers(),
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data[0] if data else None
+        client = get_http_client()
+        response = await client.get(
+            f"{self.rest_url}/daily_metrics_snapshot?id=eq.{snapshot_id}&select=*",
+            headers=self._get_headers(),
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data[0] if data else None
 
     async def get_idea_by_tracker(self, tracker_id: str) -> Optional[dict]:
         """Find idea via creative_idea_lookup"""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.rest_url}/creative_idea_lookup?tracker_id=eq.{tracker_id}&select=*",
-                headers=self._get_headers(),
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data[0] if data else None
+        client = get_http_client()
+        response = await client.get(
+            f"{self.rest_url}/creative_idea_lookup?tracker_id=eq.{tracker_id}&select=*",
+            headers=self._get_headers(),
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data[0] if data else None
 
     async def get_approve_decision(self, idea_id: str) -> Optional[dict]:
         """Find APPROVE decision for idea"""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.rest_url}/decisions?idea_id=eq.{idea_id}&decision=ilike.approve&select=*&order=created_at.desc&limit=1",
-                headers=self._get_headers(),
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data[0] if data else None
+        client = get_http_client()
+        response = await client.get(
+            f"{self.rest_url}/decisions?idea_id=eq.{idea_id}&decision=ilike.approve&select=*&order=created_at.desc&limit=1",
+            headers=self._get_headers(),
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data[0] if data else None
 
     async def get_previous_outcome(self, creative_id: str) -> Optional[dict]:
         """
@@ -261,14 +262,14 @@ class OutcomeService:
         Returns:
             Previous outcome record or None
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&select=cpa,created_at&order=created_at.desc&limit=1",
-                headers=self._get_headers(),
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data[0] if data else None
+        client = get_http_client()
+        response = await client.get(
+            f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&select=cpa,created_at&order=created_at.desc&limit=1",
+            headers=self._get_headers(),
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data[0] if data else None
 
     async def get_historical_cpa(
         self, creative_id: str, lookback_days: int = 7
@@ -287,20 +288,20 @@ class OutcomeService:
 
         cutoff_date = (datetime.now() - timedelta(days=lookback_days)).isoformat()
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&created_at=gte.{cutoff_date}&select=cpa&order=created_at.desc",
-                headers=self._get_headers(),
-            )
-            response.raise_for_status()
-            data = response.json()
+        client = get_http_client()
+        response = await client.get(
+            f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&created_at=gte.{cutoff_date}&select=cpa&order=created_at.desc",
+            headers=self._get_headers(),
+        )
+        response.raise_for_status()
+        data = response.json()
 
-            cpa_values = []
-            for record in data:
-                if record.get("cpa") is not None:
-                    cpa_values.append(Decimal(str(record["cpa"])))
+        cpa_values = []
+        for record in data:
+            if record.get("cpa") is not None:
+                cpa_values.append(Decimal(str(record["cpa"])))
 
-            return cpa_values
+        return cpa_values
 
     async def upsert_outcome(self, outcome: OutcomeAggregate) -> dict:
         """
@@ -328,15 +329,15 @@ class OutcomeService:
         # Use resolution=merge-duplicates for UPSERT behavior
         headers["Prefer"] = "return=representation,resolution=merge-duplicates"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.rest_url}/outcome_aggregates",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data[0] if data else {}
+        client = get_http_client()
+        response = await client.post(
+            f"{self.rest_url}/outcome_aggregates",
+            headers=headers,
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data[0] if data else {}
 
     async def emit_event(
         self,
@@ -365,13 +366,13 @@ class OutcomeService:
             "occurred_at": datetime.now().isoformat(),
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.rest_url}/event_log",
-                headers=self._get_headers(for_write=True),
-                json=payload,
-            )
-            response.raise_for_status()
+        client = get_http_client()
+        response = await client.post(
+            f"{self.rest_url}/event_log",
+            headers=self._get_headers(for_write=True),
+            json=payload,
+        )
+        response.raise_for_status()
 
     async def trigger_learning_loop(
         self,
@@ -394,15 +395,15 @@ class OutcomeService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(learning_loop_url, json=payload)
-                if response.status_code != 200:
-                    logger.error(
-                        "Learning loop returned non-200 status: %s, body: %s",
-                        response.status_code,
-                        response.text[:500],
-                    )
-                return response.status_code == 200
+            client = get_http_client()
+            response = await client.post(learning_loop_url, json=payload)
+            if response.status_code != 200:
+                logger.error(
+                    "Learning loop returned non-200 status: %s, body: %s",
+                    response.status_code,
+                    response.text[:500],
+                )
+            return response.status_code == 200
         except Exception as e:
             logger.error(
                 "Failed to trigger learning loop for outcome_id=%s, decision_id=%s: %s",

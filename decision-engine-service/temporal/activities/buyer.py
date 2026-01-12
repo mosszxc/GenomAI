@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
-import httpx
+from src.core.http_client import get_http_client
 
 from temporal.models.buyer import CreateBuyerInput
 
@@ -108,32 +108,32 @@ async def create_buyer(input: CreateBuyerInput) -> BuyerRecord:
         "updated_at": datetime.utcnow().isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{base_url}/buyers",
-            headers=headers,
-            json=buyer_data,
-            timeout=30.0,
-        )
+    client = get_http_client()
+    response = await client.post(
+        f"{base_url}/buyers",
+        headers=headers,
+        json=buyer_data,
+        timeout=30.0,
+    )
 
-        if response.status_code == 409:
-            # Already exists, load existing
-            activity.logger.info("Buyer already exists, loading...")
-            existing = await load_buyer_by_telegram_id(input.telegram_id)
-            if existing:
-                return existing
-            raise ApplicationError("Buyer exists but could not be loaded")
+    if response.status_code == 409:
+        # Already exists, load existing
+        activity.logger.info("Buyer already exists, loading...")
+        existing = await load_buyer_by_telegram_id(input.telegram_id)
+        if existing:
+            return existing
+        raise ApplicationError("Buyer exists but could not be loaded")
 
-        response.raise_for_status()
-        data = response.json()
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise ApplicationError("Failed to create buyer: empty response")
+    if not data:
+        raise ApplicationError("Failed to create buyer: empty response")
 
-        created = data[0] if isinstance(data, list) else data
-        activity.logger.info(f"Created buyer: {created['id']}")
+    created = data[0] if isinstance(data, list) else data
+    activity.logger.info(f"Created buyer: {created['id']}")
 
-        return BuyerRecord.from_dict(created)
+    return BuyerRecord.from_dict(created)
 
 
 @activity.defn
@@ -152,20 +152,20 @@ async def load_buyer_by_telegram_id(telegram_id: str) -> Optional[BuyerRecord]:
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{base_url}/buyers?telegram_id=eq.{telegram_id}&limit=1",
-            headers=headers,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{base_url}/buyers?telegram_id=eq.{telegram_id}&limit=1",
+        headers=headers,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            activity.logger.info(f"Buyer not found: {telegram_id}")
-            return None
+    if not data:
+        activity.logger.info(f"Buyer not found: {telegram_id}")
+        return None
 
-        return BuyerRecord.from_dict(data[0])
+    return BuyerRecord.from_dict(data[0])
 
 
 @activity.defn
@@ -184,20 +184,20 @@ async def load_buyer_by_id(buyer_id: str) -> Optional[BuyerRecord]:
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{base_url}/buyers?id=eq.{buyer_id}&limit=1",
-            headers=headers,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{base_url}/buyers?id=eq.{buyer_id}&limit=1",
+        headers=headers,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            activity.logger.info(f"Buyer not found: {buyer_id}")
-            return None
+    if not data:
+        activity.logger.info(f"Buyer not found: {buyer_id}")
+        return None
 
-        return BuyerRecord.from_dict(data[0])
+    return BuyerRecord.from_dict(data[0])
 
 
 @dataclass
@@ -241,20 +241,20 @@ async def update_buyer(input: UpdateBuyerInput) -> BuyerRecord:
     if input.status is not None:
         update_data["status"] = input.status
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{base_url}/buyers?id=eq.{input.buyer_id}",
-            headers=headers,
-            json=update_data,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.patch(
+        f"{base_url}/buyers?id=eq.{input.buyer_id}",
+        headers=headers,
+        json=update_data,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise ApplicationError(f"Buyer not found: {input.buyer_id}")
+    if not data:
+        raise ApplicationError(f"Buyer not found: {input.buyer_id}")
 
-        return BuyerRecord.from_dict(data[0])
+    return BuyerRecord.from_dict(data[0])
 
 
 @activity.defn
@@ -291,30 +291,30 @@ async def send_telegram_message(
     if reply_markup:
         payload["reply_markup"] = reply_markup
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json=payload,
-            timeout=30.0,
-        )
+    client = get_http_client()
+    response = await client.post(
+        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        json=payload,
+        timeout=30.0,
+    )
 
-        data = response.json()
+    data = response.json()
 
-        if not data.get("ok"):
-            error = data.get("description", "Unknown Telegram error")
-            activity.logger.error(f"Telegram error: {error}")
-            raise ApplicationError(f"Telegram error: {error}")
+    if not data.get("ok"):
+        error = data.get("description", "Unknown Telegram error")
+        activity.logger.error(f"Telegram error: {error}")
+        raise ApplicationError(f"Telegram error: {error}")
 
-        result = data.get("result", {})
-        message_id = result.get("message_id")
+    result = data.get("result", {})
+    message_id = result.get("message_id")
 
-        activity.logger.info(f"Message sent: {message_id}")
+    activity.logger.info(f"Message sent: {message_id}")
 
-        return {
-            "message_id": message_id,
-            "chat_id": chat_id,
-            "status": "sent",
-        }
+    return {
+        "message_id": message_id,
+        "chat_id": chat_id,
+        "status": "sent",
+    }
 
 
 @dataclass
@@ -364,19 +364,19 @@ async def log_buyer_interaction(input: LogInteractionInput) -> str:
     if input.buyer_id:
         payload["buyer_id"] = input.buyer_id
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{base_url}/buyer_interactions",
-            headers=headers,
-            json=payload,
-            timeout=10.0,
+    client = get_http_client()
+    response = await client.post(
+        f"{base_url}/buyer_interactions",
+        headers=headers,
+        json=payload,
+        timeout=10.0,
+    )
+    # Don't fail workflow if logging fails
+    if response.status_code >= 400:
+        activity.logger.warning(
+            f"Failed to log interaction: {response.status_code} {response.text}"
         )
-        # Don't fail workflow if logging fails
-        if response.status_code >= 400:
-            activity.logger.warning(
-                f"Failed to log interaction: {response.status_code} {response.text}"
-            )
-            return ""
+        return ""
 
     activity.logger.info(f"Logged interaction: {interaction_id}")
     return interaction_id
@@ -423,20 +423,20 @@ async def queue_historical_import(input: QueueHistoricalImportInput) -> str:
         "updated_at": datetime.utcnow().isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{base_url}/historical_import_queue?on_conflict=campaign_id",
-            headers=headers,
-            json=queue_entry,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(
+        f"{base_url}/historical_import_queue?on_conflict=campaign_id",
+        headers=headers,
+        json=queue_entry,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        entry_id = data[0]["id"] if data else "upserted"
-        activity.logger.info(f"Queued historical import: {entry_id}")
+    entry_id = data[0]["id"] if data else "upserted"
+    activity.logger.info(f"Queued historical import: {entry_id}")
 
-        return entry_id
+    return entry_id
 
 
 @activity.defn
@@ -456,21 +456,21 @@ async def get_pending_imports(buyer_id: str, limit: int = 10) -> List[dict]:
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{base_url}/historical_import_queue"
-            f"?buyer_id=eq.{buyer_id}"
-            f"&status=eq.pending"
-            f"&order=created_at.asc"
-            f"&limit={limit}",
-            headers=headers,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{base_url}/historical_import_queue"
+        f"?buyer_id=eq.{buyer_id}"
+        f"&status=eq.pending"
+        f"&order=created_at.asc"
+        f"&limit={limit}",
+        headers=headers,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        activity.logger.info(f"Found {len(data)} pending imports")
-        return data
+    activity.logger.info(f"Found {len(data)} pending imports")
+    return data
 
 
 @activity.defn
@@ -489,21 +489,21 @@ async def get_pending_video_campaigns(buyer_id: str) -> List[dict]:
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{base_url}/historical_import_queue"
-            f"?buyer_id=eq.{buyer_id}"
-            f"&status=eq.pending_video"
-            f"&order=created_at.asc"
-            f"&select=id,campaign_id,metrics,status",
-            headers=headers,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{base_url}/historical_import_queue"
+        f"?buyer_id=eq.{buyer_id}"
+        f"&status=eq.pending_video"
+        f"&order=created_at.asc"
+        f"&select=id,campaign_id,metrics,status",
+        headers=headers,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        activity.logger.info(f"Found {len(data)} campaigns waiting for video")
-        return data
+    activity.logger.info(f"Found {len(data)} campaigns waiting for video")
+    return data
 
 
 @activity.defn
@@ -533,13 +533,13 @@ async def update_import_status(
     if error_message:
         update_data["error_message"] = error_message
 
-    async with httpx.AsyncClient() as client:
-        await client.patch(
-            f"{base_url}/historical_import_queue?id=eq.{import_id}",
-            headers=headers,
-            json=update_data,
-            timeout=30.0,
-        )
+    client = get_http_client()
+    await client.patch(
+        f"{base_url}/historical_import_queue?id=eq.{import_id}",
+        headers=headers,
+        json=update_data,
+        timeout=30.0,
+    )
 
     activity.logger.info(f"Updated import status: {import_id}")
 
@@ -598,51 +598,51 @@ async def get_import_by_campaign_id(
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 
-    async with httpx.AsyncClient() as client:
-        # Step 1: Try exact match (campaign_id + buyer_id)
-        response = await client.get(
-            f"{base_url}/historical_import_queue"
-            f"?campaign_id=eq.{campaign_id}"
-            f"&buyer_id=eq.{buyer_id}"
-            f"&limit=1",
-            headers=headers,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    # Step 1: Try exact match (campaign_id + buyer_id)
+    response = await client.get(
+        f"{base_url}/historical_import_queue"
+        f"?campaign_id=eq.{campaign_id}"
+        f"&buyer_id=eq.{buyer_id}"
+        f"&limit=1",
+        headers=headers,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            activity.logger.info(f"Found import by exact match: {campaign_id}")
-            return ImportQueueRecord.from_dict(data[0])
+    if data:
+        activity.logger.info(f"Found import by exact match: {campaign_id}")
+        return ImportQueueRecord.from_dict(data[0])
 
-        # Step 2: Try campaign_id only (buyer_id mismatch scenario)
-        activity.logger.info(
-            f"Exact match not found, trying campaign_id only: {campaign_id}"
-        )
-        response = await client.get(
-            f"{base_url}/historical_import_queue?campaign_id=eq.{campaign_id}&limit=1",
-            headers=headers,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    # Step 2: Try campaign_id only (buyer_id mismatch scenario)
+    activity.logger.info(
+        f"Exact match not found, trying campaign_id only: {campaign_id}"
+    )
+    response = await client.get(
+        f"{base_url}/historical_import_queue?campaign_id=eq.{campaign_id}&limit=1",
+        headers=headers,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            record = data[0]
-            actual_buyer_id = record.get("buyer_id")
-            activity.logger.warning(
-                f"Found import with different buyer_id: "
-                f"campaign={campaign_id}, expected_buyer={buyer_id}, "
-                f"actual_buyer={actual_buyer_id}"
-            )
-            # Return the record anyway - workflow can decide how to handle
-            return ImportQueueRecord.from_dict(record)
-
+    if data:
+        record = data[0]
+        actual_buyer_id = record.get("buyer_id")
         activity.logger.warning(
-            f"Import queue record not found for campaign: {campaign_id} "
-            f"(checked buyer_id={buyer_id} and campaign_id only)"
+            f"Found import with different buyer_id: "
+            f"campaign={campaign_id}, expected_buyer={buyer_id}, "
+            f"actual_buyer={actual_buyer_id}"
         )
-        return None
+        # Return the record anyway - workflow can decide how to handle
+        return ImportQueueRecord.from_dict(record)
+
+    activity.logger.warning(
+        f"Import queue record not found for campaign: {campaign_id} "
+        f"(checked buyer_id={buyer_id} and campaign_id only)"
+    )
+    return None
 
 
 @dataclass
@@ -678,18 +678,18 @@ async def update_import_with_video(input: UpdateImportVideoInput) -> ImportQueue
         "updated_at": datetime.utcnow().isoformat(),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{base_url}/historical_import_queue?id=eq.{input.import_id}",
-            headers=headers,
-            json=update_data,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.patch(
+        f"{base_url}/historical_import_queue?id=eq.{input.import_id}",
+        headers=headers,
+        json=update_data,
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if not data:
-            raise ApplicationError(f"Import not found: {input.import_id}")
+    if not data:
+        raise ApplicationError(f"Import not found: {input.import_id}")
 
-        activity.logger.info(f"Updated import with video: {input.import_id}")
-        return ImportQueueRecord.from_dict(data[0])
+    activity.logger.info(f"Updated import with video: {input.import_id}")
+    return ImportQueueRecord.from_dict(data[0])

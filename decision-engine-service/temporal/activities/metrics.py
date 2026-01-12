@@ -9,7 +9,7 @@ Activities for storing and processing metrics data:
 Uses Supabase REST API directly for database operations.
 """
 
-import httpx
+from src.core.http_client import get_http_client
 from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass
@@ -86,9 +86,9 @@ async def upsert_raw_metrics(input: UpsertRawMetricsInput) -> UpsertRawMetricsOu
         "updated_at": datetime.now().isoformat(),
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
+    client = get_http_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=30.0)
+    response.raise_for_status()
 
     activity.logger.info(f"Upserted raw metrics for {input.tracker_id}")
 
@@ -147,10 +147,10 @@ async def create_daily_snapshot(input: CreateSnapshotInput) -> CreateSnapshotOut
         "created_at": datetime.now().isoformat(),
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=30.0)
+    response.raise_for_status()
+    data = response.json()
 
     # If data is empty, the row already existed and was ignored
     if not data:
@@ -206,10 +206,10 @@ async def check_snapshot_exists(
         "select": "id",
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(url, headers=headers, params=params, timeout=15.0)
+    response.raise_for_status()
+    data = response.json()
 
     if data:
         return CheckSnapshotExistsOutput(exists=True, snapshot_id=data[0]["id"])
@@ -337,10 +337,10 @@ async def get_unprocessed_snapshots(
     # Get recent snapshots ordered by date desc
     params = {"select": "id", "order": "created_at.desc", "limit": str(input.limit)}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(url, headers=headers, params=params, timeout=30.0)
+    response.raise_for_status()
+    data = response.json()
 
     snapshot_ids = [row["id"] for row in data]
 
@@ -389,9 +389,9 @@ async def emit_metrics_event(input: EmitMetricsEventInput) -> bool:
     if input.entity_id:
         payload["entity_id"] = input.entity_id
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
+    client = get_http_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=15.0)
+    response.raise_for_status()
 
     activity.logger.info(f"Event emitted: {input.event_type}")
 

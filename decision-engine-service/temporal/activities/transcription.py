@@ -18,6 +18,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from temporal.tracing import get_activity_logger
+from src.core.http_client import get_http_client
 
 # Polling interval for transcription status (seconds)
 POLL_INTERVAL = 30
@@ -116,8 +117,6 @@ async def transcribe_via_n8n(
     Returns:
         dict with transcript_id, text, status
     """
-    import httpx
-
     log = get_activity_logger(creative_id=creative_id)
 
     supabase_url = os.getenv("SUPABASE_URL")
@@ -140,49 +139,49 @@ async def transcribe_via_n8n(
     # Step 1: Create transcript record in DB
     log.info("Creating transcript record")
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Extract Google Drive file ID for VideoID field
-        video_id = extract_gdrive_file_id(video_url)
+    client = get_http_client()
+    # Extract Google Drive file ID for VideoID field
+    video_id = extract_gdrive_file_id(video_url)
 
-        # Insert transcript record with VideoID for pg_cron worker
-        insert_resp = await client.post(
+    # Insert transcript record with VideoID for pg_cron worker
+    insert_resp = await client.post(
+        f"{supabase_url}/rest/v1/transcripts",
+        headers=headers,
+        json={
+            "creative_id": creative_id,
+            "Name": f"transcript_{creative_id[:8]}",  # Required by pg_cron
+            "VideoID": video_id,  # Google Drive file ID for Convert stage
+            "ConvertStatus": "queued",  # Triggers pg_cron worker
+            "Status": "queued",
+        },
+    )
+
+    if insert_resp.status_code not in (200, 201):
+        raise ApplicationError(f"Failed to create transcript: {insert_resp.text}")
+
+    # Get the created record ID
+    created = insert_resp.json()
+    transcript_db_id = (
+        created[0]["id"] if isinstance(created, list) else created.get("id")
+    )
+
+    if not transcript_db_id:
+        # Fetch the latest transcript for this creative
+        get_resp = await client.get(
             f"{supabase_url}/rest/v1/transcripts",
             headers=headers,
-            json={
-                "creative_id": creative_id,
-                "Name": f"transcript_{creative_id[:8]}",  # Required by pg_cron
-                "VideoID": video_id,  # Google Drive file ID for Convert stage
-                "ConvertStatus": "queued",  # Triggers pg_cron worker
-                "Status": "queued",
+            params={
+                "creative_id": f"eq.{creative_id}",
+                "order": "created_at.desc",
+                "limit": "1",
             },
         )
+        if get_resp.status_code == 200:
+            records = get_resp.json()
+            if records:
+                transcript_db_id = records[0]["id"]
 
-        if insert_resp.status_code not in (200, 201):
-            raise ApplicationError(f"Failed to create transcript: {insert_resp.text}")
-
-        # Get the created record ID
-        created = insert_resp.json()
-        transcript_db_id = (
-            created[0]["id"] if isinstance(created, list) else created.get("id")
-        )
-
-        if not transcript_db_id:
-            # Fetch the latest transcript for this creative
-            get_resp = await client.get(
-                f"{supabase_url}/rest/v1/transcripts",
-                headers=headers,
-                params={
-                    "creative_id": f"eq.{creative_id}",
-                    "order": "created_at.desc",
-                    "limit": "1",
-                },
-            )
-            if get_resp.status_code == 200:
-                records = get_resp.json()
-                if records:
-                    transcript_db_id = records[0]["id"]
-
-        log.info("Created transcript record", transcript_db_id=transcript_db_id)
+    log.info("Created transcript record", transcript_db_id=transcript_db_id)
 
     # Step 2: Poll transcripts table for result
     # pg_cron worker will pick up the record and call webhooks:
@@ -210,48 +209,48 @@ async def transcribe_via_n8n(
         )
 
         # Check transcript status
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            check_resp = await client.get(
-                f"{supabase_url}/rest/v1/transcripts",
-                headers=headers,
-                params={
-                    "id": f"eq.{transcript_db_id}",
-                    "select": "id,transcript_text,TranscribeStatus,assemblyai_transcript_id",
-                },
-            )
+        client = get_http_client()
+        check_resp = await client.get(
+            f"{supabase_url}/rest/v1/transcripts",
+            headers=headers,
+            params={
+                "id": f"eq.{transcript_db_id}",
+                "select": "id,transcript_text,TranscribeStatus,assemblyai_transcript_id",
+            },
+        )
 
-            if check_resp.status_code == 200:
-                records = check_resp.json()
-                if records:
-                    record = records[0]
-                    status = record.get("TranscribeStatus", "")
+        if check_resp.status_code == 200:
+            records = check_resp.json()
+            if records:
+                record = records[0]
+                status = record.get("TranscribeStatus", "")
 
-                    if status == "finish":
-                        log.info("Transcription completed via n8n")
+                if status == "finish":
+                    log.info("Transcription completed via n8n")
 
-                        # Update Status to finish to unblock pg_cron queue
-                        # n8n webhook only sets TranscribeStatus, not Status
-                        await client.patch(
-                            f"{supabase_url}/rest/v1/transcripts",
-                            headers=headers,
-                            params={"id": f"eq.{transcript_db_id}"},
-                            json={"Status": "finish"},
-                        )
+                    # Update Status to finish to unblock pg_cron queue
+                    # n8n webhook only sets TranscribeStatus, not Status
+                    await client.patch(
+                        f"{supabase_url}/rest/v1/transcripts",
+                        headers=headers,
+                        params={"id": f"eq.{transcript_db_id}"},
+                        json={"Status": "finish"},
+                    )
 
-                        return {
-                            "transcript_id": record.get(
-                                "assemblyai_transcript_id", str(transcript_db_id)
-                            ),
-                            "text": record.get("transcript_text", ""),
-                            "status": "completed",
-                            "words": len(record.get("transcript_text", "").split()),
-                        }
+                    return {
+                        "transcript_id": record.get(
+                            "assemblyai_transcript_id", str(transcript_db_id)
+                        ),
+                        "text": record.get("transcript_text", ""),
+                        "status": "completed",
+                        "words": len(record.get("transcript_text", "").split()),
+                    }
 
-                    if status == "error":
-                        raise ApplicationError(
-                            f"n8n transcription failed: {record.get('transcript_text', 'Unknown error')}",
-                            type="TRANSCRIPTION_ERROR",
-                        )
+                if status == "error":
+                    raise ApplicationError(
+                        f"n8n transcription failed: {record.get('transcript_text', 'Unknown error')}",
+                        type="TRANSCRIPTION_ERROR",
+                    )
 
         log.info("Waiting for n8n transcription", elapsed_seconds=elapsed)
         time.sleep(POLL_INTERVAL)

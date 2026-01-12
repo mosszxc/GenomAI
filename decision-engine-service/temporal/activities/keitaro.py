@@ -7,7 +7,7 @@ Uses POST /admin_api/v1/report/build endpoint.
 Based on docs/layer-4-implementation-planning/KEITARO_API_DATA_CLASSIFICATION.md
 """
 
-import httpx
+from src.core.http_client import get_http_client
 from datetime import datetime, timedelta
 from typing import Optional
 from dataclasses import dataclass
@@ -114,10 +114,10 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
         "dimensions": ["sub_id_1"],
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=60.0)
+    response.raise_for_status()
+    data = response.json()
 
     rows = data.get("rows", [])
     tracker_ids = [row.get("sub_id_1") for row in rows if row.get("sub_id_1")]
@@ -153,10 +153,10 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
         ],
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=30.0)
+    response.raise_for_status()
+    data = response.json()
 
     rows = data.get("rows", [])
 
@@ -276,10 +276,10 @@ async def get_campaigns_by_source(
     url = _get_keitaro_url("/campaigns")
     headers = _get_keitaro_headers()
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        all_campaigns = response.json()
+    client = get_http_client()
+    response = await client.get(url, headers=headers, timeout=120.0)
+    response.raise_for_status()
+    all_campaigns = response.json()
 
     # Step 2: Calculate date cutoff (last 30 days by default)
     if input.date_from:
@@ -400,10 +400,10 @@ async def get_campaign_creatives(
         ],
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=60.0)
+    response.raise_for_status()
+    data = response.json()
 
     rows = data.get("rows", [])
     creatives = []
@@ -459,10 +459,10 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
         "dimensions": ["sub_id_1"],
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=120.0)
+    response.raise_for_status()
+    data = response.json()
 
     # Calculate date based on interval
     if input.interval == "yesterday":

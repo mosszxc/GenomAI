@@ -15,7 +15,7 @@ from typing import Optional, List
 from dataclasses import dataclass
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
-import httpx
+from src.core.http_client import get_http_client
 
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -151,91 +151,91 @@ async def load_creative_data(creative_id: str) -> CreativeData:
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ApplicationError("Supabase credentials not configured")
 
-    async with httpx.AsyncClient() as client:
-        # Load creative
+    client = get_http_client()
+    # Load creative
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/creatives"
+        f"?id=eq.{creative_id}"
+        f"&select=id,video_url,tracker_id,test_result,target_vertical,target_geo",
+        headers=get_headers(),
+    )
+
+    if response.status_code != 200 or not response.json():
+        raise ApplicationError(f"Creative not found: {creative_id}")
+
+    creative = response.json()[0]
+
+    # Load decomposed_creatives
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/decomposed_creatives"
+        f"?creative_id=eq.{creative_id}"
+        f"&select=payload"
+        f"&limit=1",
+        headers=get_headers(),
+    )
+
+    payload = None
+    if response.status_code == 200 and response.json():
+        payload = response.json()[0].get("payload")
+
+    # Load transcript
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/transcripts"
+        f"?creative_id=eq.{creative_id}"
+        f"&select=transcript_text"
+        f"&limit=1",
+        headers=get_headers(),
+    )
+
+    transcript = None
+    if response.status_code == 200 and response.json():
+        transcript = response.json()[0].get("transcript_text")
+
+    # Load metrics from daily_metrics_snapshot
+    spend = 0.0
+    revenue = 0.0
+    cpa = None
+    roi = None
+
+    if creative.get("tracker_id"):
         response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/creatives"
-            f"?id=eq.{creative_id}"
-            f"&select=id,video_url,tracker_id,test_result,target_vertical,target_geo",
-            headers=get_headers(),
-        )
-
-        if response.status_code != 200 or not response.json():
-            raise ApplicationError(f"Creative not found: {creative_id}")
-
-        creative = response.json()[0]
-
-        # Load decomposed_creatives
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/decomposed_creatives"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=payload"
+            f"{SUPABASE_URL}/rest/v1/daily_metrics_snapshot"
+            f"?tracker_id=eq.{creative['tracker_id']}"
+            f"&select=metrics"
+            f"&order=date.desc"
             f"&limit=1",
             headers=get_headers(),
         )
 
-        payload = None
         if response.status_code == 200 and response.json():
-            payload = response.json()[0].get("payload")
+            metrics = response.json()[0].get("metrics", {})
+            spend = float(metrics.get("spend", 0) or 0)
+            revenue = float(metrics.get("revenue", 0) or 0)
+            if spend > 0:
+                cpa = spend / max(metrics.get("conversions", 1), 1)
+                roi = ((revenue - spend) / spend) * 100
 
-        # Load transcript
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/transcripts"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=transcript_text"
-            f"&limit=1",
-            headers=get_headers(),
-        )
+    activity.logger.info(
+        f"Loaded creative {creative_id}: "
+        f"result={creative.get('test_result')}, "
+        f"has_payload={payload is not None}, "
+        f"has_transcript={transcript is not None}"
+    )
 
-        transcript = None
-        if response.status_code == 200 and response.json():
-            transcript = response.json()[0].get("transcript_text")
-
-        # Load metrics from daily_metrics_snapshot
-        spend = 0.0
-        revenue = 0.0
-        cpa = None
-        roi = None
-
-        if creative.get("tracker_id"):
-            response = await client.get(
-                f"{SUPABASE_URL}/rest/v1/daily_metrics_snapshot"
-                f"?tracker_id=eq.{creative['tracker_id']}"
-                f"&select=metrics"
-                f"&order=date.desc"
-                f"&limit=1",
-                headers=get_headers(),
-            )
-
-            if response.status_code == 200 and response.json():
-                metrics = response.json()[0].get("metrics", {})
-                spend = float(metrics.get("spend", 0) or 0)
-                revenue = float(metrics.get("revenue", 0) or 0)
-                if spend > 0:
-                    cpa = spend / max(metrics.get("conversions", 1), 1)
-                    roi = ((revenue - spend) / spend) * 100
-
-        activity.logger.info(
-            f"Loaded creative {creative_id}: "
-            f"result={creative.get('test_result')}, "
-            f"has_payload={payload is not None}, "
-            f"has_transcript={transcript is not None}"
-        )
-
-        return CreativeData(
-            creative_id=creative_id,
-            video_url=creative.get("video_url"),
-            test_result=creative.get("test_result") or "unknown",
-            tracker_id=creative.get("tracker_id"),
-            vertical=creative.get("target_vertical"),
-            geo=creative.get("target_geo"),
-            payload=payload,
-            transcript_text=transcript,
-            spend=spend,
-            revenue=revenue,
-            cpa=cpa,
-            roi=roi,
-        )
+    return CreativeData(
+        creative_id=creative_id,
+        video_url=creative.get("video_url"),
+        test_result=creative.get("test_result") or "unknown",
+        tracker_id=creative.get("tracker_id"),
+        vertical=creative.get("target_vertical"),
+        geo=creative.get("target_geo"),
+        payload=payload,
+        transcript_text=transcript,
+        spend=spend,
+        revenue=revenue,
+        cpa=cpa,
+        roi=roi,
+    )
 
 
 @activity.defn
@@ -348,114 +348,112 @@ async def upsert_premise_and_learning(
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ApplicationError("Supabase credentials not configured")
 
-    async with httpx.AsyncClient() as client:
-        # Check if premise with same name exists
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/premises?name=eq.{premise.name}&select=id,status",
-            headers=get_headers(),
-        )
+    client = get_http_client()
+    # Check if premise with same name exists
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/premises?name=eq.{premise.name}&select=id,status",
+        headers=get_headers(),
+    )
 
-        premise_id = None
-        is_new = False
+    premise_id = None
+    is_new = False
 
-        if response.status_code == 200 and response.json():
-            # Premise exists
-            existing = response.json()[0]
-            premise_id = existing["id"]
-            activity.logger.info(f"Found existing premise: {premise_id}")
-        else:
-            # Create new premise
-            status = "dead" if premise.is_negative else "emerging"
+    if response.status_code == 200 and response.json():
+        # Premise exists
+        existing = response.json()[0]
+        premise_id = existing["id"]
+        activity.logger.info(f"Found existing premise: {premise_id}")
+    else:
+        # Create new premise
+        status = "dead" if premise.is_negative else "emerging"
 
-            premise_data = {
-                "premise_type": premise.premise_type,
-                "name": premise.name,
-                "origin_story": premise.origin_story,
-                "mechanism_claim": premise.mechanism_claim,
-                "source": "data_extracted",
-                "status": status,
-            }
-
-            response = await client.post(
-                f"{SUPABASE_URL}/rest/v1/premises",
-                headers=get_headers(),
-                json=premise_data,
-            )
-
-            if response.status_code not in (200, 201):
-                # Might be duplicate due to race condition
-                activity.logger.warning(
-                    f"Failed to create premise: {response.status_code}"
-                )
-                return {"success": False, "error": "Failed to create premise"}
-
-            premise_id = response.json()[0]["id"]
-            is_new = True
-            activity.logger.info(f"Created new premise: {premise_id} (status={status})")
-
-        # Update premise_learnings
-        was_win = test_result == "win"
-
-        # Check existing learning
-        filters = [f"premise_id=eq.{premise_id}"]
-        if geo:
-            filters.append(f"geo=eq.{geo}")
-        else:
-            filters.append("geo=is.null")
-        filters.append("avatar_id=is.null")
-
-        filter_str = "&".join(filters)
-
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/premise_learnings?{filter_str}",
-            headers=get_headers(),
-        )
-
-        if response.status_code == 200 and response.json():
-            # Update existing
-            learning = response.json()[0]
-            new_sample = (learning.get("sample_size") or 0) + 1
-            new_wins = (learning.get("win_count") or 0) + (1 if was_win else 0)
-            new_losses = (learning.get("loss_count") or 0) + (0 if was_win else 1)
-            new_spend = float(learning.get("total_spend") or 0) + spend
-            new_revenue = float(learning.get("total_revenue") or 0) + revenue
-
-            response = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/premise_learnings?id=eq.{learning['id']}",
-                headers=get_headers(),
-                json={
-                    "sample_size": new_sample,
-                    "win_count": new_wins,
-                    "loss_count": new_losses,
-                    "total_spend": new_spend,
-                    "total_revenue": new_revenue,
-                    "updated_at": "now()",
-                },
-            )
-        else:
-            # Create new learning
-            response = await client.post(
-                f"{SUPABASE_URL}/rest/v1/premise_learnings",
-                headers=get_headers(),
-                json={
-                    "premise_id": premise_id,
-                    "premise_type": premise.premise_type,
-                    "geo": geo,
-                    "avatar_id": None,
-                    "sample_size": 1,
-                    "win_count": 1 if was_win else 0,
-                    "loss_count": 0 if was_win else 1,
-                    "total_spend": spend,
-                    "total_revenue": revenue,
-                },
-            )
-
-        return {
-            "success": True,
-            "premise_id": premise_id,
-            "is_new": is_new,
-            "was_win": was_win,
+        premise_data = {
+            "premise_type": premise.premise_type,
+            "name": premise.name,
+            "origin_story": premise.origin_story,
+            "mechanism_claim": premise.mechanism_claim,
+            "source": "data_extracted",
+            "status": status,
         }
+
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/premises",
+            headers=get_headers(),
+            json=premise_data,
+        )
+
+        if response.status_code not in (200, 201):
+            # Might be duplicate due to race condition
+            activity.logger.warning(f"Failed to create premise: {response.status_code}")
+            return {"success": False, "error": "Failed to create premise"}
+
+        premise_id = response.json()[0]["id"]
+        is_new = True
+        activity.logger.info(f"Created new premise: {premise_id} (status={status})")
+
+    # Update premise_learnings
+    was_win = test_result == "win"
+
+    # Check existing learning
+    filters = [f"premise_id=eq.{premise_id}"]
+    if geo:
+        filters.append(f"geo=eq.{geo}")
+    else:
+        filters.append("geo=is.null")
+    filters.append("avatar_id=is.null")
+
+    filter_str = "&".join(filters)
+
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/premise_learnings?{filter_str}",
+        headers=get_headers(),
+    )
+
+    if response.status_code == 200 and response.json():
+        # Update existing
+        learning = response.json()[0]
+        new_sample = (learning.get("sample_size") or 0) + 1
+        new_wins = (learning.get("win_count") or 0) + (1 if was_win else 0)
+        new_losses = (learning.get("loss_count") or 0) + (0 if was_win else 1)
+        new_spend = float(learning.get("total_spend") or 0) + spend
+        new_revenue = float(learning.get("total_revenue") or 0) + revenue
+
+        response = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/premise_learnings?id=eq.{learning['id']}",
+            headers=get_headers(),
+            json={
+                "sample_size": new_sample,
+                "win_count": new_wins,
+                "loss_count": new_losses,
+                "total_spend": new_spend,
+                "total_revenue": new_revenue,
+                "updated_at": "now()",
+            },
+        )
+    else:
+        # Create new learning
+        response = await client.post(
+            f"{SUPABASE_URL}/rest/v1/premise_learnings",
+            headers=get_headers(),
+            json={
+                "premise_id": premise_id,
+                "premise_type": premise.premise_type,
+                "geo": geo,
+                "avatar_id": None,
+                "sample_size": 1,
+                "win_count": 1 if was_win else 0,
+                "loss_count": 0 if was_win else 1,
+                "total_spend": spend,
+                "total_revenue": revenue,
+            },
+        )
+
+    return {
+        "success": True,
+        "premise_id": premise_id,
+        "is_new": is_new,
+        "was_win": was_win,
+    }
 
 
 @activity.defn
@@ -468,20 +466,20 @@ async def emit_premise_extraction_event(
     if not SUPABASE_URL or not SUPABASE_KEY:
         return False
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/event_log",
-            headers=get_headers(),
-            json={
-                "event_type": "PremiseExtracted",
-                "entity_type": "creative",
-                "entity_id": creative_id,
-                "payload": {
-                    "premises_count": premises_count,
-                    "test_result": test_result,
-                    "source": "premise_extraction_workflow",
-                },
+    client = get_http_client()
+    response = await client.post(
+        f"{SUPABASE_URL}/rest/v1/event_log",
+        headers=get_headers(),
+        json={
+            "event_type": "PremiseExtracted",
+            "entity_type": "creative",
+            "entity_id": creative_id,
+            "payload": {
+                "premises_count": premises_count,
+                "test_result": test_result,
+                "source": "premise_extraction_workflow",
             },
-        )
+        },
+    )
 
-        return response.status_code in (200, 201)
+    return response.status_code in (200, 201)

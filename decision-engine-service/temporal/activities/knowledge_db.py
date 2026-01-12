@@ -6,7 +6,7 @@ Temporal activities for knowledge extraction database operations.
 
 import os
 import json
-import httpx
+from src.core.http_client import get_http_client
 from datetime import datetime
 from typing import Optional, List
 from temporalio import activity
@@ -59,22 +59,22 @@ async def save_knowledge_source(
         "processed": False,
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/knowledge_sources",
-            headers=get_headers(),
-            json=data,
+    client = get_http_client()
+    response = await client.post(
+        f"{SUPABASE_URL}/rest/v1/knowledge_sources",
+        headers=get_headers(),
+        json=data,
+    )
+
+    if response.status_code not in (200, 201):
+        raise ApplicationError(
+            f"Failed to save source: {response.status_code} {response.text}"
         )
 
-        if response.status_code not in (200, 201):
-            raise ApplicationError(
-                f"Failed to save source: {response.status_code} {response.text}"
-            )
-
-        result = response.json()
-        source_id = result[0]["id"]
-        activity.logger.info(f"Saved knowledge source: {source_id}")
-        return source_id
+    result = response.json()
+    source_id = result[0]["id"]
+    activity.logger.info(f"Saved knowledge source: {source_id}")
+    return source_id
 
 
 @activity.defn
@@ -109,22 +109,22 @@ async def save_pending_extractions(
             }
         )
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/knowledge_extractions",
-            headers=get_headers(),
-            json=records,
+    client = get_http_client()
+    response = await client.post(
+        f"{SUPABASE_URL}/rest/v1/knowledge_extractions",
+        headers=get_headers(),
+        json=records,
+    )
+
+    if response.status_code not in (200, 201):
+        raise ApplicationError(
+            f"Failed to save extractions: {response.status_code} {response.text}"
         )
 
-        if response.status_code not in (200, 201):
-            raise ApplicationError(
-                f"Failed to save extractions: {response.status_code} {response.text}"
-            )
-
-        results = response.json()
-        extraction_ids = [r["id"] for r in results]
-        activity.logger.info(f"Saved {len(extraction_ids)} extractions")
-        return extraction_ids
+    results = response.json()
+    extraction_ids = [r["id"] for r in results]
+    activity.logger.info(f"Saved {len(extraction_ids)} extractions")
+    return extraction_ids
 
 
 @activity.defn
@@ -133,22 +133,22 @@ async def mark_source_processed(source_id: str) -> bool:
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ApplicationError("Supabase credentials not configured")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/knowledge_sources?id=eq.{source_id}",
-            headers=get_headers(),
-            json={
-                "processed": True,
-                "processed_at": datetime.utcnow().isoformat(),
-            },
+    client = get_http_client()
+    response = await client.patch(
+        f"{SUPABASE_URL}/rest/v1/knowledge_sources?id=eq.{source_id}",
+        headers=get_headers(),
+        json={
+            "processed": True,
+            "processed_at": datetime.utcnow().isoformat(),
+        },
+    )
+
+    if response.status_code not in (200, 204):
+        raise ApplicationError(
+            f"Failed to mark processed: {response.status_code} {response.text}"
         )
 
-        if response.status_code not in (200, 204):
-            raise ApplicationError(
-                f"Failed to mark processed: {response.status_code} {response.text}"
-            )
-
-        return True
+    return True
 
 
 @activity.defn
@@ -157,19 +157,19 @@ async def get_pending_extractions(limit: int = 10) -> List[dict]:
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ApplicationError("Supabase credentials not configured")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
-            f"?status=eq.pending&order=created_at.asc&limit={limit}",
-            headers=get_headers(),
+    client = get_http_client()
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/knowledge_extractions"
+        f"?status=eq.pending&order=created_at.asc&limit={limit}",
+        headers=get_headers(),
+    )
+
+    if response.status_code != 200:
+        raise ApplicationError(
+            f"Failed to get extractions: {response.status_code} {response.text}"
         )
 
-        if response.status_code != 200:
-            raise ApplicationError(
-                f"Failed to get extractions: {response.status_code} {response.text}"
-            )
-
-        return response.json()
+    return response.json()
 
 
 @activity.defn
@@ -178,22 +178,22 @@ async def get_extraction(extraction_id: str) -> dict:
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ApplicationError("Supabase credentials not configured")
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
-            headers=get_headers(),
+    client = get_http_client()
+    response = await client.get(
+        f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
+        headers=get_headers(),
+    )
+
+    if response.status_code != 200:
+        raise ApplicationError(
+            f"Failed to get extraction: {response.status_code} {response.text}"
         )
 
-        if response.status_code != 200:
-            raise ApplicationError(
-                f"Failed to get extraction: {response.status_code} {response.text}"
-            )
+    results = response.json()
+    if not results:
+        raise ApplicationError(f"Extraction not found: {extraction_id}")
 
-        results = response.json()
-        if not results:
-            raise ApplicationError(f"Extraction not found: {extraction_id}")
-
-        return results[0]
+    return results[0]
 
 
 @activity.defn
@@ -221,19 +221,19 @@ async def update_extraction_status(
         update_data["applied_to"] = applied_to
         update_data["applied_at"] = datetime.utcnow().isoformat()
 
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
-            headers=get_headers(),
-            json=update_data,
+    client = get_http_client()
+    response = await client.patch(
+        f"{SUPABASE_URL}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
+        headers=get_headers(),
+        json=update_data,
+    )
+
+    if response.status_code not in (200, 204):
+        raise ApplicationError(
+            f"Failed to update status: {response.status_code} {response.text}"
         )
 
-        if response.status_code not in (200, 204):
-            raise ApplicationError(
-                f"Failed to update status: {response.status_code} {response.text}"
-            )
-
-        return True
+    return True
 
 
 @activity.defn
@@ -258,29 +258,29 @@ async def apply_premise_knowledge(extraction: dict) -> dict:
         "geo": payload.get("geo"),
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/premises",
-            headers=get_headers(),
-            json=premise_data,
+    client = get_http_client()
+    response = await client.post(
+        f"{SUPABASE_URL}/rest/v1/premises",
+        headers=get_headers(),
+        json=premise_data,
+    )
+
+    if response.status_code not in (200, 201):
+        raise ApplicationError(
+            f"Failed to create premise: {response.status_code} {response.text}"
         )
 
-        if response.status_code not in (200, 201):
-            raise ApplicationError(
-                f"Failed to create premise: {response.status_code} {response.text}"
-            )
+    result = response.json()
+    premise_id = result[0]["id"]
 
-        result = response.json()
-        premise_id = result[0]["id"]
+    activity.logger.info(f"Created premise: {premise_id}")
 
-        activity.logger.info(f"Created premise: {premise_id}")
-
-        return {
-            "target_table": "premises",
-            "target_id": premise_id,
-            "operation": "insert",
-            "success": True,
-        }
+    return {
+        "target_table": "premises",
+        "target_id": premise_id,
+        "operation": "insert",
+        "success": True,
+    }
 
 
 @activity.defn
@@ -308,33 +308,33 @@ async def apply_process_rule(extraction: dict) -> dict:
         "is_secret": False,
     }
 
-    async with httpx.AsyncClient() as client:
-        # Use upsert with on_conflict
-        headers = get_headers()
-        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+    client = get_http_client()
+    # Use upsert with on_conflict
+    headers = get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates,return=representation"
 
-        response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/config",
-            headers=headers,
-            json=config_data,
+    response = await client.post(
+        f"{SUPABASE_URL}/rest/v1/config",
+        headers=headers,
+        json=config_data,
+    )
+
+    if response.status_code not in (200, 201):
+        raise ApplicationError(
+            f"Failed to create config: {response.status_code} {response.text}"
         )
 
-        if response.status_code not in (200, 201):
-            raise ApplicationError(
-                f"Failed to create config: {response.status_code} {response.text}"
-            )
+    result = response.json()
+    config_key = result[0]["key"] if result else config_data["key"]
 
-        result = response.json()
-        config_key = result[0]["key"] if result else config_data["key"]
+    activity.logger.info(f"Created config rule: {config_key}")
 
-        activity.logger.info(f"Created config rule: {config_key}")
-
-        return {
-            "target_table": "config",
-            "target_id": config_key,
-            "operation": "insert",
-            "success": True,
-        }
+    return {
+        "target_table": "config",
+        "target_id": config_key,
+        "operation": "insert",
+        "success": True,
+    }
 
 
 @activity.defn
@@ -364,41 +364,41 @@ async def apply_component_weight(extraction: dict) -> dict:
         "avatar_id": None,
     }
 
-    async with httpx.AsyncClient() as client:
-        headers = get_headers()
-        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+    client = get_http_client()
+    headers = get_headers()
+    headers["Prefer"] = "resolution=merge-duplicates,return=representation"
 
-        response = await client.post(
-            f"{SUPABASE_URL}/rest/v1/component_learnings",
-            headers=headers,
-            json=learning_data,
+    response = await client.post(
+        f"{SUPABASE_URL}/rest/v1/component_learnings",
+        headers=headers,
+        json=learning_data,
+    )
+
+    if response.status_code not in (200, 201):
+        # Might fail due to unique constraint - that's OK
+        activity.logger.warning(
+            f"Component learning might exist: {response.status_code}"
         )
-
-        if response.status_code not in (200, 201):
-            # Might fail due to unique constraint - that's OK
-            activity.logger.warning(
-                f"Component learning might exist: {response.status_code}"
-            )
-            return {
-                "target_table": "component_learnings",
-                "target_id": None,
-                "operation": "skip",
-                "success": True,
-                "note": "Component might already exist",
-            }
-
-        result = response.json()
-        learning_id = result[0]["id"] if result else None
-
-        activity.logger.info(f"Created component learning: {learning_id}")
-
         return {
             "target_table": "component_learnings",
-            "target_id": learning_id,
-            "operation": "insert",
+            "target_id": None,
+            "operation": "skip",
             "success": True,
-            "note": "Expert seed data, awaiting market validation",
+            "note": "Component might already exist",
         }
+
+    result = response.json()
+    learning_id = result[0]["id"] if result else None
+
+    activity.logger.info(f"Created component learning: {learning_id}")
+
+    return {
+        "target_table": "component_learnings",
+        "target_id": learning_id,
+        "operation": "insert",
+        "success": True,
+        "note": "Expert seed data, awaiting market validation",
+    }
 
 
 @activity.defn

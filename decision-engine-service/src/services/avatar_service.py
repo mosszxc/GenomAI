@@ -6,7 +6,7 @@ Uses the same pattern as learning_loop.py for Supabase access.
 """
 
 import os
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional, Tuple
 
 from src.utils.errors import SupabaseError
@@ -58,20 +58,20 @@ async def find_avatar_by_hash(canonical_hash: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/avatars"
-            f"?canonical_hash=eq.{canonical_hash}"
-            f"&select=id,canonical_hash,vertical,geo,deep_desire_type,primary_trigger,awareness_level,status",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/avatars"
+        f"?canonical_hash=eq.{canonical_hash}"
+        f"&select=id,canonical_hash,vertical,geo,deep_desire_type,primary_trigger,awareness_level,status",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data and len(data) > 0:
-            return data[0]
+    if data and len(data) > 0:
+        return data[0]
 
-        return None
+    return None
 
 
 async def create_avatar(
@@ -107,38 +107,38 @@ async def create_avatar(
     # Generate name in same format as n8n: "vertical | deep_desire_type | awareness_level"
     name = f"{vertical} | {deep_desire_type} | {awareness_level}"
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/avatars",
-            headers=headers,
-            json={
-                "canonical_hash": canonical_hash,
-                "name": name,
-                "vertical": vertical,
-                "geo": geo,
-                "deep_desire_type": deep_desire_type,
-                "primary_trigger": primary_trigger,
-                "awareness_level": awareness_level,
-                "status": status,
-            },
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/avatars",
+        headers=headers,
+        json={
+            "canonical_hash": canonical_hash,
+            "name": name,
+            "vertical": vertical,
+            "geo": geo,
+            "deep_desire_type": deep_desire_type,
+            "primary_trigger": primary_trigger,
+            "awareness_level": awareness_level,
+            "status": status,
+        },
+    )
+
+    if response.status_code == 409:
+        # Duplicate key - race condition, try to find existing
+        existing = await find_avatar_by_hash(canonical_hash)
+        if existing:
+            return existing
+        raise SupabaseError(
+            f"Avatar with hash {canonical_hash} already exists but not found"
         )
 
-        if response.status_code == 409:
-            # Duplicate key - race condition, try to find existing
-            existing = await find_avatar_by_hash(canonical_hash)
-            if existing:
-                return existing
-            raise SupabaseError(
-                f"Avatar with hash {canonical_hash} already exists but not found"
-            )
+    response.raise_for_status()
+    data = response.json()
 
-        response.raise_for_status()
-        data = response.json()
+    if data and len(data) > 0:
+        return data[0]
 
-        if data and len(data) > 0:
-            return data[0]
-
-        raise SupabaseError("Failed to create avatar: no data returned")
+    raise SupabaseError("Failed to create avatar: no data returned")
 
 
 async def find_or_create_avatar(

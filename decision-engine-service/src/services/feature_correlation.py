@@ -12,7 +12,7 @@ import os
 from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import httpx
+from src.core.http_client import get_http_client
 from scipy.stats import pearsonr
 import numpy as np
 
@@ -107,18 +107,18 @@ async def get_feature_cpa_pairs(
     # For now, use multiple queries approach
 
     # Step 1: Get feature values for ideas
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/derived_feature_values"
-            f"?feature_name=eq.{feature_name}"
-            f"&entity_type=eq.idea"
-            f"&value=not.is.null"
-            f"&order=computed_at.desc"
-            f"&limit={limit * 2}",  # Get more to filter later
-            headers=headers,
-        )
-        response.raise_for_status()
-        feature_values = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/derived_feature_values"
+        f"?feature_name=eq.{feature_name}"
+        f"&entity_type=eq.idea"
+        f"&value=not.is.null"
+        f"&order=computed_at.desc"
+        f"&limit={limit * 2}",  # Get more to filter later
+        headers=headers,
+    )
+    response.raise_for_status()
+    feature_values = response.json()
 
     if not feature_values:
         return []
@@ -133,13 +133,13 @@ async def get_feature_cpa_pairs(
         batch_ids = idea_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{rest_url}/decisions?idea_id=in.({ids_param})&select=id,idea_id",
-                headers=headers,
-            )
-            response.raise_for_status()
-            all_decisions.extend(response.json())
+        client = get_http_client()
+        response = await client.get(
+            f"{rest_url}/decisions?idea_id=in.({ids_param})&select=id,idea_id",
+            headers=headers,
+        )
+        response.raise_for_status()
+        all_decisions.extend(response.json())
 
     if not all_decisions:
         return []
@@ -154,16 +154,16 @@ async def get_feature_cpa_pairs(
         batch_ids = decision_ids[i : i + 50]
         ids_param = ",".join(batch_ids)
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{rest_url}/outcome_aggregates"
-                f"?decision_id=in.({ids_param})"
-                f"&cpa=not.is.null"
-                f"&select=decision_id,cpa",
-                headers=headers,
-            )
-            response.raise_for_status()
-            all_outcomes.extend(response.json())
+        client = get_http_client()
+        response = await client.get(
+            f"{rest_url}/outcome_aggregates"
+            f"?decision_id=in.({ids_param})"
+            f"&cpa=not.is.null"
+            f"&select=decision_id,cpa",
+            headers=headers,
+        )
+        response.raise_for_status()
+        all_outcomes.extend(response.json())
 
     if not all_outcomes:
         return []

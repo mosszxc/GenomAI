@@ -11,7 +11,7 @@ Issue: #296 - segmented analysis (--by geo/avatar/week)
 import os
 from datetime import datetime, timedelta
 from typing import Optional
-import httpx
+from src.core.http_client import get_http_client
 
 SCHEMA = "genomai"
 
@@ -97,16 +97,16 @@ async def get_heatmap_data(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?{filter_str}"
-            f"&select=component_value,geo,win_rate,sample_size"
-            f"&order=sample_size.desc",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?{filter_str}"
+        f"&select=component_value,geo,win_rate,sample_size"
+        f"&order=sample_size.desc",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     # Process data into matrix format
     geos = set()
@@ -242,16 +242,16 @@ async def get_available_component_types() -> list[str]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?avatar_id=is.null"
-            f"&select=component_type"
-            f"&order=component_type",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?avatar_id=is.null"
+        f"&select=component_type"
+        f"&order=component_type",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     # Get unique component types
     types = list(
@@ -318,19 +318,19 @@ async def _get_segments_by_geo(
     rest_url: str, headers: dict, component_value: str, component_type: str
 ) -> list[dict]:
     """Get segments by geography from component_learnings."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?component_type=eq.{component_type}"
-            f"&component_value=eq.{component_value}"
-            f"&avatar_id=is.null"
-            f"&select=geo,win_rate,sample_size"
-            f"&order=sample_size.desc"
-            f"&limit=10",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?component_type=eq.{component_type}"
+        f"&component_value=eq.{component_value}"
+        f"&avatar_id=is.null"
+        f"&select=geo,win_rate,sample_size"
+        f"&order=sample_size.desc"
+        f"&limit=10",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     segments = []
     for row in data:
@@ -359,36 +359,34 @@ async def _get_segments_by_avatar(
     rest_url: str, headers: dict, component_value: str, component_type: str
 ) -> list[dict]:
     """Get segments by avatar from component_learnings + avatars."""
-    async with httpx.AsyncClient() as client:
-        # Get component learnings with avatar_id
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?component_type=eq.{component_type}"
-            f"&component_value=eq.{component_value}"
-            f"&avatar_id=not.is.null"
-            f"&select=avatar_id,win_rate,sample_size,geo"
-            f"&order=sample_size.desc"
-            f"&limit=10",
+    client = get_http_client()
+    # Get component learnings with avatar_id
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?component_type=eq.{component_type}"
+        f"&component_value=eq.{component_value}"
+        f"&avatar_id=not.is.null"
+        f"&select=avatar_id,win_rate,sample_size,geo"
+        f"&order=sample_size.desc"
+        f"&limit=10",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    # Get avatar names
+    avatar_ids = list(set(row.get("avatar_id") for row in data if row.get("avatar_id")))
+    avatar_names = {}
+
+    if avatar_ids:
+        avatar_list = ",".join(f'"{aid}"' for aid in avatar_ids)
+        avatars_resp = await client.get(
+            f"{rest_url}/avatars?id=in.({avatar_list})&select=id,name",
             headers=headers,
         )
-        response.raise_for_status()
-        data = response.json()
-
-        # Get avatar names
-        avatar_ids = list(
-            set(row.get("avatar_id") for row in data if row.get("avatar_id"))
-        )
-        avatar_names = {}
-
-        if avatar_ids:
-            avatar_list = ",".join(f'"{aid}"' for aid in avatar_ids)
-            avatars_resp = await client.get(
-                f"{rest_url}/avatars?id=in.({avatar_list})&select=id,name",
-                headers=headers,
-            )
-            if avatars_resp.status_code == 200:
-                avatars = avatars_resp.json()
-                avatar_names = {a["id"]: a.get("name", "Unknown") for a in avatars}
+        if avatars_resp.status_code == 200:
+            avatars = avatars_resp.json()
+            avatar_names = {a["id"]: a.get("name", "Unknown") for a in avatars}
 
     segments = []
     for row in data:
@@ -429,58 +427,58 @@ async def _get_segments_by_week(
     now = datetime.utcnow()
     weeks_ago = now - timedelta(weeks=4)
 
-    async with httpx.AsyncClient() as client:
-        # Use RPC for complex aggregation
-        # Fall back to simple query joining tables
-        response = await client.get(
-            f"{rest_url}/rpc/get_component_weekly_stats"
-            f"?component_type={component_type}"
-            f"&component_value={component_value}"
-            f"&weeks=4",
-            headers=headers,
-        )
+    client = get_http_client()
+    # Use RPC for complex aggregation
+    # Fall back to simple query joining tables
+    response = await client.get(
+        f"{rest_url}/rpc/get_component_weekly_stats"
+        f"?component_type={component_type}"
+        f"&component_value={component_value}"
+        f"&weeks=4",
+        headers=headers,
+    )
 
-        if response.status_code == 200:
-            data = response.json()
-            return [
-                {
-                    "сегментам": row.get("week_label", "Unknown"),
-                    "win_rate": float(row["win_rate"]) if row.get("win_rate") else None,
-                    "sample_size": row.get("sample_size", 0),
-                }
-                for row in data
-            ]
+    if response.status_code == 200:
+        data = response.json()
+        return [
+            {
+                "сегментам": row.get("week_label", "Unknown"),
+                "win_rate": float(row["win_rate"]) if row.get("win_rate") else None,
+                "sample_size": row.get("sample_size", 0),
+            }
+            for row in data
+        ]
 
-        # Fallback: aggregate client-side if RPC doesn't exist
-        # Get creatives with test results in date range
-        response = await client.get(
-            f"{rest_url}/creatives"
-            f"?test_result=not.is.null"
-            f"&concluded_at=gte.{weeks_ago.isoformat()}"
-            f"&select=id,test_result,concluded_at,idea_id",
-            headers=headers,
-        )
-        if response.status_code != 200:
-            return []
+    # Fallback: aggregate client-side if RPC doesn't exist
+    # Get creatives with test results in date range
+    response = await client.get(
+        f"{rest_url}/creatives"
+        f"?test_result=not.is.null"
+        f"&concluded_at=gte.{weeks_ago.isoformat()}"
+        f"&select=id,test_result,concluded_at,idea_id",
+        headers=headers,
+    )
+    if response.status_code != 200:
+        return []
 
-        creatives = response.json()
-        creative_ids = [c["id"] for c in creatives]
+    creatives = response.json()
+    creative_ids = [c["id"] for c in creatives]
 
-        if not creative_ids:
-            return []
+    if not creative_ids:
+        return []
 
-        # Get decomposed components for these creatives
-        creative_list = ",".join(f'"{cid}"' for cid in creative_ids[:50])  # Limit
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?creative_id=in.({creative_list})"
-            f"&select=creative_id,payload",
-            headers=headers,
-        )
-        if response.status_code != 200:
-            return []
+    # Get decomposed components for these creatives
+    creative_list = ",".join(f'"{cid}"' for cid in creative_ids[:50])  # Limit
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives"
+        f"?creative_id=in.({creative_list})"
+        f"&select=creative_id,payload",
+        headers=headers,
+    )
+    if response.status_code != 200:
+        return []
 
-        decomposed = response.json()
+    decomposed = response.json()
 
     # Build creative_id -> test_result, concluded_at mapping
     creative_map = {

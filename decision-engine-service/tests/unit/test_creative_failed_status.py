@@ -25,19 +25,19 @@ class TestUpdateCreativeStatus:
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch(
+                "temporal.activities.supabase.get_http_client"
+            ) as mock_get_client:
+                mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
-                mock_client.return_value.__aenter__.return_value.patch = AsyncMock(
-                    return_value=mock_response
-                )
+                mock_client.patch = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 await update_creative_status(creative_id, "failed", error_message)
 
                 # Verify patch was called with error field
-                call_args = (
-                    mock_client.return_value.__aenter__.return_value.patch.call_args
-                )
+                call_args = mock_client.patch.call_args
                 json_data = call_args[1]["json"]
 
                 assert json_data["status"] == "failed"
@@ -54,19 +54,19 @@ class TestUpdateCreativeStatus:
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch(
+                "temporal.activities.supabase.get_http_client"
+            ) as mock_get_client:
+                mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
-                mock_client.return_value.__aenter__.return_value.patch = AsyncMock(
-                    return_value=mock_response
-                )
+                mock_client.patch = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 await update_creative_status(creative_id, "processed")
 
                 # Verify patch was called without error field
-                call_args = (
-                    mock_client.return_value.__aenter__.return_value.patch.call_args
-                )
+                call_args = mock_client.patch.call_args
                 json_data = call_args[1]["json"]
 
                 assert json_data["status"] == "processed"
@@ -84,18 +84,18 @@ class TestUpdateCreativeStatus:
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch(
+                "temporal.activities.supabase.get_http_client"
+            ) as mock_get_client:
+                mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
-                mock_client.return_value.__aenter__.return_value.patch = AsyncMock(
-                    return_value=mock_response
-                )
+                mock_client.patch = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 await update_creative_status(creative_id, "failed", long_error)
 
-                call_args = (
-                    mock_client.return_value.__aenter__.return_value.patch.call_args
-                )
+                call_args = mock_client.patch.call_args
                 json_data = call_args[1]["json"]
 
                 # Error should be truncated to 1000 chars
@@ -156,21 +156,21 @@ class TestAbandonFailedCreative:
         with patch("temporal.activities.maintenance._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch("httpx.AsyncClient") as mock_client:
+            with patch(
+                "temporal.activities.maintenance.get_http_client"
+            ) as mock_get_client:
+                mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
-                mock_client.return_value.__aenter__.return_value.patch = AsyncMock(
-                    return_value=mock_response
-                )
+                mock_client.patch = AsyncMock(return_value=mock_response)
+                mock_get_client.return_value = mock_client
 
                 result = await abandon_failed_creative(creative_id)
 
                 assert result is True
 
                 # Verify PATCH was called with abandoned status
-                call_args = (
-                    mock_client.return_value.__aenter__.return_value.patch.call_args
-                )
+                call_args = mock_client.patch.call_args
                 json_data = call_args[1]["json"]
 
                 assert json_data["status"] == "abandoned"

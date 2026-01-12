@@ -9,7 +9,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional
 
-import httpx
+from src.core.http_client import get_http_client
 
 
 def generate_quickchart_url(config: dict, width: int = 500, height: int = 300) -> str:
@@ -112,20 +112,20 @@ async def get_component_win_rate_trends(
     }
 
     # Get top components by sample_size
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{supabase_url}/rest/v1/component_learnings"
-            f"?select=component_type,component_value,win_rate,sample_size"
-            f"&sample_size=gt.0"
-            f"&order=sample_size.desc"
-            f"&limit={top_n}",
-            headers=headers,
-        )
+    client = get_http_client()
+    response = await client.get(
+        f"{supabase_url}/rest/v1/component_learnings"
+        f"?select=component_type,component_value,win_rate,sample_size"
+        f"&sample_size=gt.0"
+        f"&order=sample_size.desc"
+        f"&limit={top_n}",
+        headers=headers,
+    )
 
-        if response.status_code != 200:
-            return [], []
+    if response.status_code != 200:
+        return [], []
 
-        components = response.json()
+    components = response.json()
 
     if not components:
         return [], []
@@ -173,21 +173,21 @@ async def get_emotion_win_rate_trends(
         "Accept-Profile": "genomai",
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{supabase_url}/rest/v1/component_learnings"
-            f"?component_type=eq.emotion_primary"
-            f"&select=component_value,win_rate,sample_size"
-            f"&sample_size=gt.0"
-            f"&order=sample_size.desc"
-            f"&limit=5",
-            headers=headers,
-        )
+    client = get_http_client()
+    response = await client.get(
+        f"{supabase_url}/rest/v1/component_learnings"
+        f"?component_type=eq.emotion_primary"
+        f"&select=component_value,win_rate,sample_size"
+        f"&sample_size=gt.0"
+        f"&order=sample_size.desc"
+        f"&limit=5",
+        headers=headers,
+    )
 
-        if response.status_code != 200:
-            return [], []
+    if response.status_code != 200:
+        return [], []
 
-        components = response.json()
+    components = response.json()
 
     if not components:
         return [], []

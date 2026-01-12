@@ -8,7 +8,7 @@ Usage:
 
 import asyncio
 import os
-import httpx
+from src.core.http_client import get_http_client
 from datetime import datetime
 
 # Load env
@@ -49,56 +49,56 @@ async def test_insert():
     for k, v in queue_entry.items():
         print(f"  {k}: {v}")
 
-    async with httpx.AsyncClient() as client:
-        try:
-            # First insert
-            response = await client.post(
-                f"{base_url}/historical_import_queue?on_conflict=campaign_id",
-                headers=headers,
-                json=queue_entry,
-                timeout=30.0,
-            )
-            print(f"\nStatus: {response.status_code}")
-            print(f"Response: {response.text}")
+    client = get_http_client()
+    try:
+        # First insert
+        response = await client.post(
+            f"{base_url}/historical_import_queue?on_conflict=campaign_id",
+            headers=headers,
+            json=queue_entry,
+            timeout=30.0,
+        )
+        print(f"\nStatus: {response.status_code}")
+        print(f"Response: {response.text}")
 
-            if response.status_code >= 400:
-                print("\n❌ FIRST INSERT FAILED")
-                return
+        if response.status_code >= 400:
+            print("\n❌ FIRST INSERT FAILED")
+            return
 
-            print("\n✅ FIRST INSERT SUCCESS")
-            first_id = response.json()[0]["id"]
-            print(f"   ID: {first_id}")
+        print("\n✅ FIRST INSERT SUCCESS")
+        first_id = response.json()[0]["id"]
+        print(f"   ID: {first_id}")
 
-            # Second insert (same campaign_id - should upsert)
-            print("\n--- Testing duplicate insert (should upsert) ---")
-            queue_entry["updated_at"] = datetime.utcnow().isoformat()
-            response2 = await client.post(
-                f"{base_url}/historical_import_queue?on_conflict=campaign_id",
-                headers=headers,
-                json=queue_entry,
-                timeout=30.0,
-            )
-            print(f"Status: {response2.status_code}")
+        # Second insert (same campaign_id - should upsert)
+        print("\n--- Testing duplicate insert (should upsert) ---")
+        queue_entry["updated_at"] = datetime.utcnow().isoformat()
+        response2 = await client.post(
+            f"{base_url}/historical_import_queue?on_conflict=campaign_id",
+            headers=headers,
+            json=queue_entry,
+            timeout=30.0,
+        )
+        print(f"Status: {response2.status_code}")
 
-            if response2.status_code >= 400:
-                print("❌ UPSERT FAILED")
+        if response2.status_code >= 400:
+            print("❌ UPSERT FAILED")
+        else:
+            second_id = response2.json()[0]["id"]
+            print(f"✅ UPSERT SUCCESS - ID: {second_id}")
+            if first_id == second_id:
+                print("   ✅ Same ID - upsert worked correctly!")
             else:
-                second_id = response2.json()[0]["id"]
-                print(f"✅ UPSERT SUCCESS - ID: {second_id}")
-                if first_id == second_id:
-                    print("   ✅ Same ID - upsert worked correctly!")
-                else:
-                    print("   ⚠️ Different ID - created new record")
+                print("   ⚠️ Different ID - created new record")
 
-            # Clean up
-            delete_resp = await client.delete(
-                f"{base_url}/historical_import_queue?campaign_id=eq.test-campaign-upsert",
-                headers=headers,
-            )
-            print(f"\nCleanup: {delete_resp.status_code}")
+        # Clean up
+        delete_resp = await client.delete(
+            f"{base_url}/historical_import_queue?campaign_id=eq.test-campaign-upsert",
+            headers=headers,
+        )
+        print(f"\nCleanup: {delete_resp.status_code}")
 
-        except Exception as e:
-            print(f"\n❌ Error: {e}")
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
 
 
 if __name__ == "__main__":

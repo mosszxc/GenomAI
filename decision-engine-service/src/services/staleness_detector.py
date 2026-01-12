@@ -20,7 +20,7 @@ Issue: Inspiration System
 
 import logging
 import os
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -121,15 +121,15 @@ async def calculate_diversity_score(
 
     filter_str = "&".join(filters) if filters else ""
 
-    async with httpx.AsyncClient() as client:
-        # Count distinct component_type + component_value pairs
-        url = f"{rest_url}/component_learnings?select=component_type,component_value"
-        if filter_str:
-            url += f"&{filter_str}"
+    client = get_http_client()
+    # Count distinct component_type + component_value pairs
+    url = f"{rest_url}/component_learnings?select=component_type,component_value"
+    if filter_str:
+        url += f"&{filter_str}"
 
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    response = await client.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
 
     # Count unique values per type
     types_seen = set()
@@ -175,14 +175,14 @@ async def calculate_win_rate_trend(
     # Filter by date only; avatar/geo filtering would require JOIN with creatives
     filter_str = f"created_at=gte.{date_30d}"
 
-    async with httpx.AsyncClient() as client:
-        # Get outcome_aggregates from last 30 days
-        response = await client.get(
-            f"{rest_url}/outcome_aggregates?{filter_str}&select=cpa,created_at&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    # Get outcome_aggregates from last 30 days
+    response = await client.get(
+        f"{rest_url}/outcome_aggregates?{filter_str}&select=cpa,created_at&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     if not data:
         return 0.0  # No data = neutral
@@ -258,33 +258,33 @@ async def calculate_fatigue_ratio(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        # Step 1: Get active ideas
-        response = await client.get(
-            f"{rest_url}/ideas?{filter_str}&select=id&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        active_ideas = response.json()
+    client = get_http_client()
+    # Step 1: Get active ideas
+    response = await client.get(
+        f"{rest_url}/ideas?{filter_str}&select=id&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    active_ideas = response.json()
 
-        if not active_ideas:
-            return 0.0
+    if not active_ideas:
+        return 0.0
 
-        # Step 2: Get latest fatigue values from fatigue_state_versions
-        # Order by version desc to get latest first, then dedupe in code
-        idea_ids = [idea["id"] for idea in active_ideas]
-        idea_ids_str = ",".join(idea_ids)
+    # Step 2: Get latest fatigue values from fatigue_state_versions
+    # Order by version desc to get latest first, then dedupe in code
+    idea_ids = [idea["id"] for idea in active_ideas]
+    idea_ids_str = ",".join(idea_ids)
 
-        response = await client.get(
-            f"{rest_url}/fatigue_state_versions"
-            f"?idea_id=in.({idea_ids_str})"
-            f"&select=idea_id,fatigue_value,version"
-            f"&order=idea_id,version.desc"
-            f"&limit=1000",
-            headers=headers,
-        )
-        response.raise_for_status()
-        fatigue_data = response.json()
+    response = await client.get(
+        f"{rest_url}/fatigue_state_versions"
+        f"?idea_id=in.({idea_ids_str})"
+        f"&select=idea_id,fatigue_value,version"
+        f"&order=idea_id,version.desc"
+        f"&limit=1000",
+        headers=headers,
+    )
+    response.raise_for_status()
+    fatigue_data = response.json()
 
     if not fatigue_data:
         return 0.0  # No fatigue data = no fatigue
@@ -329,14 +329,14 @@ async def calculate_days_since_new_component(
 
     filter_str = "&".join(filters) if filters else ""
 
-    async with httpx.AsyncClient() as client:
-        url = f"{rest_url}/component_learnings?select=created_at&order=created_at.desc&limit=1"
-        if filter_str:
-            url += f"&{filter_str}"
+    client = get_http_client()
+    url = f"{rest_url}/component_learnings?select=created_at&order=created_at.desc&limit=1"
+    if filter_str:
+        url += f"&{filter_str}"
 
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    response = await client.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
 
     if not data:
         return DAYS_STALE_THRESHOLD * 2  # No data = very stale
@@ -381,13 +381,13 @@ async def calculate_exploration_success_rate(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/exploration_log?{filter_str}&select=was_successful&limit=500",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/exploration_log?{filter_str}&select=was_successful&limit=500",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     if not data:
         return 0.5  # No data = neutral
@@ -581,12 +581,12 @@ async def save_staleness_snapshot(
     # Remove None values
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{rest_url}/staleness_snapshots", headers=headers, json=payload
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    client = get_http_client()
+    response = await client.post(
+        f"{rest_url}/staleness_snapshots", headers=headers, json=payload
+    )
+    response.raise_for_status()
+    return response.json()[0] if response.json() else {}
 
 
 async def get_latest_staleness(
@@ -613,13 +613,13 @@ async def get_latest_staleness(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/staleness_snapshots?{filter_str}&order=created_at.desc&limit=1",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/staleness_snapshots?{filter_str}&order=created_at.desc&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     return data[0] if data else None
 

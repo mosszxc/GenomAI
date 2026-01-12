@@ -10,7 +10,7 @@ Issue: #294
 import os
 from typing import Optional
 from dataclasses import dataclass
-import httpx
+from src.core.http_client import get_http_client
 
 SCHEMA = "genomai"
 
@@ -188,30 +188,30 @@ async def detect_drift(
     if component_type:
         filter_clause = f"&component_type=eq.{component_type}"
 
-    async with httpx.AsyncClient() as client:
-        # Get current period data from component_learnings
-        current_resp = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?avatar_id=is.null{filter_clause}"
-            f"&select=component_type,component_value,sample_size,win_count,loss_count,win_rate"
-            f"&sample_size=gte.{MIN_CURRENT_SAMPLES}",
-            headers=headers,
-        )
-        current_resp.raise_for_status()
-        current_data = current_resp.json()
+    client = get_http_client()
+    # Get current period data from component_learnings
+    current_resp = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?avatar_id=is.null{filter_clause}"
+        f"&select=component_type,component_value,sample_size,win_count,loss_count,win_rate"
+        f"&sample_size=gte.{MIN_CURRENT_SAMPLES}",
+        headers=headers,
+    )
+    current_resp.raise_for_status()
+    current_data = current_resp.json()
 
-        # Get baseline from snapshots (oldest available)
-        # Since we just created the table, use earliest snapshot as baseline proxy
-        baseline_resp = await client.get(
-            f"{rest_url}/component_learning_snapshots"
-            f"?avatar_id=is.null{filter_clause}"
-            f"&select=component_type,component_value,sample_size,win_count,loss_count,win_rate,snapshot_date"
-            f"&order=snapshot_date.asc"
-            f"&limit=100",
-            headers=headers,
-        )
-        baseline_resp.raise_for_status()
-        baseline_data = baseline_resp.json()
+    # Get baseline from snapshots (oldest available)
+    # Since we just created the table, use earliest snapshot as baseline proxy
+    baseline_resp = await client.get(
+        f"{rest_url}/component_learning_snapshots"
+        f"?avatar_id=is.null{filter_clause}"
+        f"&select=component_type,component_value,sample_size,win_count,loss_count,win_rate,snapshot_date"
+        f"&order=snapshot_date.asc"
+        f"&limit=100",
+        headers=headers,
+    )
+    baseline_resp.raise_for_status()
+    baseline_data = baseline_resp.json()
 
     # Build lookup for baseline
     baseline_lookup = {}
@@ -325,16 +325,16 @@ async def get_available_component_types() -> list[str]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/component_learnings"
-            f"?avatar_id=is.null"
-            f"&sample_size=gte.{MIN_BASELINE_SAMPLES}"
-            f"&select=component_type",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/component_learnings"
+        f"?avatar_id=is.null"
+        f"&sample_size=gte.{MIN_BASELINE_SAMPLES}"
+        f"&select=component_type",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
     types = list(
         set(row["component_type"] for row in data if row.get("component_type"))

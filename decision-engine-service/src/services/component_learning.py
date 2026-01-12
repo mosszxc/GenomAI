@@ -8,7 +8,7 @@ Issue: #122
 """
 
 import os
-import httpx
+from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass
 
@@ -112,19 +112,19 @@ async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/decomposed_creatives"
-            f"?creative_id=eq.{creative_id}"
-            f"&select=payload,idea_id",
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives"
+        f"?creative_id=eq.{creative_id}"
+        f"&select=payload,idea_id",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data:
-            return data[0]
-        return None
+    if data:
+        return data[0]
+    return None
 
 
 async def get_idea_avatar(idea_id: str) -> Optional[str]:
@@ -132,16 +132,16 @@ async def get_idea_avatar(idea_id: str) -> Optional[str]:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{rest_url}/ideas?id=eq.{idea_id}&select=avatar_id", headers=headers
-        )
-        response.raise_for_status()
-        data = response.json()
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/ideas?id=eq.{idea_id}&select=avatar_id", headers=headers
+    )
+    response.raise_for_status()
+    data = response.json()
 
-        if data and data[0].get("avatar_id"):
-            return data[0]["avatar_id"]
-        return None
+    if data and data[0].get("avatar_id"):
+        return data[0]["avatar_id"]
+    return None
 
 
 async def get_creative_geo(creative_id: str) -> Optional[str]:
@@ -150,32 +150,32 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
     headers = _get_headers(supabase_key)
 
     try:
-        async with httpx.AsyncClient() as client:
-            # Get buyer_id from creative
-            response = await client.get(
-                f"{rest_url}/creatives?id=eq.{creative_id}&select=buyer_id",
-                headers=headers,
-            )
-            response.raise_for_status()
-            data = response.json()
+        client = get_http_client()
+        # Get buyer_id from creative
+        response = await client.get(
+            f"{rest_url}/creatives?id=eq.{creative_id}&select=buyer_id",
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
 
-            if not data or not data[0].get("buyer_id"):
-                return None
-
-            buyer_id = data[0]["buyer_id"]
-
-            # Get geos from buyer
-            response = await client.get(
-                f"{rest_url}/buyers?id=eq.{buyer_id}&select=geos", headers=headers
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            if data and data[0].get("geos"):
-                # Return first geo if multiple
-                geos = data[0]["geos"]
-                return geos[0] if geos else None
+        if not data or not data[0].get("buyer_id"):
             return None
+
+        buyer_id = data[0]["buyer_id"]
+
+        # Get geos from buyer
+        response = await client.get(
+            f"{rest_url}/buyers?id=eq.{buyer_id}&select=geos", headers=headers
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data and data[0].get("geos"):
+            # Return first geo if multiple
+            geos = data[0]["geos"]
+            return geos[0] if geos else None
+        return None
     except Exception:
         # Geo is optional, don't fail if unavailable
         return None
@@ -214,58 +214,58 @@ async def upsert_component_learning(
 
     filter_str = "&".join(filters)
 
-    async with httpx.AsyncClient() as client:
-        # Check if record exists
-        response = await client.get(
-            f"{rest_url}/component_learnings?{filter_str}",
-            headers=_get_headers(supabase_key),
+    client = get_http_client()
+    # Check if record exists
+    response = await client.get(
+        f"{rest_url}/component_learnings?{filter_str}",
+        headers=_get_headers(supabase_key),
+    )
+    response.raise_for_status()
+    existing = response.json()
+
+    if existing:
+        # Update existing record
+        record = existing[0]
+        new_sample = (record.get("sample_size") or 0) + 1
+        new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
+        new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
+        new_spend = float(record.get("total_spend") or 0) + spend
+        new_revenue = float(record.get("total_revenue") or 0) + revenue
+
+        # win_rate and avg_roi are generated columns, don't update them
+        response = await client.patch(
+            f"{rest_url}/component_learnings?id=eq.{record['id']}",
+            headers=headers,
+            json={
+                "sample_size": new_sample,
+                "win_count": new_wins,
+                "loss_count": new_losses,
+                "total_spend": new_spend,
+                "total_revenue": new_revenue,
+                "updated_at": "now()",
+            },
         )
         response.raise_for_status()
-        existing = response.json()
-
-        if existing:
-            # Update existing record
-            record = existing[0]
-            new_sample = (record.get("sample_size") or 0) + 1
-            new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
-            new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
-            new_spend = float(record.get("total_spend") or 0) + spend
-            new_revenue = float(record.get("total_revenue") or 0) + revenue
-
-            # win_rate and avg_roi are generated columns, don't update them
-            response = await client.patch(
-                f"{rest_url}/component_learnings?id=eq.{record['id']}",
-                headers=headers,
-                json={
-                    "sample_size": new_sample,
-                    "win_count": new_wins,
-                    "loss_count": new_losses,
-                    "total_spend": new_spend,
-                    "total_revenue": new_revenue,
-                    "updated_at": "now()",
-                },
-            )
-            response.raise_for_status()
-            return response.json()[0] if response.json() else {}
-        else:
-            # Insert new record (win_rate and avg_roi are generated columns)
-            response = await client.post(
-                f"{rest_url}/component_learnings",
-                headers=headers,
-                json={
-                    "component_type": component_type,
-                    "component_value": component_value,
-                    "geo": geo,
-                    "avatar_id": avatar_id,
-                    "sample_size": 1,
-                    "win_count": 1 if was_win else 0,
-                    "loss_count": 0 if was_win else 1,
-                    "total_spend": spend,
-                    "total_revenue": revenue,
-                },
-            )
-            response.raise_for_status()
-            return response.json()[0] if response.json() else {}
+        return response.json()[0] if response.json() else {}
+    else:
+        # Insert new record (win_rate and avg_roi are generated columns)
+        response = await client.post(
+            f"{rest_url}/component_learnings",
+            headers=headers,
+            json={
+                "component_type": component_type,
+                "component_value": component_value,
+                "geo": geo,
+                "avatar_id": avatar_id,
+                "sample_size": 1,
+                "win_count": 1 if was_win else 0,
+                "loss_count": 0 if was_win else 1,
+                "total_spend": spend,
+                "total_revenue": revenue,
+            },
+        )
+        response.raise_for_status()
+        return response.json()[0] if response.json() else {}
 
 
 async def process_component_learnings(
