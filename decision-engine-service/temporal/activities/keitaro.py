@@ -299,9 +299,14 @@ async def get_campaigns_by_source(
     for c in all_campaigns:
         name = c.get("name", "")
         created_at = c.get("created_at", "")
+        name_upper = name.upper()
 
         # Filter by source in name (case-insensitive)
-        if source_upper not in name.upper():
+        if source_upper not in name_upper:
+            continue
+
+        # Exclude COIN campaigns (different workflow)
+        if "COIN" in name_upper:
             continue
 
         # Filter by creation date
