@@ -423,8 +423,18 @@ async def log_buyer_interaction(
     message_type: str,
     content: str,
     context: Optional[dict] = None,
+    buyer_id: Optional[str] = None,
 ) -> None:
-    """Log interaction to buyer_interactions table."""
+    """Log interaction to buyer_interactions table.
+
+    Args:
+        telegram_id: Telegram ID of the message sender/receiver
+        direction: 'in' for incoming, 'out' for outgoing
+        message_type: Type of message (command, text, system, etc.)
+        content: Message content
+        context: Optional context dict
+        buyer_id: Optional buyer UUID to associate system messages with a buyer
+    """
     import httpx
 
     supabase_url = os.getenv("SUPABASE_URL")
@@ -440,18 +450,22 @@ async def log_buyer_interaction(
         "Prefer": "return=minimal",
     }
 
+    payload = {
+        "telegram_id": telegram_id,
+        "direction": direction,
+        "message_type": message_type,
+        "content": content,
+        "context": context,
+    }
+    if buyer_id:
+        payload["buyer_id"] = buyer_id
+
     try:
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"{supabase_url}/rest/v1/buyer_interactions",
                 headers=headers,
-                json={
-                    "telegram_id": telegram_id,
-                    "direction": direction,
-                    "message_type": message_type,
-                    "content": content,
-                    "context": context,
-                },
+                json=payload,
                 timeout=10.0,
             )
     except Exception as e:
@@ -1357,7 +1371,12 @@ async def handle_activity_command(message: TelegramMessage) -> None:
 
 
 async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
-    """Show last 20 messages with a specific buyer."""
+    """Show last 20 messages with a specific buyer.
+
+    Searches by both:
+    - telegram_id: Direct messages from/to buyer
+    - buyer_id: System messages associated with buyer (creatives, hypotheses, etc.)
+    """
     import httpx
 
     supabase_url = os.getenv("SUPABASE_URL")
@@ -1375,25 +1394,38 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
         }
 
         async with httpx.AsyncClient() as client:
-            # Get buyer info
+            # Get buyer info including id for buyer_id search
             buyer_resp = await client.get(
                 f"{supabase_url}/rest/v1/buyers"
                 f"?telegram_id=eq.{buyer_telegram_id}"
-                f"&select=name,telegram_username"
+                f"&select=id,name,telegram_username"
                 f"&limit=1",
                 headers=headers,
             )
             buyers = buyer_resp.json()
             buyer = buyers[0] if buyers else {}
+            buyer_uuid = buyer.get("id")
 
-            # Get last 20 messages
-            response = await client.get(
-                f"{supabase_url}/rest/v1/buyer_interactions"
-                f"?telegram_id=eq.{buyer_telegram_id}"
-                f"&select=direction,message_type,content,created_at"
-                f"&order=created_at.desc&limit=20",
-                headers=headers,
-            )
+            # Get last 20 messages by telegram_id OR buyer_id
+            # This captures both direct messages and system notifications about buyer
+            if buyer_uuid:
+                # Search by both telegram_id and buyer_id
+                response = await client.get(
+                    f"{supabase_url}/rest/v1/buyer_interactions"
+                    f"?or=(telegram_id.eq.{buyer_telegram_id},buyer_id.eq.{buyer_uuid})"
+                    f"&select=direction,message_type,content,created_at"
+                    f"&order=created_at.desc&limit=20",
+                    headers=headers,
+                )
+            else:
+                # Fallback: search only by telegram_id
+                response = await client.get(
+                    f"{supabase_url}/rest/v1/buyer_interactions"
+                    f"?telegram_id=eq.{buyer_telegram_id}"
+                    f"&select=direction,message_type,content,created_at"
+                    f"&order=created_at.desc&limit=20",
+                    headers=headers,
+                )
             interactions = response.json()
 
         if not interactions:
