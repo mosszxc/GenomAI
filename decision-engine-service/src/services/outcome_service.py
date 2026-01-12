@@ -5,6 +5,7 @@ Replaces Outcome Aggregator n8n workflow with Python API.
 """
 
 import os
+import logging
 import statistics
 from datetime import datetime, date
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ from decimal import Decimal
 import httpx
 
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 # Schema name for all operations
@@ -393,9 +396,21 @@ class OutcomeService:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(learning_loop_url, json=payload)
+                if response.status_code != 200:
+                    logger.error(
+                        "Learning loop returned non-200 status: %s, body: %s",
+                        response.status_code,
+                        response.text[:500],
+                    )
                 return response.status_code == 200
-        except Exception:
-            # Don't fail if learning loop is unavailable
+        except Exception as e:
+            logger.error(
+                "Failed to trigger learning loop for outcome_id=%s, decision_id=%s: %s",
+                outcome_id,
+                decision_id,
+                str(e),
+                exc_info=True,
+            )
             return False
 
     async def aggregate(self, snapshot_id: str) -> AggregateResult:
