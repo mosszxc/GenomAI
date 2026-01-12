@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from temporalio import activity
+from temporalio.client import Client as TemporalClient
 from temporalio.exceptions import ApplicationError
 from src.core.http_client import get_http_client
 
@@ -548,6 +549,22 @@ class StuckCreative:
     buyer_id: Optional[str]
     stuck_reason: str  # "transcription" | "decomposition"
     stuck_since: str  # ISO timestamp
+    stuck_duration_minutes: int  # Issue #481: how long it's been stuck
+
+
+def _calculate_stuck_duration_minutes(stuck_since_iso: str) -> int:
+    """Calculate how many minutes since stuck_since timestamp."""
+    try:
+        # Parse ISO timestamp (handle with/without timezone)
+        stuck_since = stuck_since_iso.replace("Z", "+00:00")
+        if "+" not in stuck_since and "-" not in stuck_since[10:]:
+            # No timezone, assume UTC
+            stuck_dt = datetime.fromisoformat(stuck_since)
+        else:
+            stuck_dt = datetime.fromisoformat(stuck_since).replace(tzinfo=None)
+        return int((datetime.utcnow() - stuck_dt).total_seconds() / 60)
+    except Exception:
+        return 0
 
 
 @activity.defn
@@ -562,6 +579,8 @@ async def find_stuck_creatives(
     1. Workflow never started (status='pending', no transcript)
     2. Workflow failed between transcript and decomposition
 
+    Issue #481: Now includes stuck_duration_minutes for recovery decisions.
+
     Args:
         transcription_timeout_minutes: Minutes to wait before considering
             transcription as stuck
@@ -569,7 +588,8 @@ async def find_stuck_creatives(
             decomposition as stuck
 
     Returns:
-        List of stuck creatives with their creative_id, buyer_id, and stuck_reason
+        List of stuck creatives with their creative_id, buyer_id, stuck_reason,
+        stuck_since, and stuck_duration_minutes
     """
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
@@ -612,12 +632,16 @@ async def find_stuck_creatives(
                 headers=headers,
             )
             if transcript_resp.status_code == 200 and not transcript_resp.json():
+                stuck_since = creative["created_at"]
                 stuck_creatives.append(
                     {
                         "creative_id": creative["id"],
                         "buyer_id": creative.get("buyer_id"),
                         "stuck_reason": "transcription",
-                        "stuck_since": creative["created_at"],
+                        "stuck_since": stuck_since,
+                        "stuck_duration_minutes": _calculate_stuck_duration_minutes(
+                            stuck_since
+                        ),
                     }
                 )
 
@@ -655,12 +679,16 @@ async def find_stuck_creatives(
                     if creatives:
                         buyer_id = creatives[0].get("buyer_id")
 
+                stuck_since = transcript["created_at"]
                 stuck_creatives.append(
                     {
                         "creative_id": creative_id,
                         "buyer_id": buyer_id,
                         "stuck_reason": "decomposition",
-                        "stuck_since": transcript["created_at"],
+                        "stuck_since": stuck_since,
+                        "stuck_duration_minutes": _calculate_stuck_duration_minutes(
+                            stuck_since
+                        ),
                     }
                 )
 
@@ -879,3 +907,109 @@ async def check_staleness(
             "recommended_action": None,
             "error": str(e),
         }
+
+
+async def _get_temporal_client() -> TemporalClient:
+    """Get Temporal client for workflow operations."""
+    temporal_host = os.getenv("TEMPORAL_HOST", "localhost:7233")
+    namespace = os.getenv("TEMPORAL_NAMESPACE", "default")
+    return await TemporalClient.connect(temporal_host, namespace=namespace)
+
+
+@activity.defn
+async def cancel_stuck_creative_workflow(creative_id: str) -> bool:
+    """
+    Cancel a stuck creative pipeline workflow.
+
+    Issue #481: When a creative is stuck for > 2 hours, we need to
+    explicitly cancel the workflow before we can restart it.
+
+    Args:
+        creative_id: Creative UUID whose workflow should be cancelled
+
+    Returns:
+        True if cancelled successfully, False otherwise
+    """
+    workflow_id = f"creative-pipeline-{creative_id}"
+
+    activity.logger.info(f"Attempting to cancel workflow {workflow_id}")
+
+    try:
+        client = await _get_temporal_client()
+        handle = client.get_workflow_handle(workflow_id)
+
+        # Check if workflow is running
+        try:
+            desc = await handle.describe()
+            status = desc.status.name if desc.status else "UNKNOWN"
+
+            if status == "RUNNING":
+                await handle.cancel()
+                activity.logger.info(f"Cancelled stuck workflow {workflow_id}")
+                return True
+            elif status in ("COMPLETED", "FAILED", "CANCELED", "TERMINATED"):
+                activity.logger.info(
+                    f"Workflow {workflow_id} already {status}, no cancel needed"
+                )
+                return True
+            else:
+                activity.logger.warning(
+                    f"Workflow {workflow_id} in unexpected status: {status}"
+                )
+                return False
+
+        except Exception as e:
+            if "not found" in str(e).lower():
+                activity.logger.info(
+                    f"Workflow {workflow_id} not found, nothing to cancel"
+                )
+                return True
+            raise
+
+    except Exception as e:
+        activity.logger.error(f"Failed to cancel workflow {workflow_id}: {e}")
+        return False
+
+
+@activity.defn
+async def reset_creative_for_recovery(creative_id: str) -> bool:
+    """
+    Reset a stuck creative status for recovery.
+
+    Issue #481: After cancelling a stuck workflow, we reset the creative
+    status to 'registered' so it can be picked up by a new workflow.
+
+    Args:
+        creative_id: Creative UUID to reset
+
+    Returns:
+        True if reset successful, False otherwise
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    activity.logger.info(f"Resetting creative {creative_id[:8]} for recovery")
+
+    client = get_http_client()
+
+    # Reset status to 'registered' (not pending) so workflow can process it
+    response = await client.patch(
+        f"{rest_url}/creatives?id=eq.{creative_id}",
+        headers=headers,
+        json={
+            "status": "registered",
+            "error": None,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
+
+    if response.status_code in (200, 204):
+        activity.logger.info(
+            f"Creative {creative_id[:8]} reset to 'registered' for recovery"
+        )
+        return True
+    else:
+        activity.logger.warning(
+            f"Failed to reset creative {creative_id[:8]}: {response.text}"
+        )
+        return False
