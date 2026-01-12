@@ -69,7 +69,9 @@ async def get_temporal_client():
     return await get_client()
 
 
-async def send_telegram_message(chat_id: str, text: str) -> bool:
+async def send_telegram_message(
+    chat_id: str, text: str, reply_markup: dict | None = None
+) -> bool:
     """Send a message to Telegram chat."""
     import httpx
 
@@ -78,14 +80,18 @@ async def send_telegram_message(chat_id: str, text: str) -> bool:
         logger.error("TELEGRAM_BOT_TOKEN not configured")
         return False
 
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML",
-            },
+            json=payload,
             timeout=30.0,
         )
 
@@ -1012,7 +1018,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
             # Get all buyers
             buyers_resp = await client.get(
                 f"{supabase_url}/rest/v1/buyers"
-                f"?select=id,name,telegram_username,geos,verticals,status,created_at"
+                f"?select=id,telegram_id,name,telegram_username,geos,verticals,status,created_at"
                 f"&order=created_at.desc&limit=10",
                 headers=headers,
             )
@@ -1067,7 +1073,20 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
                 f"   Креативов: {total} | Win rate: {win_rate}\n"
             )
 
-        await send_telegram_message(message.chat_id, "\n".join(lines))
+        # Build inline keyboard with chat buttons for each buyer
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": f"💬 {b.get('name') or 'Чат'}",
+                        "callback_data": f"chat_{b['telegram_id']}",
+                    }
+                ]
+                for b in buyers
+            ]
+        }
+
+        await send_telegram_message(message.chat_id, "\n".join(lines), keyboard)
 
     except Exception as e:
         logger.error(f"Failed to get buyers: {e}")
@@ -1150,6 +1169,78 @@ async def handle_activity_command(message: TelegramMessage) -> None:
     except Exception as e:
         logger.error(f"Failed to get activity: {e}")
         await send_telegram_message(message.chat_id, "Не удалось загрузить активность.")
+
+
+async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
+    """Show last 20 messages with a specific buyer."""
+    import httpx
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        await send_telegram_message(chat_id, "Сервис временно недоступен.")
+        return
+
+    try:
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Accept-Profile": "genomai",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get buyer info
+            buyer_resp = await client.get(
+                f"{supabase_url}/rest/v1/buyers"
+                f"?telegram_id=eq.{buyer_telegram_id}"
+                f"&select=name,telegram_username"
+                f"&limit=1",
+                headers=headers,
+            )
+            buyers = buyer_resp.json()
+            buyer = buyers[0] if buyers else {}
+
+            # Get last 20 messages
+            response = await client.get(
+                f"{supabase_url}/rest/v1/buyer_interactions"
+                f"?telegram_id=eq.{buyer_telegram_id}"
+                f"&select=direction,message_type,content,created_at"
+                f"&order=created_at.desc&limit=20",
+                headers=headers,
+            )
+            interactions = response.json()
+
+        if not interactions:
+            await send_telegram_message(chat_id, "Сообщений с этим байером нет.")
+            return
+
+        # Format header
+        username = (
+            f"@{buyer.get('telegram_username')}"
+            if buyer.get("telegram_username")
+            else buyer.get("name", buyer_telegram_id)
+        )
+        lines = [f"💬 <b>Переписка с {username}</b>\n"]
+
+        # Reverse to show oldest first (chronological order)
+        for i in reversed(interactions):
+            direction = "→" if i["direction"] == "in" else "←"
+            content = (i.get("content") or "")[:80]
+            if len(i.get("content") or "") > 80:
+                content += "..."
+
+            # Parse timestamp
+            created_at = i.get("created_at", "")
+            time_str = created_at[11:16] if len(created_at) > 16 else ""
+
+            lines.append(f"{time_str} {direction} {content}")
+
+        await send_telegram_message(chat_id, "\n".join(lines))
+
+    except Exception as e:
+        logger.error(f"Failed to get chat history: {e}")
+        await send_telegram_message(chat_id, "Не удалось загрузить переписку.")
 
 
 async def handle_decisions_command(message: TelegramMessage) -> None:
@@ -2147,6 +2238,10 @@ async def handle_callback_query(update: dict) -> None:
         await send_telegram_message(
             chat_id, "Пропущено. Используйте /knowledge для следующего."
         )
+
+    elif data.startswith("chat_"):
+        buyer_telegram_id = data.replace("chat_", "")
+        await handle_chat_history(chat_id, buyer_telegram_id)
 
 
 async def handle_extraction_approve(
