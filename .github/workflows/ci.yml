@@ -6,72 +6,53 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  PYTHON_VERSION: '3.11'
-
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install ruff
-        run: pip install ruff
+        run: python3 -m pip install --user ruff
 
       - name: Lint check
-        run: ruff check decision-engine-service/
+        run: python3 -m ruff check decision-engine-service/
 
       - name: Format check
-        run: ruff format decision-engine-service/ --check
+        run: python3 -m ruff format decision-engine-service/ --check
 
   test:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: lint
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install dependencies
         working-directory: decision-engine-service
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-timeout
+          python3 -m pip install --user -r requirements.txt
+          python3 -m pip install --user pytest pytest-asyncio pytest-timeout
 
       - name: Run unit tests
         working-directory: decision-engine-service
         run: |
-          pytest tests/unit/ -v --tb=short -m "not slow" --timeout=60
+          python3 -m pytest tests/unit/ -v --tb=short -m "not slow" --timeout=60
 
   contracts:
     name: Contract Validation
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: lint
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install dependencies
         working-directory: decision-engine-service
-        run: pip install -r requirements.txt
+        run: python3 -m pip install --user -r requirements.txt
 
       - name: Validate contracts
-        working-directory: ${{ github.workspace }}
         run: python3 scripts/validate_contracts.py --verbose
