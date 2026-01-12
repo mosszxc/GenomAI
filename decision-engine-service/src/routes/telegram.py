@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
 
+from src.utils.parsing import safe_float
 logger = logging.getLogger(__name__)
 
 
@@ -510,8 +511,8 @@ async def handle_stats_command(message: TelegramMessage) -> None:
                 if isinstance(metrics_rows, list):
                     for row in metrics_rows:
                         metrics = row.get("metrics") or {}
-                        total_spend += float(metrics.get("spend", 0) or 0)
-                        total_revenue += float(metrics.get("revenue", 0) or 0)
+                        total_spend += safe_float(metrics.get("spend", 0))
+                        total_revenue += safe_float(metrics.get("revenue", 0))
 
             # Calculate ROI
             roi = (

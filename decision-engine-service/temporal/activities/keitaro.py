@@ -16,6 +16,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from temporal.config import settings
+from src.utils.parsing import safe_int, safe_float
 
 
 @dataclass
@@ -176,11 +177,11 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
     metrics = KeitaroMetrics(
         tracker_id=input.tracker_id,
         date=metrics_date,
-        clicks=int(row.get("clicks", 0) or 0),
-        conversions=int(row.get("conversions", 0) or 0),
-        revenue=float(row.get("revenue", 0) or 0),
-        cost=float(row.get("cost", 0) or 0),
-        profit_confirmed=float(row.get("profit_confirmed", 0) or 0),
+        clicks=safe_int(row.get("clicks", 0)),
+        conversions=safe_int(row.get("conversions", 0)),
+        revenue=safe_float(row.get("revenue", 0)),
+        cost=safe_float(row.get("cost", 0)),
+        profit_confirmed=safe_float(row.get("profit_confirmed", 0)),
     )
 
     activity.logger.info(
@@ -416,8 +417,8 @@ async def get_campaign_creatives(
             CreativeInfo(
                 landing_id=str(landing_id),
                 name=row.get("landing", f"Landing {landing_id}"),
-                clicks=int(row.get("clicks", 0) or 0),
-                conversions=int(row.get("conversions", 0) or 0),
+                clicks=safe_int(row.get("clicks", 0)),
+                conversions=safe_int(row.get("conversions", 0)),
             )
         )
 
@@ -487,11 +488,11 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
             metrics = KeitaroMetrics(
                 tracker_id=tracker_id,
                 date=metrics_date,
-                clicks=int(row.get("clicks", 0) or 0),
-                conversions=int(row.get("conversions", 0) or 0),
-                revenue=float(row.get("revenue", 0) or 0),
-                cost=float(row.get("cost", 0) or 0),
-                profit_confirmed=float(row.get("profit_confirmed", 0) or 0),
+                clicks=safe_int(row.get("clicks", 0)),
+                conversions=safe_int(row.get("conversions", 0)),
+                revenue=safe_float(row.get("revenue", 0)),
+                cost=safe_float(row.get("cost", 0)),
+                profit_confirmed=safe_float(row.get("profit_confirmed", 0)),
             )
             results.append(metrics)
         else:
