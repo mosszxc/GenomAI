@@ -28,6 +28,7 @@ with workflow.unsafe.imports_passed_through():
         mark_stuck_transcriptions_failed,
         archive_failed_creatives,
         check_data_integrity,
+        cleanup_orphaned_hypotheses,
         emit_maintenance_event,
         check_staleness,
         release_orphaned_agent_tasks,
@@ -79,6 +80,8 @@ class MaintenanceInput:
     stuck_transcription_timeout_minutes: int = 5
     # Timeout before considering decomposition stuck (minutes)
     stuck_decomposition_timeout_minutes: int = 30
+    # Orphaned hypotheses cleanup (Issue #475)
+    run_orphan_hypothesis_cleanup: bool = True
 
 
 @dataclass
@@ -106,6 +109,8 @@ class MaintenanceResult:
     # Stuck creatives recovery (Issue #398)
     stuck_creatives_recovered: int = 0
     stuck_creatives_failed: int = 0
+    # Orphaned hypotheses cleanup (Issue #475)
+    orphaned_hypotheses_deleted: int = 0
 
 
 @workflow.defn
@@ -223,6 +228,21 @@ class MaintenanceWorkflow:
             except Exception as e:
                 workflow.logger.error(f"Integrity check failed: {e}")
                 result.integrity_issues.append(f"Integrity check error: {e}")
+
+        # Step 5b: Cleanup orphaned hypotheses (Issue #475)
+        if input.run_orphan_hypothesis_cleanup:
+            try:
+                deleted_count = await workflow.execute_activity(
+                    cleanup_orphaned_hypotheses,
+                    start_to_close_timeout=timedelta(seconds=120),
+                    retry_policy=retry_policy,
+                )
+                result.orphaned_hypotheses_deleted = deleted_count
+                if deleted_count > 0:
+                    workflow.logger.info(f"Deleted {deleted_count} orphaned hypotheses")
+            except Exception as e:
+                workflow.logger.error(f"Orphan hypothesis cleanup failed: {e}")
+                result.integrity_issues.append(f"Orphan hypothesis cleanup error: {e}")
 
         # Step 6: Staleness detection (Inspiration System)
         if input.run_staleness_check:
@@ -433,7 +453,8 @@ class MaintenanceWorkflow:
             f"issues={len(result.integrity_issues)}, stale={result.is_stale}, "
             f"hypothesis_retried={result.hypotheses_retried}, "
             f"orphaned_tasks={result.orphaned_tasks_released}, "
-            f"stuck_recovered={result.stuck_creatives_recovered}"
+            f"stuck_recovered={result.stuck_creatives_recovered}, "
+            f"orphaned_hypotheses={result.orphaned_hypotheses_deleted}"
         )
 
         return result

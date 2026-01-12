@@ -393,6 +393,58 @@ async def check_data_integrity() -> List[str]:
 
 
 @activity.defn
+async def cleanup_orphaned_hypotheses() -> int:
+    """
+    Delete hypotheses without buyer_id (orphaned).
+
+    Issue #475: Hypotheses created without buyer_id can never be delivered
+    and accumulate in the database. This activity cleans them up.
+
+    Returns:
+        Number of orphaned hypotheses deleted
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    activity.logger.info("Looking for orphaned hypotheses (buyer_id IS NULL)")
+
+    async with httpx.AsyncClient() as client:
+        # Find orphaned hypotheses
+        response = await client.get(
+            f"{rest_url}/hypotheses?buyer_id=is.null&select=id",
+            headers=_get_headers(supabase_key),
+        )
+
+        if response.status_code != 200:
+            activity.logger.warning(
+                f"Error checking orphaned hypotheses: {response.text}"
+            )
+            return 0
+
+        orphaned = response.json()
+
+        if not orphaned:
+            activity.logger.info("No orphaned hypotheses found")
+            return 0
+
+        # Delete orphaned hypotheses
+        orphan_ids = [h["id"] for h in orphaned]
+        deleted_count = 0
+
+        for orphan_id in orphan_ids:
+            delete_resp = await client.delete(
+                f"{rest_url}/hypotheses?id=eq.{orphan_id}",
+                headers=headers,
+            )
+            if delete_resp.status_code in (200, 204):
+                deleted_count += 1
+                activity.logger.info(f"Deleted orphaned hypothesis {orphan_id[:8]}")
+
+        activity.logger.info(f"Deleted {deleted_count} orphaned hypotheses")
+        return deleted_count
+
+
+@activity.defn
 async def emit_maintenance_event(
     buyers_reset: int,
     recommendations_expired: int,

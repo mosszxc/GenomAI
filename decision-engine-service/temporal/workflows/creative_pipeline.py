@@ -316,9 +316,10 @@ class CreativePipelineWorkflow:
                 start_to_close_timeout=timedelta(seconds=10),
             )
 
-            # Step 6: Hypothesis Generation (only for APPROVE)
+            # Step 6: Hypothesis Generation (only for APPROVE with buyer)
+            # Skip if no buyer_id to prevent orphaned hypotheses (#475)
             hypothesis_id = None
-            if decision_result.is_approved:
+            if decision_result.is_approved and input.buyer_id:
                 self._status = "generating_hypothesis"
 
                 # Step 6a: Select premise for hypothesis generation
@@ -425,6 +426,13 @@ class CreativePipelineWorkflow:
                             ],
                             start_to_close_timeout=timedelta(seconds=10),
                         )
+
+            elif decision_result.is_approved:
+                # APPROVE but no buyer_id - skip hypothesis to prevent orphans (#475)
+                workflow.logger.info(
+                    f"Skipping hypothesis generation: APPROVE but no buyer_id "
+                    f"(idea_id={self._idea_id})"
+                )
 
             # Update creative status
             await workflow.execute_activity(
