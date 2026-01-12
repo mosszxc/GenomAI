@@ -14,7 +14,6 @@ Environment:
 """
 
 import asyncio
-import logging
 import signal
 import sys
 from pathlib import Path
@@ -234,12 +233,14 @@ from temporal.activities.knowledge_db import (
 )
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Configure structured logging with trace IDs
+from temporal.tracing import configure_structlog, get_logger
+
+# Initialize structlog (JSON in production, console in dev)
+import os
+
+configure_structlog(json_output=os.getenv("LOG_FORMAT", "json") == "json")
+logger = get_logger(__name__)
 
 
 async def run_worker():
