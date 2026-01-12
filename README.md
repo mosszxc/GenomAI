@@ -1,6 +1,11 @@
 # GenomAI
 
-> Autonomous Creative Decision System v2.0
+[![CI](https://github.com/mosszxc/GenomAI/actions/workflows/ci.yml/badge.svg)](https://github.com/mosszxc/GenomAI/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mosszxc/GenomAI)](https://github.com/mosszxc/GenomAI/releases/latest)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Temporal](https://img.shields.io/badge/orchestration-Temporal-blueviolet)](https://temporal.io/)
+
+> **Autonomous Creative Decision System** — market-driven creative optimization
 
 ## О проекте
 
@@ -152,9 +157,9 @@ KEITARO_API_KEY=
 
 ---
 
-## v2.0 Features
+## Features
 
-### Temporal Migration
+### Temporal Orchestration
 - Полная миграция с n8n на Temporal Cloud
 - 15 workflows, 24 activities
 - Durable execution, built-in retry
@@ -264,7 +269,8 @@ make setup-hooks   # Install once
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| [v2.0.0](https://github.com/mosszxc/GenomAI/releases/tag/v2.0.0) | 2026-01-12 | Temporal migration, Modular Creative System |
+| [v1.1.2](https://github.com/mosszxc/GenomAI/releases/tag/v1.1.2) | 2026-01-12 | Security fixes, Temporal improvements, Structured logging |
+| [v1.1.1](https://github.com/mosszxc/GenomAI/releases/tag/v1.1.1) | 2026-01-12 | Buyer compatibility fix |
 | [v1.1.0](https://github.com/mosszxc/GenomAI/releases/tag/v1.1.0) | 2025-12-26 | Buyer Production Release |
 | [v1.0.0](https://github.com/mosszxc/GenomAI/releases/tag/v1.0.0) | 2025-12-26 | Production Ready |
 

@@ -1,3 +1,83 @@
+## [v1.1.2] - 2026-01-12
+
+### Changes
+- f31e2cf feat: complete issue #486 (#532)
+- 3ee1a71 docs: document existing E2E testing infrastructure for #529 (#531)
+- e4ec09d fix(scripts): complete task-done.sh flow with CI wait, merge, issue close (#530)
+- 506b1c1 feat: increase orphan cleanup batch to 500, add error logging (#485) (#528)
+- c824790 Closes #483 (#526)
+- cd3328a fix(maintenance): add force recovery for stuck creatives > 2h (#481) (#525)
+- e07bd25 feat: complete issue #482 (#527)
+- f17e513 Heartbeat timeout 60 сек слишком короткий для transcription (#524)
+- bbdb273 feat: complete issue #487
+- bea497e feat: complete issue #483 (#522)
+- 8b11db2 feat: complete issue #476 (#521)
+- 2bb0968 feat: increase orphan cleanup batch to 500 with error logging (#485) (#520)
+- c5c7408 feat(temporal): add 'failed' status for stuck creatives (#472) (#518)
+- da42b91 feat(temporal): add structured logging with trace IDs (#519)
+- 28745b5 feat: complete issue #475 (#517)
+- 998e170 Closes #471 (#516)
+- fb0db56 feat: complete issue #484 (#515)
+- c66fe14 fix(temporal): increase heartbeat_timeout from 60s to 5min for transcription (#510)
+- 24333d4 feat: complete issue #474 (#513)
+- 03bd262 fix(qa-notes): fix test path for issue-473 (#514)
+- cf78387 fix: Learning Loop idempotency - prevent duplicate processing (#473) (#512)
+- d99c5fa feat: complete issue #479 (#509)
+- f369cbe feat: complete issue #468 (#511)
+- 60a3fd6 Closes #467 (#508)
+- cbfd91f fix: validate --geo flag against VALID_GEOS in /simulate command (#506)
+- 2e2e857 docs: require specific functional test before issue completion
+- d697b5f docs: add strict warnings about transcript creation rules
+- adaf1bb docs: update TRANSCRIPT_WEBHOOK.md with full pipeline documentation
+- 0a8e064 Closes #466
+
+### Issues
+- Closes #466
+- Closes #467
+- Closes #468
+- Closes #471
+- Closes #472
+- Closes #473
+- Closes #474
+- Closes #475
+- Closes #476
+- Closes #479
+- Closes #481
+- Closes #482
+- Closes #483
+- Closes #484
+- Closes #485
+- Closes #486
+- Closes #487
+- Closes #506
+- Closes #508
+- Closes #509
+- Closes #510
+- Closes #511
+- Closes #512
+- Closes #513
+- Closes #514
+- Closes #515
+- Closes #516
+- Closes #517
+- Closes #518
+- Closes #519
+- Closes #520
+- Closes #521
+- Closes #522
+- Closes #523
+- Closes #524
+- Closes #525
+- Closes #526
+- Closes #527
+- Closes #528
+- Closes #529
+- Closes #530
+- Closes #531
+- Closes #532
+
+---
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
