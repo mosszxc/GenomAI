@@ -290,7 +290,7 @@ class OutcomeService:
 
         client = get_http_client()
         response = await client.get(
-            f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&created_at=gte.{cutoff_date}&select=cpa&order=created_at.desc",
+            f"{self.rest_url}/outcome_aggregates?creative_id=eq.{creative_id}&created_at=gte.{cutoff_date}&select=cpa&order=created_at.desc&limit=1000",
             headers=self._get_headers(),
         )
         response.raise_for_status()
