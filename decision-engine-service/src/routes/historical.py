@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -185,24 +186,17 @@ async def get_pending_imports(buyer_id: str):
     Returns:
         List of pending import records
     """
-    import os
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return {"success": False, "error": "Supabase not configured"}
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-    }
+    headers = sb.get_headers()
 
     try:
         client = get_http_client()
         response = await client.get(
-            f"{supabase_url}/rest/v1/historical_import_queue"
+            f"{sb.rest_url}/historical_import_queue"
             f"?buyer_id=eq.{buyer_id}"
             f"&status=in.(pending_video,ready,processing)"
             f"&order=created_at.asc"

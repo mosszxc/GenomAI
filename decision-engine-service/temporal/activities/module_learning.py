@@ -14,13 +14,10 @@ from typing import Optional
 from dataclasses import dataclass
 
 from temporalio import activity
-
-from temporal.config import settings
-from src.core.http_client import get_http_client
 import httpx
 
-
-SCHEMA = "genomai"
+from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 
 
 @dataclass
@@ -79,18 +76,12 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
         f"Updating module stats: {input.module_id}, win={input.is_win}"
     )
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Profile": SCHEMA,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers(for_write=True)
 
     # First get current stats
     get_url = (
-        f"{settings.supabase.url}/rest/v1/module_bank"
+        f"{sb.rest_url}/module_bank"
         f"?id=eq.{input.module_id}&select=sample_size,win_count,loss_count,total_spend,total_revenue"
     )
 
@@ -116,9 +107,7 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
         total_revenue = float(current.get("total_revenue") or 0) + input.revenue
 
         # Update stats
-        update_url = (
-            f"{settings.supabase.url}/rest/v1/module_bank?id=eq.{input.module_id}"
-        )
+        update_url = f"{sb.rest_url}/module_bank?id=eq.{input.module_id}"
         update_payload = {
             "sample_size": sample_size,
             "win_count": win_count,
@@ -207,18 +196,12 @@ async def update_compatibility_stats(
         f"Updating compatibility: {module_a_id} <-> {module_b_id}, win={input.is_win}"
     )
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Profile": SCHEMA,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers(for_write=True)
 
     # Check if pair exists
     get_url = (
-        f"{settings.supabase.url}/rest/v1/module_compatibility"
+        f"{sb.rest_url}/module_compatibility"
         f"?module_a_id=eq.{module_a_id}&module_b_id=eq.{module_b_id}"
         f"&select=id,sample_size,win_count"
     )
@@ -236,10 +219,7 @@ async def update_compatibility_stats(
             win_count = (current.get("win_count") or 0) + (1 if input.is_win else 0)
             record_id = current["id"]
 
-            update_url = (
-                f"{settings.supabase.url}/rest/v1/module_compatibility"
-                f"?id=eq.{record_id}"
-            )
+            update_url = f"{sb.rest_url}/module_compatibility?id=eq.{record_id}"
             update_payload = {
                 "sample_size": sample_size,
                 "win_count": win_count,
@@ -255,7 +235,7 @@ async def update_compatibility_stats(
             sample_size = 1
             win_count = 1 if input.is_win else 0
 
-            create_url = f"{settings.supabase.url}/rest/v1/module_compatibility"
+            create_url = f"{sb.rest_url}/module_compatibility"
             create_payload = {
                 "module_a_id": module_a_id,
                 "module_b_id": module_b_id,
@@ -338,19 +318,15 @@ async def get_modules_for_creative(
 
     activity.logger.info(f"Getting modules for creative: {input.creative_id}")
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers()
 
     try:
         client = get_http_client()
         # Get idea_id from decomposed_creatives
         # Flow: creative_id → decomposed_creatives → idea_id
         decomposed_url = (
-            f"{settings.supabase.url}/rest/v1/decomposed_creatives"
+            f"{sb.rest_url}/decomposed_creatives"
             f"?creative_id=eq.{input.creative_id}"
             f"&select=idea_id"
             f"&limit=1"
@@ -372,7 +348,7 @@ async def get_modules_for_creative(
 
         # Get hypothesis with module IDs via idea_id
         hypothesis_url = (
-            f"{settings.supabase.url}/rest/v1/hypotheses"
+            f"{sb.rest_url}/hypotheses"
             f"?idea_id=eq.{idea_id}"
             f"&select=hook_module_id,promise_module_id,proof_module_id,generation_mode"
             f"&order=created_at.desc"
@@ -576,18 +552,14 @@ async def process_module_learning_batch(
     Returns:
         ProcessModuleLearningBatchOutput with counts
     """
-    from datetime import datetime, timedelta as td
+    from datetime import timedelta as td
 
     activity.logger.info(
         f"Processing module learning batch (lookback: {input.hours_lookback}h)"
     )
 
-    headers = {
-        "apikey": settings.supabase.service_role_key,
-        "Authorization": f"Bearer {settings.supabase.service_role_key}",
-        "Accept-Profile": SCHEMA,
-        "Content-Type": "application/json",
-    }
+    sb = get_supabase()
+    headers = sb.get_headers()
 
     errors: list[str] = []
     creatives_processed = 0
@@ -604,7 +576,7 @@ async def process_module_learning_batch(
         cutoff_iso = cutoff.isoformat()
 
         outcomes_url = (
-            f"{settings.supabase.url}/rest/v1/outcome_aggregates"
+            f"{sb.rest_url}/outcome_aggregates"
             f"?learning_applied=eq.true"
             f"&created_at=gte.{cutoff_iso}"
             f"&select=creative_id,cpa,spend"
