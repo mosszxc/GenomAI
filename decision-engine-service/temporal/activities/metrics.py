@@ -108,7 +108,7 @@ class CreateSnapshotInput:
 class CreateSnapshotOutput:
     """Output from create_daily_snapshot activity"""
 
-    snapshot_id: str
+    snapshot_id: Optional[str]  # None if snapshot already existed
     created: bool
 
 
@@ -120,11 +120,15 @@ async def create_daily_snapshot(input: CreateSnapshotInput) -> CreateSnapshotOut
     Snapshots are immutable records of daily metrics.
     Used for historical tracking and outcome aggregation.
 
+    Uses ON CONFLICT DO NOTHING (ignore-duplicates) to handle
+    duplicate (tracker_id, date) pairs gracefully - the table
+    is append-only with triggers blocking UPDATE.
+
     Args:
         input: tracker_id, date, and metrics dict
 
     Returns:
-        CreateSnapshotOutput with snapshot_id
+        CreateSnapshotOutput with snapshot_id (None if already existed)
     """
     activity.logger.info(
         f"Creating snapshot for tracker {input.tracker_id} on {input.snapshot_date}"
@@ -132,6 +136,9 @@ async def create_daily_snapshot(input: CreateSnapshotInput) -> CreateSnapshotOut
 
     url = _get_supabase_url("daily_metrics_snapshot")
     headers = _get_supabase_headers(for_write=True)
+    # Use ignore-duplicates to skip INSERT on conflict (tracker_id, date)
+    # This is needed because the table has triggers blocking UPDATE
+    headers["Prefer"] = "return=representation,resolution=ignore-duplicates"
 
     payload = {
         "tracker_id": input.tracker_id,
@@ -145,7 +152,14 @@ async def create_daily_snapshot(input: CreateSnapshotInput) -> CreateSnapshotOut
         response.raise_for_status()
         data = response.json()
 
-    snapshot_id = data[0]["id"] if data else None
+    # If data is empty, the row already existed and was ignored
+    if not data:
+        activity.logger.info(
+            f"Snapshot already exists for {input.tracker_id} on {input.snapshot_date}"
+        )
+        return CreateSnapshotOutput(snapshot_id=None, created=False)
+
+    snapshot_id = data[0]["id"]
 
     activity.logger.info(f"Created snapshot {snapshot_id} for {input.tracker_id}")
 
