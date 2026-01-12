@@ -303,3 +303,63 @@ async def save_decision_trace(trace: dict) -> dict:
         raise SupabaseError(f"Failed to save decision trace: {error_detail}")
     except Exception as e:
         raise SupabaseError(f"Failed to save decision trace: {str(e)}")
+
+
+async def save_decision_with_trace(decision: dict, trace: dict) -> dict:
+    """
+    Save Decision and Decision Trace atomically using RPC.
+
+    Uses Supabase RPC function to ensure both records are saved
+    in a single transaction. If either fails, both are rolled back.
+
+    Args:
+        decision: Decision dict with id, idea_id, decision, decision_epoch, created_at
+        trace: Decision trace dict with id, decision_id, checks, result, created_at
+
+    Returns:
+        dict: {"decision": {...}, "trace": {...}}
+
+    Raises:
+        SupabaseError: If the RPC call fails
+    """
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+        if not supabase_url or not supabase_key:
+            raise SupabaseError("Missing Supabase credentials")
+
+        rpc_url = f"{supabase_url}/rest/v1/rpc/save_decision_with_trace"
+
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "p_decision_id": decision["id"],
+            "p_idea_id": decision["idea_id"],
+            "p_decision": decision["decision"],
+            "p_decision_epoch": decision["decision_epoch"],
+            "p_decision_created_at": decision["created_at"],
+            "p_trace_id": trace["id"],
+            "p_trace_checks": trace["checks"],
+            "p_trace_result": trace["result"],
+            "p_trace_created_at": trace["created_at"],
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(rpc_url, headers=headers, json=payload)
+            response.raise_for_status()
+            return response.json()
+
+    except httpx.HTTPStatusError as e:
+        error_detail = e.response.text
+        if "23505" in error_detail:
+            raise SupabaseError(
+                f"Decision already exists for idea_id={decision['idea_id']} epoch={decision['decision_epoch']}"
+            )
+        raise SupabaseError(f"Failed to save decision with trace: {error_detail}")
+    except Exception as e:
+        raise SupabaseError(f"Failed to save decision with trace: {str(e)}")
