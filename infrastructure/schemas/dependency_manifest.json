@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "version": "1.0.0",
-  "updated_at": "2026-01-11",
+  "updated_at": "2026-01-12",
   "description": "Auto-generated dependency manifest from n8n",
   "workflows": {
     "keitaro_poller": {
@@ -32,17 +32,17 @@
       "active": true,
       "trigger": "manual",
       "calls": [
-        "creative-transcription",
-        "learning-loop"
+        "learning-loop",
+        "creative-transcription"
       ],
       "writes": [],
       "reads": [
-        "decomposed_creatives",
-        "keitaro_config"
+        "keitaro_config",
+        "decomposed_creatives"
       ],
       "events_emitted": [
-        "CreativeRegistered",
-        "OutcomeImported"
+        "OutcomeImported",
+        "CreativeRegistered"
       ],
       "external_deps": [
         "Keitaro API"
@@ -69,13 +69,13 @@
         "BuyingUsersKey"
       ],
       "reads": [
-        "performance_data",
-        "buyers",
-        "BuyingUsersKey",
-        "ad_accounts",
-        "creatives",
         "KeitaroCampaigns",
-        "BuyingUsersAdaccounts"
+        "performance_data",
+        "creatives",
+        "ad_accounts",
+        "buyers",
+        "BuyingUsersAdaccounts",
+        "BuyingUsersKey"
       ],
       "events_emitted": [],
       "external_deps": [
@@ -177,9 +177,9 @@
         "creative-transcription"
       ],
       "writes": [
-        "rpc",
         "buyers",
-        "creatives"
+        "creatives",
+        "rpc"
       ],
       "reads": [
         "buyers"
@@ -299,12 +299,12 @@
       "calls": [],
       "writes": [],
       "reads": [
-        "decomposed_creatives",
-        "decision_traces",
-        "decisions",
+        "ideas",
         "event_log",
+        "decisions",
+        "decision_traces",
         "hypotheses",
-        "ideas"
+        "decomposed_creatives"
       ],
       "events_emitted": [],
       "external_deps": []
@@ -332,13 +332,13 @@
         "={{ \"recommendations\" }}"
       ],
       "reads": [
+        "={{ \"recommendations\" }}",
         "={{ \"buyers\" }}",
-        "={{ \"avatars\" }}",
-        "={{ \"recommendations\" }}"
+        "={{ \"avatars\" }}"
       ],
       "events_emitted": [
-        "DeliveryFailed",
-        "RecommendationDelivered"
+        "RecommendationDelivered",
+        "DeliveryFailed"
       ],
       "external_deps": [
         "Telegram Bot API"
@@ -386,8 +386,8 @@
       "calls": [],
       "writes": [
         "transcripts",
-        "creatives",
-        "event_log"
+        "event_log",
+        "creatives"
       ],
       "reads": [
         "transcripts",
@@ -395,8 +395,8 @@
         "creatives"
       ],
       "events_emitted": [
-        "TranscriptCreated",
-        "TranscriptionFailed"
+        "TranscriptionFailed",
+        "TranscriptCreated"
       ],
       "external_deps": [
         "Telegram Bot API"
@@ -438,9 +438,9 @@
       "calls": [],
       "writes": [],
       "reads": [
-        "creatives",
+        "creative_idea_lookup",
         "config",
-        "creative_idea_lookup"
+        "creatives"
       ],
       "events_emitted": [
         "HypothesisEvaluated"
@@ -458,11 +458,11 @@
         "decomposed_creatives"
       ],
       "reads": [
-        "decomposed_creatives",
-        "buyers",
-        "avatars",
+        "ideas",
         "creatives",
-        "ideas"
+        "avatars",
+        "buyers",
+        "decomposed_creatives"
       ],
       "events_emitted": [
         "IdeaRegistered"
@@ -484,8 +484,8 @@
         "buyers"
       ],
       "events_emitted": [
-        "CreativeRegistered",
         "BuyerNotRegistered",
+        "CreativeRegistered",
         "CreativeIngestionFailed"
       ],
       "external_deps": [
@@ -504,9 +504,9 @@
         "creatives"
       ],
       "events_emitted": [
-        "CreativeIngestionRejected",
         "CreativeRegistered",
-        "CreativeReferenceReceived"
+        "CreativeReferenceReceived",
+        "CreativeIngestionRejected"
       ],
       "external_deps": []
     },
@@ -608,11 +608,11 @@
       "calls": [],
       "writes": [],
       "reads": [
-        "decomposed_creatives",
-        "premises",
-        "={{ \"event_log\" }}",
         "creatives",
-        "={{ \"decisions\" }}"
+        "={{ \"event_log\" }}",
+        "premises",
+        "={{ \"decisions\" }}",
+        "decomposed_creatives"
       ],
       "events_emitted": [
         "HypothesisGenerated",
@@ -631,8 +631,8 @@
         "genomai-transcribe"
       ],
       "writes": [
-        "creatives",
-        "event_log"
+        "event_log",
+        "creatives"
       ],
       "reads": [
         "buyers",
@@ -680,8 +680,8 @@
       "trigger": "schedule",
       "calls": [],
       "writes": [
-        "rpc",
         "event_log",
+        "rpc",
         "premises"
       ],
       "reads": [
