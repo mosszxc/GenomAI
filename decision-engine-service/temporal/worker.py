@@ -111,6 +111,12 @@ from temporal.activities.keitaro import (
     get_campaign_creatives,
 )
 
+# Import activities - Circuit Breaker (Issue #474)
+from temporal.circuit_breaker import (
+    check_circuit,
+    record_circuit_outcome,
+)
+
 # Import activities - Buyer
 from temporal.activities.buyer import (
     create_buyer,
@@ -386,6 +392,9 @@ async def run_all_workers():
             get_all_trackers,
             get_tracker_metrics,
             get_batch_metrics,
+            # Circuit Breaker activities (Issue #474)
+            check_circuit,
+            record_circuit_outcome,
             # Metrics activities
             upsert_raw_metrics,
             create_daily_snapshot,
