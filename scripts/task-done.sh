@@ -151,7 +151,42 @@ if [ "$NO_PR" != "true" ]; then
 fi
 
 cd "$PROJECT_ROOT"
+
+# Merge PR to develop
+if [ "$NO_PR" != "true" ] && [ -n "$PR_URL" ]; then
+    echo ""
+    echo "Merging PR to develop..."
+    if gh pr merge "$BRANCH_NAME" --squash --delete-branch 2>/dev/null; then
+        echo "✓ PR merged"
+    else
+        echo "⚠️  Could not auto-merge. Merge manually: $PR_URL"
+    fi
+fi
+
+# CRITICAL: Verify issue is closed (A014)
+echo ""
+echo "=== Verifying issue closed ==="
+sleep 2  # Give GitHub time to process
+ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
+
+if [ "$ISSUE_STATE" = "CLOSED" ]; then
+    echo "✓ Issue #$ISSUE_NUM is CLOSED"
+else
+    echo "⚠️  Issue #$ISSUE_NUM is still $ISSUE_STATE"
+    echo "Closing issue..."
+    gh issue close "$ISSUE_NUM" --comment "Closed via task-done.sh" 2>/dev/null || true
+
+    # Verify again
+    ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
+    if [ "$ISSUE_STATE" = "CLOSED" ]; then
+        echo "✓ Issue #$ISSUE_NUM is now CLOSED"
+    else
+        echo "❌ FAILED to close issue #$ISSUE_NUM - close manually!"
+        exit 1
+    fi
+fi
+
 echo ""
 echo "=== Done ==="
-echo "PR created to develop branch."
+echo "Issue #$ISSUE_NUM closed. PR merged to develop."
 echo "Run ./scripts/deploy.sh when ready to deploy."
