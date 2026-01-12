@@ -10,6 +10,9 @@ Tests:
 import pytest
 from unittest.mock import AsyncMock, patch
 
+# Valid UUID for testing
+TEST_UUID = "123e4567-e89b-12d3-a456-426614174000"
+
 
 class TestUpdateCreativeStatus:
     """Tests for update_creative_status with error support"""
@@ -19,7 +22,7 @@ class TestUpdateCreativeStatus:
         """When status='failed', error field should be set"""
         from temporal.activities.supabase import update_creative_status
 
-        creative_id = "test-creative-123"
+        creative_id = TEST_UUID
         error_message = "Transcription failed: API timeout"
 
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
@@ -49,7 +52,7 @@ class TestUpdateCreativeStatus:
         """When status='processed', error field should not be set"""
         from temporal.activities.supabase import update_creative_status
 
-        creative_id = "test-creative-123"
+        creative_id = TEST_UUID
 
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
@@ -78,7 +81,7 @@ class TestUpdateCreativeStatus:
         """Long error messages should be truncated"""
         from temporal.activities.supabase import update_creative_status
 
-        creative_id = "test-creative-123"
+        creative_id = TEST_UUID
         long_error = "x" * 2000  # 2000 character error
 
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:

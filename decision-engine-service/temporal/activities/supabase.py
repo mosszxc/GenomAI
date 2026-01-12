@@ -3,6 +3,8 @@ Supabase Activities
 
 Temporal activities for Supabase database operations.
 Wraps the existing src/services/supabase.py with Temporal activity decorators.
+
+Input validation added per issue #482.
 """
 
 import os
@@ -10,6 +12,17 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from temporalio import activity
 from src.core.http_client import get_http_client
+
+from temporal.models.validators import (
+    validate_uuid,
+    validate_sha256_hash,
+    validate_url,
+    validate_optional_uuid,
+    validate_enum,
+    validate_dict_payload,
+    CREATIVE_STATUSES,
+    SOURCE_TYPES,
+)
 
 # Schema name for all operations
 SCHEMA = "genomai"
@@ -61,8 +74,16 @@ async def create_creative(
 
     Returns:
         Created creative dict with id
+
+    Raises:
+        ValueError: If input validation fails
     """
     import uuid
+
+    # Input validation
+    video_url = validate_url(video_url, "video_url")
+    source_type = validate_enum(source_type, SOURCE_TYPES, "source_type")
+    buyer_id = validate_optional_uuid(buyer_id, "buyer_id")
 
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
@@ -119,8 +140,18 @@ async def create_historical_creative(
 
     Returns:
         Created creative dict with id
+
+    Raises:
+        ValueError: If input validation fails
     """
     import uuid
+
+    # Input validation
+    video_url = validate_url(video_url, "video_url")
+    buyer_id = validate_uuid(buyer_id, "buyer_id")
+    if not tracker_id or not tracker_id.strip():
+        raise ValueError("tracker_id cannot be empty")
+    tracker_id = tracker_id.strip()
 
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
@@ -174,7 +205,13 @@ async def get_creative(creative_id: str) -> Optional[Dict[str, Any]]:
 
     Returns:
         Creative dict or None if not found
+
+    Raises:
+        ValueError: If creative_id is not a valid UUID
     """
+    # Input validation
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -201,7 +238,13 @@ async def get_idea(idea_id: str) -> Optional[Dict[str, Any]]:
 
     Returns:
         Idea dict with merged canonical schema fields, or None
+
+    Raises:
+        ValueError: If idea_id is not a valid UUID
     """
+    # Input validation
+    idea_id = validate_uuid(idea_id, "idea_id")
+
     # Import existing function to reuse logic
     from src.services.supabase import load_idea
 
@@ -218,7 +261,13 @@ async def check_idea_exists(canonical_hash: str) -> Optional[Dict[str, Any]]:
 
     Returns:
         Existing idea dict or None
+
+    Raises:
+        ValueError: If canonical_hash is not a valid SHA256 hash
     """
+    # Input validation
+    canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -251,8 +300,19 @@ async def create_idea(
 
     Returns:
         Created idea dict
+
+    Raises:
+        ValueError: If input validation fails
     """
     import uuid
+
+    # Input validation
+    canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
+    decomposed_creative_id = validate_uuid(
+        decomposed_creative_id, "decomposed_creative_id"
+    )
+    buyer_id = validate_optional_uuid(buyer_id, "buyer_id")
+    avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
 
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
@@ -313,8 +373,19 @@ async def upsert_idea(
 
     Returns:
         Dict with idea data and 'upsert_status': 'created' or 'existing'
+
+    Raises:
+        ValueError: If input validation fails
     """
     import uuid
+
+    # Input validation
+    canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
+    decomposed_creative_id = validate_uuid(
+        decomposed_creative_id, "decomposed_creative_id"
+    )
+    buyer_id = validate_optional_uuid(buyer_id, "buyer_id")
+    avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
 
     rest_url, supabase_key = _get_credentials()
 
@@ -413,18 +484,18 @@ async def save_decomposed_creative(
         Created decomposed_creative dict
 
     Raises:
-        ValueError: If payload is not a valid dict
+        ValueError: If input validation fails
     """
     import uuid
 
+    # Input validation
+    creative_id = validate_uuid(creative_id, "creative_id")
+    canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
+    transcript_id = validate_optional_uuid(transcript_id, "transcript_id")
+    payload = validate_dict_payload(payload, "payload")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
-
-    # Validate payload is a dict (not string, null, array, etc.)
-    if not isinstance(payload, dict):
-        raise ValueError(
-            f"payload must be a dict, got {type(payload).__name__}: {payload!r:.200}"
-        )
 
     # Note: canonical_hash and transcript_id are passed but not stored in DB
     # canonical_hash is used for idea deduplication later in workflow
@@ -465,7 +536,14 @@ async def update_creative_status(
         creative_id: Creative UUID
         status: New status value (registered, processing, processed, failed)
         error: Optional error message when status='failed'
+
+    Raises:
+        ValueError: If input validation fails
     """
+    # Input validation
+    creative_id = validate_uuid(creative_id, "creative_id")
+    status = validate_enum(status, CREATIVE_STATUSES, "status")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
@@ -507,8 +585,17 @@ async def emit_event(
 
     Returns:
         Created event dict
+
+    Raises:
+        ValueError: If input validation fails
     """
     import uuid
+
+    # Input validation
+    if not event_type or not event_type.strip():
+        raise ValueError("event_type cannot be empty")
+    event_type = event_type.strip()
+    entity_id = validate_optional_uuid(entity_id, "entity_id")
 
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
@@ -556,7 +643,15 @@ async def save_transcript(
 
     Returns:
         Saved transcript dict with id, creative_id, version, transcript_text
+
+    Raises:
+        ValueError: If input validation fails
     """
+    # Input validation
+    creative_id = validate_uuid(creative_id, "creative_id")
+    if not transcript_text or not transcript_text.strip():
+        raise ValueError("transcript_text cannot be empty")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
     read_headers = _get_headers(supabase_key)
@@ -635,7 +730,13 @@ async def get_existing_transcript(creative_id: str) -> Optional[Dict[str, Any]]:
 
     Returns:
         Latest transcript dict or None
+
+    Raises:
+        ValueError: If creative_id is not a valid UUID
     """
+    # Input validation
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
