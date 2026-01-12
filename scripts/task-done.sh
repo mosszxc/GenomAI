@@ -68,19 +68,6 @@ if [ -n "$(git status --porcelain)" ]; then
 Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 fi
 
-# Run tests unless skipped
-if [ "$SKIP_TESTS" != "true" ]; then
-    echo ""
-    echo "Running tests (make ci)..."
-    cd "$PROJECT_ROOT"
-    if ! make ci; then
-        echo "Tests failed. Fix issues and re-run."
-        exit 1
-    fi
-    echo "✓ Tests passed"
-    cd "$WORKTREE_PATH"
-fi
-
 # Check qa-notes exists
 QA_NOTE=$(find "$PROJECT_ROOT/qa-notes" -name "*issue-${ISSUE_NUM}*" 2>/dev/null | head -1)
 if [ -z "$QA_NOTE" ]; then
@@ -90,10 +77,49 @@ fi
 if [ -z "$QA_NOTE" ]; then
     echo ""
     echo "⚠️  qa-notes/issue-${ISSUE_NUM}-*.md not found"
-    echo "Create qa-notes before completing."
+    echo "Create qa-notes with ## Test section before completing."
     exit 1
 fi
 echo "✓ qa-notes found: $(basename "$QA_NOTE")"
+
+# Run tests unless skipped
+if [ "$SKIP_TESTS" != "true" ]; then
+    # Extract and run functional test from qa-notes
+    echo ""
+    echo "=== Functional Test ==="
+
+    # Extract test command from qa-notes (between ```bash and ``` after ## Test)
+    TEST_CMD=$(sed -n '/^## Test/,/^## /p' "$QA_NOTE" | sed -n '/```bash/,/```/p' | grep -v '```' | head -5)
+
+    if [ -z "$TEST_CMD" ]; then
+        echo "⚠️  No test command found in qa-notes"
+        echo "Add ## Test section with \`\`\`bash block"
+        exit 1
+    fi
+
+    echo "Command: $TEST_CMD"
+    echo ""
+
+    cd "$PROJECT_ROOT"
+    if eval "$TEST_CMD"; then
+        echo ""
+        echo "✓ Functional test passed"
+    else
+        echo ""
+        echo "✗ Functional test failed"
+        exit 1
+    fi
+
+    # Then unit tests
+    echo ""
+    echo "=== Unit Tests ==="
+    if ! make ci; then
+        echo "Unit tests failed. Fix issues and re-run."
+        exit 1
+    fi
+    echo "✓ All tests passed"
+    cd "$WORKTREE_PATH"
+fi
 
 # Update issue status
 echo ""

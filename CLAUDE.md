@@ -89,31 +89,43 @@ python -m temporal.schedules trigger <schedule-id>
 3. Schema-first (проверь колонки перед кодом)
 4. qa-notes обязательны
 
-## Issue Closure (MANDATORY)
+## qa-notes с тестом (ОБЯЗАТЕЛЬНО)
 
-**Issue НЕ закрыт пока пользователь НЕ УВИДЕЛ этот блок:**
+Создать `qa-notes/issue-XXX-*.md` с секцией `## Test`:
+
+```markdown
+## Что изменено
+- Добавлена валидация --geo флага
+
+## Test
+\`\`\`bash
+curl -sf localhost:10000/endpoint -d '{"geo": "INVALID"}' || echo "OK: rejected"
+\`\`\`
+```
+
+**task-done.sh автоматически:**
+1. Находит qa-notes
+2. Парсит команду из `## Test` → `\`\`\`bash`
+3. Выполняет на localhost
+4. exit code != 0 → стоп
+
+## Issue Closure Report (ПОКАЗАТЬ ПОЛЬЗОВАТЕЛЮ)
 
 ```
 ═══════════════════════════════════════════════════════
-ISSUE #XXX CLOSURE REPORT
+ISSUE #XXX CLOSED
 ═══════════════════════════════════════════════════════
 
-LOCAL TEST: [PASSED/FAILED]
-  Command: <что выполняли на localhost>
-  Result: <что получили>
+Проблема: <что было сломано/отсутствовало>
+Решение: <что сделано>
 
-QA-NOTES: [WRITTEN]
-  File: qa-notes/issue-XXX-*.md
+FUNCTIONAL TEST: PASSED
+  Command: <команда из qa-notes>
+  Result: <вывод>
 
-DOCS: [UPDATED/NOT REQUIRED]
+qa-notes: qa-notes/issue-XXX-*.md
 ═══════════════════════════════════════════════════════
 ```
-
-| Изменение | Локальный тест |
-|-----------|----------------|
-| Workflow | `curl localhost:PORT/...` или Temporal UI |
-| API | `curl localhost:PORT/endpoint` → HTTP 200 |
-| Migration | `mcp__supabase__postgrestRequest` SELECT |
 
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `docs/`
