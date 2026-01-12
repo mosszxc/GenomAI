@@ -73,4 +73,5 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Validate contracts
+        working-directory: ${{ github.workspace }}
         run: python3 scripts/validate_contracts.py --verbose
