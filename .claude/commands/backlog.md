@@ -1,60 +1,70 @@
 # Backlog
 
-Расставить лейблы `queue-1`, `queue-2`, `queue-3`... на issues по приоритету.
+Расставить очередь задач для параллельных агентов.
 
 ## Использование
 
 ```
-/backlog        — расставить лейблы
-/backlog show   — показать очередь (без изменений)
+/backlog        — расставить очередь + показать что можно параллельно
+/backlog show   — только показать (без изменений)
 ```
+
+## Лейблы
+
+| Лейбл | Что значит |
+|-------|------------|
+| `queue-1` | Первая задача |
+| `queue-2` | Вторая задача |
+| `queue-3` | Третья задача |
+| `parallel` | Можно делать одновременно с другими `parallel` |
 
 ## Действие
 
 ### 1. Получить issues
 
 ```bash
-gh issue list --state open --json number,title,labels,createdAt --limit 30
+gh issue list --state open --json number,title,labels,body,createdAt --limit 30
 ```
 
-### 2. Определить приоритет
+### 2. Найти зависимости
 
-| Лейбл/признак | Приоритет |
-|---------------|-----------|
-| `critical` | Высший |
-| `bug` | Высокий |
-| `enhancement` | Средний |
-| Старые (>7 дней) | +1 к приоритету |
+Искать в body: `blocked by #N`, `depends on #N`, `after #N`
 
-### 3. Расставить лейблы
+### 3. Определить приоритет
+
+`critical` → `bug` → `enhancement` → по дате
+
+### 4. Расставить лейблы
+
+- `queue-N` — позиция в очереди
+- `parallel` — если нет зависимостей от других открытых issues
+
+### 5. Создать лейблы
 
 ```bash
-# Создать лейблы (один раз)
 gh label create "queue-1" --color "FF0000" --force
 gh label create "queue-2" --color "FF6600" --force
 gh label create "queue-3" --color "FFCC00" --force
-gh label create "queue-4" --color "99CC00" --force
-gh label create "queue-5" --color "33CC33" --force
-
-# Для каждого issue по приоритету
-gh issue edit {N} --remove-label "queue-1,queue-2,queue-3,queue-4,queue-5"
-gh issue edit {N} --add-label "queue-{позиция}"
+gh label create "parallel" --color "0E8A16" --force
 ```
 
 ## Вывод
 
 ```
-## Очередь задач
+## Очередь
 
-1. #401 — Fix critical bug (critical)
-2. #403 — Add validation (bug)
-3. #405 — Update docs (enhancement)
+| # | Issue | Parallel? |
+|---|-------|-----------|
+| 1 | #401 Fix bug | ✅ |
+| 2 | #403 Add feature | ✅ |
+| 3 | #405 Refactor | ✅ |
+| 4 | #407 Update X | ❌ (ждёт #401) |
 
-Лейблы обновлены ✓
-```
+## Можно взять сейчас (3 агента)
 
-## Показать очередь
+- Agent 1 → #401
+- Agent 2 → #403
+- Agent 3 → #405
 
-```bash
-gh issue list --state open --json number,title,labels --jq '.[] | select(.labels | map(.name) | any(startswith("queue-")))' | jq -s 'sort_by(.labels | map(.name) | map(select(startswith("queue-")))[0])'
+#407 заблокирован — ждёт #401
 ```
