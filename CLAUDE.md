@@ -89,31 +89,26 @@ python -m temporal.schedules trigger <schedule-id>
 3. Schema-first (проверь колонки перед кодом)
 4. qa-notes обязательны
 
-## Issue Closure (MANDATORY)
+## Перед завершением issue (ОБЯЗАТЕЛЬНО)
 
-**Issue НЕ закрыт пока пользователь НЕ УВИДЕЛ этот блок:**
+**Тест конкретного функционала issue:**
+1. Понять что именно должно работать
+2. Написать curl/запрос который проверяет ЭТУ функцию
+3. Выполнить на localhost
+4. Убедиться что работает
 
+**Пример для issue "валидация --geo":**
+```bash
+# Невалидный geo должен отклоняться
+curl localhost:10000/endpoint --data '{"geo": "INVALID"}'
+# Ожидаем: 400 Bad Request
+
+# Валидный geo должен приниматься
+curl localhost:10000/endpoint --data '{"geo": "US"}'
+# Ожидаем: 200 OK
 ```
-═══════════════════════════════════════════════════════
-ISSUE #XXX CLOSURE REPORT
-═══════════════════════════════════════════════════════
 
-LOCAL TEST: [PASSED/FAILED]
-  Command: <что выполняли на localhost>
-  Result: <что получили>
-
-QA-NOTES: [WRITTEN]
-  File: qa-notes/issue-XXX-*.md
-
-DOCS: [UPDATED/NOT REQUIRED]
-═══════════════════════════════════════════════════════
-```
-
-| Изменение | Локальный тест |
-|-----------|----------------|
-| Workflow | `curl localhost:PORT/...` или Temporal UI |
-| API | `curl localhost:PORT/endpoint` → HTTP 200 |
-| Migration | `mcp__supabase__postgrestRequest` SELECT |
+**После теста:** `./scripts/task-done.sh <N>`
 
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `docs/`
