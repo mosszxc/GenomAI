@@ -6,6 +6,7 @@ Issue: #169
 
 import os
 from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -20,8 +21,6 @@ from src.utils.errors import SupabaseError
 
 
 router = APIRouter()
-
-SCHEMA = "genomai"
 
 
 async def verify_api_key(authorization: Optional[str] = Header(None)):
@@ -250,25 +249,16 @@ async def create_premise(
         )
 
     try:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        sb = get_supabase()
+    except RuntimeError:
+        raise HTTPException(status_code=500, detail="Missing Supabase credentials")
 
-        if not supabase_url or not supabase_key:
-            raise HTTPException(status_code=500, detail="Missing Supabase credentials")
-
-        rest_url = f"{supabase_url}/rest/v1"
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": SCHEMA,
-            "Content-Profile": SCHEMA,
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-        }
+    try:
+        headers = sb.get_headers(for_write=True)
 
         client = get_http_client()
         response = await client.post(
-            f"{rest_url}/premises",
+            f"{sb.rest_url}/premises",
             headers=headers,
             json={
                 "premise_type": request.premise_type,
@@ -310,23 +300,16 @@ async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
     Get premise by ID.
     """
     try:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        sb = get_supabase()
+    except RuntimeError:
+        raise HTTPException(status_code=500, detail="Missing Supabase credentials")
 
-        if not supabase_url or not supabase_key:
-            raise HTTPException(status_code=500, detail="Missing Supabase credentials")
-
-        rest_url = f"{supabase_url}/rest/v1"
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": SCHEMA,
-            "Content-Type": "application/json",
-        }
+    try:
+        headers = sb.get_headers()
 
         client = get_http_client()
         response = await client.get(
-            f"{rest_url}/premises?id=eq.{premise_id}", headers=headers
+            f"{sb.rest_url}/premises?id=eq.{premise_id}", headers=headers
         )
         response.raise_for_status()
         data = response.json()

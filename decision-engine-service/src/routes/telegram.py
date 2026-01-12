@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from src.utils.parsing import safe_float
 from temporal.models.buyer import VALID_GEOS
 from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -436,19 +437,13 @@ async def log_buyer_interaction(
         context: Optional context dict
         buyer_id: Optional buyer UUID to associate system messages with a buyer
     """
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Content-Profile": "genomai",
-        "Prefer": "return=minimal",
-    }
+    headers = sb.get_headers(for_write=True)
+    headers["Prefer"] = "return=minimal"
 
     payload = {
         "telegram_id": telegram_id,
@@ -463,7 +458,7 @@ async def log_buyer_interaction(
     try:
         client = get_http_client()
         await client.post(
-            f"{supabase_url}/rest/v1/buyer_interactions",
+            f"{sb.rest_url}/buyer_interactions",
             headers=headers,
             json=payload,
             timeout=10.0,
@@ -483,24 +478,19 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         content="/stats",
     )
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Статистика временно недоступна.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get buyer
         buyer_resp = await client.get(
-            f"{supabase_url}/rest/v1/buyers"
+            f"{sb.rest_url}/buyers"
             f"?telegram_id=eq.{message.user_id}"
             f"&select=id,name,geos,verticals",
             headers=headers,
@@ -519,7 +509,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
 
         # Get creatives with test results and tracker_ids
         creatives_resp = await client.get(
-            f"{supabase_url}/rest/v1/creatives"
+            f"{sb.rest_url}/creatives"
             f"?buyer_id=eq.{buyer_id}"
             f"&select=id,status,test_result,tracking_status,tracker_id",
             headers=headers,
@@ -544,7 +534,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             # Fetch metrics for all tracker_ids
             tracker_list = ",".join(tracker_ids)
             metrics_resp = await client.get(
-                f"{supabase_url}/rest/v1/raw_metrics_current"
+                f"{sb.rest_url}/raw_metrics_current"
                 f"?tracker_id=in.({tracker_list})"
                 f"&select=metrics",
                 headers=headers,
@@ -859,18 +849,18 @@ async def handle_trends_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
         # Generate emotion win rate chart
+        # Note: charts.py still uses old signature
         chart_url = await generate_win_rate_chart_url(
-            supabase_url=supabase_url,
-            supabase_key=supabase_key,
+            supabase_url=sb.base_url,
+            supabase_key=sb.service_key,
             chart_type="emotions",
             days=7,
         )
@@ -1214,24 +1204,19 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get all buyers
         buyers_resp = await client.get(
-            f"{supabase_url}/rest/v1/buyers"
+            f"{sb.rest_url}/buyers"
             f"?select=id,telegram_id,name,telegram_username,geos,verticals,status,created_at"
             f"&order=created_at.desc&limit=10",
             headers=headers,
@@ -1245,7 +1230,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
         # Get creative counts for each buyer
         buyer_ids = [b["id"] for b in buyers]
         creatives_resp = await client.get(
-            f"{supabase_url}/rest/v1/creatives"
+            f"{sb.rest_url}/creatives"
             f"?buyer_id=in.({','.join(buyer_ids)})"
             f"&select=buyer_id,test_result",
             headers=headers,
@@ -1316,24 +1301,19 @@ async def handle_activity_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get recent interactions
         response = await client.get(
-            f"{supabase_url}/rest/v1/buyer_interactions"
+            f"{sb.rest_url}/buyer_interactions"
             f"?select=telegram_id,direction,message_type,content,created_at"
             f"&order=created_at.desc&limit=15",
             headers=headers,
@@ -1347,7 +1327,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
         # Get buyer names for telegram_ids
         telegram_ids = list(set(i["telegram_id"] for i in interactions))
         buyers_resp = await client.get(
-            f"{supabase_url}/rest/v1/buyers"
+            f"{sb.rest_url}/buyers"
             f"?telegram_id=in.({','.join(telegram_ids)})"
             f"&select=telegram_id,telegram_username,name",
             headers=headers,
@@ -1391,25 +1371,19 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
     - telegram_id: Direct messages from/to buyer
     - buyer_id: System messages associated with buyer (creatives, hypotheses, etc.)
     """
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get buyer info including id for buyer_id search
         buyer_resp = await client.get(
-            f"{supabase_url}/rest/v1/buyers"
+            f"{sb.rest_url}/buyers"
             f"?telegram_id=eq.{buyer_telegram_id}"
             f"&select=id,name,telegram_username"
             f"&limit=1",
@@ -1424,7 +1398,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
         if buyer_uuid:
             # Search by both telegram_id and buyer_id
             response = await client.get(
-                f"{supabase_url}/rest/v1/buyer_interactions"
+                f"{sb.rest_url}/buyer_interactions"
                 f"?or=(telegram_id.eq.{buyer_telegram_id},buyer_id.eq.{buyer_uuid})"
                 f"&select=direction,message_type,content,created_at"
                 f"&order=created_at.desc&limit=20",
@@ -1433,7 +1407,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
         else:
             # Fallback: search only by telegram_id
             response = await client.get(
-                f"{supabase_url}/rest/v1/buyer_interactions"
+                f"{sb.rest_url}/buyer_interactions"
                 f"?telegram_id=eq.{buyer_telegram_id}"
                 f"&select=direction,message_type,content,created_at"
                 f"&order=created_at.desc&limit=20",
@@ -1482,24 +1456,19 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get decisions from last 24 hours
         response = await client.get(
-            f"{supabase_url}/rest/v1/decisions"
+            f"{sb.rest_url}/decisions"
             f"?select=id,decision,created_at"
             f"&created_at=gte.{datetime.utcnow().replace(hour=0, minute=0, second=0).isoformat()}"
             f"&order=created_at.desc&limit=50",
@@ -1552,24 +1521,19 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get recent creatives with buyer info
         response = await client.get(
-            f"{supabase_url}/rest/v1/creatives"
+            f"{sb.rest_url}/creatives"
             f"?select=id,buyer_id,status,tracking_status,test_result,created_at,"
             f"buyers(name,telegram_username)"
             f"&order=created_at.desc&limit=10",
@@ -1622,30 +1586,25 @@ async def handle_status_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get counts from various tables
         buyers_resp = await client.get(
-            f"{supabase_url}/rest/v1/buyers?select=id",
+            f"{sb.rest_url}/buyers?select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
         buyers_count = buyers_resp.headers.get("content-range", "0").split("/")[-1]
 
         creatives_resp = await client.get(
-            f"{supabase_url}/rest/v1/creatives?select=id",
+            f"{sb.rest_url}/creatives?select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
         creatives_count = creatives_resp.headers.get("content-range", "0").split("/")[
@@ -1653,7 +1612,7 @@ async def handle_status_command(message: TelegramMessage) -> None:
         ]
 
         decisions_resp = await client.get(
-            f"{supabase_url}/rest/v1/decisions?select=id",
+            f"{sb.rest_url}/decisions?select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
         decisions_count = decisions_resp.headers.get("content-range", "0").split("/")[
@@ -1662,7 +1621,7 @@ async def handle_status_command(message: TelegramMessage) -> None:
 
         # Get pending hypotheses
         hypotheses_resp = await client.get(
-            f"{supabase_url}/rest/v1/hypotheses?status=is.null&select=id",
+            f"{sb.rest_url}/hypotheses?status=is.null&select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
         pending_hypotheses = hypotheses_resp.headers.get("content-range", "0").split(
@@ -1695,24 +1654,19 @@ async def handle_errors_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get failed hypotheses (with retry errors)
         response = await client.get(
-            f"{supabase_url}/rest/v1/hypotheses"
+            f"{sb.rest_url}/hypotheses"
             f"?status=eq.failed&select=id,last_error,retry_count,last_retry_at"
             f"&order=last_retry_at.desc&limit=10",
             headers=headers,
@@ -1751,23 +1705,17 @@ async def handle_errors_command(message: TelegramMessage) -> None:
 
 async def get_pending_modular_hypotheses() -> list[dict]:
     """Get modular hypotheses awaiting human review."""
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return []
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-    }
+    headers = sb.get_headers()
 
     client = get_http_client()
     # Get pending review hypotheses with module info
     response = await client.get(
-        f"{supabase_url}/rest/v1/hypotheses"
+        f"{sb.rest_url}/hypotheses"
         f"?generation_mode=eq.modular&review_status=eq.pending"
         f"&select=id,content,created_at,"
         f"hook_module:module_bank!hook_module_id(text_content),"
@@ -1783,21 +1731,12 @@ async def update_hypothesis_review_status(
     hypothesis_id: str, review_status: str
 ) -> bool:
     """Update hypothesis review status (approved/rejected)."""
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return False
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-        "Content-Profile": "genomai",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+    headers = sb.get_headers(for_write=True)
 
     update_data = {
         "review_status": review_status,
@@ -1813,7 +1752,7 @@ async def update_hypothesis_review_status(
 
     client = get_http_client()
     response = await client.patch(
-        f"{supabase_url}/rest/v1/hypotheses?id=eq.{hypothesis_id}",
+        f"{sb.rest_url}/hypotheses?id=eq.{hypothesis_id}",
         headers=headers,
         json=update_data,
     )
@@ -2117,24 +2056,19 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
         )
         return
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         client = get_http_client()
         # Get pending extractions
         response = await client.get(
-            f"{supabase_url}/rest/v1/knowledge_extractions"
+            f"{sb.rest_url}/knowledge_extractions"
             f"?status=eq.pending&order=created_at.asc&limit=5",
             headers=headers,
         )
@@ -2291,23 +2225,17 @@ async def handle_feedback_command(message: TelegramMessage) -> None:
 
 async def get_buyer_name(telegram_id: str) -> str | None:
     """Get buyer name by Telegram ID."""
-
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return None
 
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-        "Accept-Profile": "genomai",
-    }
+    headers = sb.get_headers()
 
     try:
         client = get_http_client()
         response = await client.get(
-            f"{supabase_url}/rest/v1/buyers?telegram_id=eq.{telegram_id}&select=name",
+            f"{sb.rest_url}/buyers?telegram_id=eq.{telegram_id}&select=name",
             headers=headers,
         )
         buyers = response.json()
@@ -2512,23 +2440,18 @@ async def handle_extraction_reject(
     """Handle extraction rejection."""
     from datetime import datetime
 
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Content-Profile": "genomai",
-            "Prefer": "return=minimal",
-        }
+        headers = sb.get_headers(for_write=True)
+        headers["Prefer"] = "return=minimal"
 
         client = get_http_client()
         await client.patch(
-            f"{supabase_url}/rest/v1/knowledge_extractions?id=eq.{extraction_id}",
+            f"{sb.rest_url}/knowledge_extractions?id=eq.{extraction_id}",
             headers=headers,
             json={
                 "status": "rejected",
@@ -2565,23 +2488,18 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
     from temporal.workflows.historical_import import CreativeRegistrationWorkflow
 
     # Check if user is registered
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-    if not supabase_url or not supabase_key:
+    try:
+        sb = get_supabase()
+    except RuntimeError:
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
     try:
-        headers = {
-            "apikey": supabase_key,
-            "Authorization": f"Bearer {supabase_key}",
-            "Accept-Profile": "genomai",
-        }
+        headers = sb.get_headers()
 
         http_client = get_http_client()
         buyer_resp = await http_client.get(
-            f"{supabase_url}/rest/v1/buyers?telegram_id=eq.{message.user_id}&select=id",
+            f"{sb.rest_url}/buyers?telegram_id=eq.{message.user_id}&select=id",
             headers=headers,
         )
         buyers = buyer_resp.json()
