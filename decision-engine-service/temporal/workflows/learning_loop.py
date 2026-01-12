@@ -129,6 +129,7 @@ class LearningLoopWorkflow:
             workflow.logger.info(
                 f"Learning batch complete: "
                 f"{result.processed_count} processed, "
+                f"{result.skipped_count} skipped (idempotent), "
                 f"{len(result.new_deaths)} deaths"
             )
 
@@ -141,6 +142,7 @@ class LearningLoopWorkflow:
                         idea_id=workflow.info().workflow_id,
                         payload={
                             "processed_count": result.processed_count,
+                            "skipped_count": result.skipped_count,
                             "new_deaths": len(result.new_deaths),
                             "component_updates": result.component_updates,
                             "premise_updates": result.premise_updates,
