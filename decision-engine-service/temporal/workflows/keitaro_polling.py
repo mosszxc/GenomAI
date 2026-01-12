@@ -1,11 +1,15 @@
 """
 Keitaro Polling Workflow
 
-Scheduled workflow that:
+Scheduled workflow (hourly) that:
 1. Fetches all active trackers from Keitaro
 2. Gets metrics for each tracker
 3. Upserts metrics to raw_metrics_current
-4. Triggers snapshot creation via MetricsProcessingWorkflow
+4. Creates daily snapshots
+5. Triggers MetricsProcessingWorkflow as child → which triggers LearningLoopWorkflow
+
+This is the entry point for the metrics pipeline chain:
+keitaro-poller → metrics-processor → learning-loop
 
 Replaces n8n Keitaro Poller workflow (0TrVJOtHiNEEAsTN).
 """
@@ -35,6 +39,7 @@ with workflow.unsafe.imports_passed_through():
         create_daily_snapshot,
         emit_metrics_event,
     )
+    from temporal.workflows.metrics_processing import MetricsProcessingInput
 
 
 @dataclass
@@ -53,7 +58,12 @@ class KeitaroPollerResult:
     metrics_collected: int
     metrics_failed: int
     snapshots_created: int
-    errors: list[str]
+    errors: list[str] = None
+    metrics_processing_triggered: bool = False
+
+    def __post_init__(self):
+        if self.errors is None:
+            self.errors = []
 
 
 # Retry policy for Keitaro API calls
@@ -78,8 +88,9 @@ class KeitaroPollerWorkflow:
     """
     Keitaro Poller Workflow
 
-    Scheduled to run every 5-10 minutes.
-    Collects metrics from Keitaro and stores in Supabase.
+    Scheduled to run every hour.
+    Collects metrics from Keitaro, stores in Supabase, and triggers
+    the metrics processing → learning loop chain as child workflows.
     """
 
     @workflow.run
@@ -255,10 +266,31 @@ class KeitaroPollerWorkflow:
             f"{metrics_collected} metrics, {snapshots_created} snapshots"
         )
 
+        # Step 5: Trigger MetricsProcessingWorkflow as child workflow
+        # This creates the chain: keitaro → metrics-processor → learning-loop
+        metrics_processing_triggered = False
+        if snapshots_created > 0:
+            try:
+                await workflow.start_child_workflow(
+                    "MetricsProcessingWorkflow",
+                    MetricsProcessingInput(batch_limit=50, trigger_learning=True),
+                    id=f"metrics-processing-{workflow.info().workflow_id}",
+                    task_queue="metrics",
+                )
+                metrics_processing_triggered = True
+                workflow.logger.info(
+                    "Triggered MetricsProcessingWorkflow as child workflow"
+                )
+            except Exception as e:
+                # Log but don't fail - metrics processing can be triggered manually
+                workflow.logger.warning(f"Failed to trigger metrics processing: {e}")
+                errors.append(f"Failed to trigger metrics processing: {str(e)}")
+
         return KeitaroPollerResult(
             trackers_found=len(tracker_ids),
             metrics_collected=metrics_collected,
             metrics_failed=len(batch_result.failed_ids),
             snapshots_created=snapshots_created,
             errors=errors,
+            metrics_processing_triggered=metrics_processing_triggered,
         )
