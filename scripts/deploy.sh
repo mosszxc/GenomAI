@@ -110,10 +110,27 @@ git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
 # Push to trigger Render deploy
 git push origin main --tags
 
+# Create GitHub Release with changelog
+echo ""
+echo "Creating GitHub Release..."
+
+RELEASE_NOTES="## Changes
+
+$(git log main~$COMMITS_AHEAD..main --oneline --no-merges | grep -v "^.* release:" | sed 's/^/- /')
+
+## Issues
+$(echo "$ISSUES" | tr ' ' '\n' | grep -v '^$' | sed 's/^/- Closes /' || echo "- No issues closed")
+"
+
+gh release create "$NEW_VERSION" \
+    --title "$NEW_VERSION" \
+    --notes "$RELEASE_NOTES" \
+    --latest
+
 echo ""
 echo "=== Deploy started ==="
 echo "Version: $NEW_VERSION"
 echo "Render will auto-deploy in ~3 minutes."
 echo ""
-echo "Check status:"
-echo "  https://dashboard.render.com/web/srv-d54vf524d50c739kc2m0"
+echo "GitHub Release: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$NEW_VERSION"
+echo "Render status:  https://dashboard.render.com/web/srv-d54vf524d50c739kc2m0"
