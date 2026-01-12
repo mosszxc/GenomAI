@@ -95,6 +95,11 @@ if [ -z "$QA_NOTE" ]; then
 fi
 echo "✓ qa-notes found: $(basename "$QA_NOTE")"
 
+# Update issue status
+echo ""
+echo "Updating issue status..."
+gh issue edit "$ISSUE_NUM" --add-label "status:pending-deploy" --remove-label "status:in-progress" 2>/dev/null || true
+
 # Push branch
 echo ""
 echo "Pushing branch..."
