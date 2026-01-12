@@ -109,5 +109,23 @@ curl -sf localhost:10000/endpoint -d '{"geo": "INVALID"}' || echo "OK: rejected"
 3. Выполняет на localhost
 4. exit code != 0 → стоп
 
+## Issue Closure Report (ПОКАЗАТЬ ПОЛЬЗОВАТЕЛЮ)
+
+```
+═══════════════════════════════════════════════════════
+ISSUE #XXX CLOSED
+═══════════════════════════════════════════════════════
+
+Проблема: <что было сломано/отсутствовало>
+Решение: <что сделано>
+
+FUNCTIONAL TEST: PASSED
+  Command: <команда из qa-notes>
+  Result: <вывод>
+
+qa-notes: qa-notes/issue-XXX-*.md
+═══════════════════════════════════════════════════════
+```
+
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `docs/`
