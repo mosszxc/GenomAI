@@ -460,8 +460,39 @@ class CreativePipelineWorkflow:
             )
 
         except Exception as e:
+            failed_at_stage = self._status  # Capture stage before overwriting
             self._status = "failed"
             self._error = str(e)
+
+            # CRITICAL: Mark creative as failed in DB (Issue #472)
+            # Without this, creative stays in 'processing' forever
+            try:
+                await workflow.execute_activity(
+                    update_creative_status,
+                    args=[input.creative_id, "failed", str(e)],
+                    start_to_close_timeout=timedelta(seconds=30),
+                )
+
+                # Emit failure event for monitoring
+                await workflow.execute_activity(
+                    emit_event,
+                    args=[
+                        "CreativeFailed",
+                        {
+                            "creative_id": input.creative_id,
+                            "error": str(e)[:500],
+                            "failed_at_stage": failed_at_stage,
+                        },
+                    ],
+                    start_to_close_timeout=timedelta(seconds=10),
+                )
+            except Exception:
+                # Don't fail the workflow if status update fails
+                # The workflow result already contains the error
+                workflow.logger.warning(
+                    f"Failed to update creative status to 'failed': {e}"
+                )
+
             return self._build_result()
 
     def _build_result(

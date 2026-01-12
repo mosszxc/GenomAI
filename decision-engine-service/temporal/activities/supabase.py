@@ -453,22 +453,37 @@ async def save_decomposed_creative(
 
 
 @activity.defn
-async def update_creative_status(creative_id: str, status: str) -> None:
+async def update_creative_status(
+    creative_id: str,
+    status: str,
+    error: Optional[str] = None,
+) -> None:
     """
     Update creative status.
 
     Args:
         creative_id: Creative UUID
-        status: New status value
+        status: New status value (registered, processing, processed, failed)
+        error: Optional error message when status='failed'
     """
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
+
+    update_data = {
+        "status": status,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+    # Add error info for failed status
+    if status == "failed":
+        update_data["error"] = error[:1000] if error else "Unknown error"
+        update_data["failed_at"] = datetime.utcnow().isoformat()
 
     async with httpx.AsyncClient() as client:
         await client.patch(
             f"{rest_url}/creatives?id=eq.{creative_id}",
             headers=headers,
-            json={"status": status, "updated_at": datetime.utcnow().isoformat()},
+            json=update_data,
         )
 
 
