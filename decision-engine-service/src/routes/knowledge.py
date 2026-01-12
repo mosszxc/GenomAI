@@ -8,7 +8,7 @@ import os
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 router = APIRouter()
 
@@ -54,7 +54,7 @@ def get_headers():
 class UploadSourceRequest(BaseModel):
     title: str
     content: str
-    source_type: str = "file"  # 'youtube', 'file', 'manual'
+    source_type: Literal["youtube", "file", "manual", "transcript"] = "file"
     url: Optional[str] = None
     created_by: Optional[str] = None
 

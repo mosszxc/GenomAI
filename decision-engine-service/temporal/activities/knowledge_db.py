@@ -46,10 +46,14 @@ async def save_knowledge_source(
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ApplicationError("Supabase credentials not configured")
 
+    # Map source_type to valid DB values: youtube, file, manual
+    valid_types = {"youtube", "file", "manual"}
+    db_source_type = source_type if source_type in valid_types else "manual"
+
     data = {
         "title": title,
         "transcript_text": content,
-        "source_type": source_type,
+        "source_type": db_source_type,
         "url": url,
         "created_by": created_by,
         "processed": False,
