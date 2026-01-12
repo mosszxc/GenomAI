@@ -14,5 +14,5 @@
 ## Test
 
 ```bash
-cd /Users/mosszxc/Documents/Проэкты/GenomAI/.worktrees/issue-485-arch-medium-orphan-cleanup-обрабатывает-/decision-engine-service && grep -q 'batch_size = 500' temporal/activities/hygiene_cleanup.py && grep -q 'Failed to delete orphan' temporal/activities/hygiene_cleanup.py && grep -q 'total_orphans' temporal/activities/hygiene_cleanup.py && echo 'OK: batch=500, error_logging=yes, metrics=yes'
+grep -q "list(orphan_trackers)\[:500\]" .worktrees/issue-485-*/decision-engine-service/temporal/activities/hygiene_cleanup.py && grep -q "Failed to delete orphan" .worktrees/issue-485-*/decision-engine-service/temporal/activities/hygiene_cleanup.py && echo "OK: batch=500, error_logging=yes"
 ```

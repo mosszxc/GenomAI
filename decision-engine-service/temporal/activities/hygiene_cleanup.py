@@ -176,22 +176,38 @@ async def cleanup_orphan_raw_metrics() -> int:
 
     # Find orphans
     orphan_trackers = metrics_trackers - valid_trackers
+    orphan_count = len(orphan_trackers)
 
     if not orphan_trackers:
         activity.logger.info("No orphan raw_metrics found")
         return 0
 
-    # Delete orphans (batch by 50)
-    deleted = 0
-    for tracker_id in list(orphan_trackers)[:50]:  # Limit to 50 per run
-        del_response = await client.delete(
-            f"{rest_url}/raw_metrics_current?tracker_id=eq.{tracker_id}",
-            headers=headers,
-        )
-        if del_response.status_code in (200, 204):
-            deleted += 1
+    activity.logger.info(f"Found {orphan_count} orphan raw_metrics entries")
 
-    activity.logger.info(f"Deleted {deleted} orphan raw_metrics entries")
+    # Delete orphans (batch by 500)
+    deleted = 0
+    failed = 0
+    for tracker_id in list(orphan_trackers)[:500]:
+        try:
+            del_response = await client.delete(
+                f"{rest_url}/raw_metrics_current?tracker_id=eq.{tracker_id}",
+                headers=headers,
+            )
+            if del_response.status_code in (200, 204):
+                deleted += 1
+            else:
+                activity.logger.warning(
+                    f"Failed to delete orphan {tracker_id}: {del_response.status_code}"
+                )
+                failed += 1
+        except Exception as e:
+            activity.logger.warning(f"Failed to delete orphan {tracker_id}: {e}")
+            failed += 1
+
+    activity.logger.info(
+        f"Deleted {deleted} orphan raw_metrics entries "
+        f"(failed: {failed}, remaining: {orphan_count - deleted - failed})"
+    )
     return deleted
 
 
