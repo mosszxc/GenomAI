@@ -20,6 +20,7 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
 
 from src.utils.parsing import safe_float
+from temporal.models.buyer import VALID_GEOS
 
 logger = logging.getLogger(__name__)
 
@@ -939,6 +940,17 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
         if len(parts) > 1:
             geo_part = parts[1].strip().split()[0] if parts[1].strip() else None
             geo = geo_part.upper() if geo_part else None
+
+    # Validate geo against allowed values
+    if geo and geo not in VALID_GEOS:
+        sample_geos = ", ".join(VALID_GEOS[:10])
+        await send_telegram_message(
+            message.chat_id,
+            f"❌ Неизвестный geo-код: <code>{geo}</code>\n\n"
+            f"Доступные geo: {sample_geos}...\n\n"
+            "Пример: <code>/simulate fear --geo US</code>",
+        )
+        return
 
     # Parse components
     components = parse_components(text)
