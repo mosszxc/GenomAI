@@ -89,26 +89,25 @@ python -m temporal.schedules trigger <schedule-id>
 3. Schema-first (проверь колонки перед кодом)
 4. qa-notes обязательны
 
-## Перед завершением issue (ОБЯЗАТЕЛЬНО)
+## qa-notes с тестом (ОБЯЗАТЕЛЬНО)
 
-**Тест конкретного функционала issue:**
-1. Понять что именно должно работать
-2. Написать curl/запрос который проверяет ЭТУ функцию
-3. Выполнить на localhost
-4. Убедиться что работает
+Создать `qa-notes/issue-XXX-*.md` с секцией `## Test`:
 
-**Пример для issue "валидация --geo":**
-```bash
-# Невалидный geo должен отклоняться
-curl localhost:10000/endpoint --data '{"geo": "INVALID"}'
-# Ожидаем: 400 Bad Request
+```markdown
+## Что изменено
+- Добавлена валидация --geo флага
 
-# Валидный geo должен приниматься
-curl localhost:10000/endpoint --data '{"geo": "US"}'
-# Ожидаем: 200 OK
+## Test
+\`\`\`bash
+curl -sf localhost:10000/endpoint -d '{"geo": "INVALID"}' || echo "OK: rejected"
+\`\`\`
 ```
 
-**После теста:** `./scripts/task-done.sh <N>`
+**task-done.sh автоматически:**
+1. Находит qa-notes
+2. Парсит команду из `## Test` → `\`\`\`bash`
+3. Выполняет на localhost
+4. exit code != 0 → стоп
 
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `docs/`
