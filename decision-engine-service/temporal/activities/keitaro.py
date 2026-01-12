@@ -13,6 +13,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from temporal.config import settings
 
@@ -281,7 +282,12 @@ async def get_campaigns_by_source(
 
     # Step 2: Calculate date cutoff (last 30 days by default)
     if input.date_from:
-        cutoff = datetime.fromisoformat(input.date_from)
+        try:
+            cutoff = datetime.fromisoformat(input.date_from)
+        except ValueError:
+            raise ApplicationError(
+                f"Invalid date format: {input.date_from}", non_retryable=True
+            )
     else:
         cutoff = datetime.utcnow() - timedelta(days=30)
 
