@@ -37,6 +37,16 @@ Status:           queued → processing → finish    (общий статус)
 
 ## Как запустить транскрибацию
 
+> **ВАЖНО: Заполнять ТОЛЬКО эти поля, остальные НЕ ТРОГАТЬ!**
+>
+> - `Name` — заполнить
+> - `VideoID` — заполнить
+> - `Status` — поставить `queued`
+> - `ConvertStatus` — поставить `queued`
+> - `creative_id` — заполнить (UUID креатива)
+>
+> **НЕ трогать другие записи! НЕ ставить статусы в существующих записях!**
+
 ### Вариант 1: Через SQL (напрямую)
 
 ```sql
@@ -45,41 +55,43 @@ INSERT INTO genomai.creatives (video_url, source_type, status)
 VALUES ('https://drive.google.com/file/d/VIDEO_FILE_ID/view', 'user', 'pending')
 RETURNING id;
 
--- 2. Создать запись в transcripts (ОБЯЗАТЕЛЬНЫЕ поля)
+-- 2. Создать НОВУЮ запись в transcripts (ТОЛЬКО эти поля!)
 INSERT INTO genomai.transcripts (
-  creative_id,      -- UUID креатива (опционально, но рекомендуется)
+  creative_id,      -- UUID креатива (ОБЯЗАТЕЛЬНО)
   "Name",           -- Любое имя (ОБЯЗАТЕЛЬНО)
   "VideoID",        -- Google Drive file ID (ОБЯЗАТЕЛЬНО)
   "Status",         -- 'queued' (ОБЯЗАТЕЛЬНО)
   "ConvertStatus",  -- 'queued' (ОБЯЗАТЕЛЬНО)
   version
 ) VALUES (
-  'uuid-from-step-1',           -- или NULL
+  'uuid-from-step-1',
   'My Video Name',
   '1_dYfD70ik8vAACQCLdJR3nVUR3vB9hQM',  -- извлечь из URL
   'queued',
   'queued',
   1
 );
+-- НЕ ДЕЛАТЬ UPDATE на существующие записи!
 ```
 
 ### Вариант 2: Через PostgREST API
 
 ```bash
-# Создать transcript
+# Создать НОВУЮ запись (ТОЛЬКО эти поля!)
 curl -X POST "https://ftrerelppsnbdcmtcwya.supabase.co/rest/v1/transcripts" \
   -H "apikey: $SUPABASE_KEY" \
   -H "Authorization: Bearer $SUPABASE_KEY" \
   -H "Content-Type: application/json" \
   -H "Content-Profile: genomai" \
   -d '{
-    "creative_id": "uuid-or-null",
+    "creative_id": "uuid-креатива",
     "Name": "My Video",
     "VideoID": "GOOGLE_DRIVE_FILE_ID",
     "Status": "queued",
     "ConvertStatus": "queued",
     "version": 1
   }'
+# НЕ использовать PATCH/UPDATE!
 ```
 
 ### Извлечение VideoID из URL
