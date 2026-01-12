@@ -1,7 +1,7 @@
 # Makefile for GenomAI
 # Usage: make <target>
 
-.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-block issue-ready issues-critical issues-by-priority
+.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-ready issues-critical issues-by-priority
 
 # Default target
 help:
@@ -33,10 +33,9 @@ help:
 	@echo "  make pre-push-check   - Run pre-push hooks manually"
 	@echo ""
 	@echo "Issue Management:"
-	@echo "  make issues         - Dashboard: in-progress, ready, blocked"
+	@echo "  make issues         - Dashboard: ready, in-progress"
 	@echo "  make issue-start N=123 - Start working on issue #123"
-	@echo "  make issue-block N=123 - Mark issue as blocked"
-	@echo "  make issue-ready N=123 - Mark issue as ready to work"
+	@echo "  make issue-ready N=123 - Mark issue as ready"
 	@echo "  make issues-critical   - List CRITICAL issues"
 	@echo "  make issues-by-priority - List by CRITICAL/HIGH/MEDIUM"
 
@@ -143,26 +142,16 @@ issues:
 	@echo ""
 	@echo "🟢 READY:"
 	@gh issue list -l "status:ready" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}' || true
-	@echo ""
-	@echo "🔴 BLOCKED:"
-	@gh issue list -l "status:blocked" --json number,title --template '{{range .}}  #{{.number}} {{.title}}{{"\n"}}{{end}}' || true
-	@echo ""
-	@echo "⚪ BACKLOG (no status): gh issue list"
 
 # Start working on an issue (label set automatically by task-start.sh)
 issue-start:
 	@if [ -z "$(N)" ]; then echo "Usage: make issue-start N=123"; exit 1; fi
 	./scripts/task-start.sh $(N)
 
-# Mark issue as blocked
-issue-block:
-	@if [ -z "$(N)" ]; then echo "Usage: make issue-block N=123"; exit 1; fi
-	gh issue edit $(N) --add-label "status:blocked" --remove-label "status:in-progress" --remove-label "status:ready"
-
 # Mark issue as ready
 issue-ready:
 	@if [ -z "$(N)" ]; then echo "Usage: make issue-ready N=123"; exit 1; fi
-	gh issue edit $(N) --add-label "status:ready" --remove-label "status:in-progress" --remove-label "status:blocked"
+	gh issue edit $(N) --add-label "status:ready" --remove-label "status:in-progress"
 
 # List critical issues (ARCH-CRITICAL, CRITICAL)
 issues-critical:
