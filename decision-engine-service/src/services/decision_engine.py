@@ -7,8 +7,7 @@ from datetime import datetime
 from src.services.supabase import (
     load_idea,
     load_system_state,
-    save_decision,
-    save_decision_trace,
+    save_decision_with_trace,
     get_existing_decision,
     get_decision_trace,
 )
@@ -204,16 +203,8 @@ async def _create_decision(
         "created_at": timestamp,
     }
 
-    # Save to Supabase (atomic: both or none)
-    await save_decision(decision)
-    try:
-        await save_decision_trace(decision_trace)
-    except Exception as e:
-        # Rollback decision if trace fails
-        from src.services.supabase import delete_decision
-
-        await delete_decision(decision_id)
-        raise e
+    # Save to Supabase atomically (both or none via RPC transaction)
+    await save_decision_with_trace(decision, decision_trace)
 
     # Return response
     return {
