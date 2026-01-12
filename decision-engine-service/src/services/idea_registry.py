@@ -193,6 +193,8 @@ async def create_idea(
     """
     Create new idea record.
 
+    DEPRECATED: Use upsert_idea() for race-safe operations.
+
     Args:
         canonical_hash: SHA256 hash
         avatar_id: Optional linked avatar ID
@@ -227,6 +229,55 @@ async def create_idea(
             return data[0]
 
         raise SupabaseError("Failed to create idea: no data returned")
+
+
+async def upsert_idea(
+    canonical_hash: str, avatar_id: Optional[str] = None, status: str = "active"
+) -> tuple[dict, str]:
+    """
+    Atomically find or create idea by canonical_hash.
+
+    Uses INSERT ... ON CONFLICT DO NOTHING + SELECT pattern.
+    Safe from TOCTOU race conditions (fixes issue #471).
+
+    Args:
+        canonical_hash: SHA256 hash
+        avatar_id: Optional linked avatar ID
+        status: Initial status (default: active)
+
+    Returns:
+        Tuple of (idea dict, status: "created" or "existing")
+    """
+    rest_url, supabase_key = _get_credentials()
+
+    # Step 1: Try INSERT with resolution=ignore-duplicates
+    # This does INSERT ... ON CONFLICT DO NOTHING atomically
+    headers = _get_headers(supabase_key, for_write=True)
+    headers["Prefer"] = "return=representation,resolution=ignore-duplicates"
+
+    payload = {"canonical_hash": canonical_hash, "status": status}
+    if avatar_id:
+        payload["avatar_id"] = avatar_id
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{rest_url}/ideas", headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+        if data and len(data) > 0:
+            # INSERT succeeded - this is a new idea
+            return data[0], "created"
+
+        # Step 2: INSERT returned empty (conflict) - fetch existing
+        existing = await find_idea_by_hash(canonical_hash)
+        if existing:
+            return existing, "existing"
+
+        # This should not happen - UNIQUE conflict but no record found
+        raise SupabaseError(
+            f"Race condition recovery failed: idea with hash {canonical_hash} "
+            "not found after conflict"
+        )
 
 
 async def link_idea_to_decomposed(decomposed_id: str, idea_id: str) -> None:
@@ -338,15 +389,15 @@ async def register_idea(
     # Step 4: Compute canonical hash
     canonical_hash = compute_canonical_hash(payload)
 
-    # Step 5: Find or create idea
-    existing_idea = await find_idea_by_hash(canonical_hash)
+    # Step 5: Atomically find or create idea (fixes TOCTOU race condition #471)
+    # First try upsert without avatar_id to avoid creating unnecessary avatars
+    idea, upsert_status = await upsert_idea(canonical_hash=canonical_hash)
+    idea_id = idea["id"]
 
-    if existing_idea:
-        idea_id = existing_idea["id"]
-        idea_status = "reused"
-    else:
-        # First create/find avatar, then create idea with avatar_id
-        # Step 6a: Find or create avatar (before idea)
+    if upsert_status == "created":
+        idea_status = "new"
+
+        # Step 6a: Create avatar for new idea
         avatar_id, avatar_status = await find_or_create_avatar(
             vertical=vertical,
             geo=geo,
@@ -355,29 +406,22 @@ async def register_idea(
             awareness_level=payload.get("awareness_level"),
         )
 
-        # Create idea with avatar linked
-        new_idea = await create_idea(canonical_hash=canonical_hash, avatar_id=avatar_id)
-        idea_id = new_idea["id"]
-        idea_status = "new"
-
-        # Step 7: Link idea to decomposed
-        await link_idea_to_decomposed(decomposed["id"], idea_id)
-
-        # Step 8: Emit event
-        await emit_idea_registered_event(idea_id, idea_status, avatar_id)
-
-        return IdeaRegistryResult(
-            idea_id=idea_id,
-            status=idea_status,
-            canonical_hash=canonical_hash,
-            avatar_id=avatar_id,
-            avatar_status=avatar_status,
-        )
-
-    # For reused idea, still need to link and emit
-    # Step 6b: Get avatar info from existing idea
-    avatar_id = existing_idea.get("avatar_id")
-    avatar_status = "existing" if avatar_id else None
+        # Update idea with avatar_id
+        if avatar_id:
+            rest_url, supabase_key = _get_credentials()
+            headers = _get_headers(supabase_key, for_write=True)
+            headers["Prefer"] = "return=minimal"
+            async with httpx.AsyncClient() as client:
+                await client.patch(
+                    f"{rest_url}/ideas?id=eq.{idea_id}",
+                    headers=headers,
+                    json={"avatar_id": avatar_id},
+                )
+    else:
+        idea_status = "reused"
+        # Step 6b: Get avatar info from existing idea
+        avatar_id = idea.get("avatar_id")
+        avatar_status = "existing" if avatar_id else None
 
     # Step 7: Link idea to decomposed
     await link_idea_to_decomposed(decomposed["id"], idea_id)

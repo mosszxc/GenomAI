@@ -293,6 +293,107 @@ async def create_idea(
 
 
 @activity.defn
+async def upsert_idea(
+    canonical_hash: str,
+    decomposed_creative_id: str,
+    buyer_id: Optional[str] = None,
+    avatar_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Atomically find or create idea by canonical_hash.
+
+    Uses INSERT ... ON CONFLICT DO NOTHING + SELECT pattern.
+    Safe from TOCTOU race conditions (fixes issue #471).
+
+    Args:
+        canonical_hash: SHA256 hash
+        decomposed_creative_id: Linked decomposed creative
+        buyer_id: Optional buyer reference (not stored in ideas table)
+        avatar_id: Optional avatar reference
+
+    Returns:
+        Dict with idea data and 'upsert_status': 'created' or 'existing'
+    """
+    import uuid
+
+    rest_url, supabase_key = _get_credentials()
+
+    # Step 1: Try INSERT with resolution=ignore-duplicates
+    # This does INSERT ... ON CONFLICT DO NOTHING atomically
+    headers = _get_headers(supabase_key, for_write=True)
+    headers["Prefer"] = "return=representation,resolution=ignore-duplicates"
+
+    idea = {
+        "id": str(uuid.uuid4()),
+        "canonical_hash": canonical_hash,
+        "status": "active",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    if avatar_id:
+        idea["avatar_id"] = avatar_id
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{rest_url}/ideas",
+            headers=headers,
+            json=idea,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data:
+            # INSERT succeeded - this is a new idea
+            created_idea = data[0]
+            created_idea["upsert_status"] = "created"
+
+            # Link decomposed_creative to idea
+            link_headers = _get_headers(supabase_key, for_write=True)
+            await client.patch(
+                f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
+                headers=link_headers,
+                json={"idea_id": created_idea["id"]},
+            )
+
+            activity.logger.info(
+                f"Created new idea {created_idea['id']} for hash {canonical_hash[:16]}..."
+            )
+            return created_idea
+
+        # Step 2: INSERT returned empty (conflict) - fetch existing
+        read_headers = _get_headers(supabase_key)
+        response = await client.get(
+            f"{rest_url}/ideas?canonical_hash=eq.{canonical_hash}&select=*&limit=1",
+            headers=read_headers,
+        )
+        response.raise_for_status()
+        existing = response.json()
+
+        if existing:
+            existing_idea = existing[0]
+            existing_idea["upsert_status"] = "existing"
+
+            # Link decomposed_creative to existing idea
+            link_headers = _get_headers(supabase_key, for_write=True)
+            await client.patch(
+                f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
+                headers=link_headers,
+                json={"idea_id": existing_idea["id"]},
+            )
+
+            activity.logger.info(
+                f"Found existing idea {existing_idea['id']} for hash {canonical_hash[:16]}..."
+            )
+            return existing_idea
+
+        # This should not happen - UNIQUE conflict but no record found
+        raise RuntimeError(
+            f"Race condition recovery failed: idea with hash {canonical_hash} "
+            "not found after conflict"
+        )
+
+
+@activity.defn
 async def save_decomposed_creative(
     creative_id: str,
     payload: Dict[str, Any],

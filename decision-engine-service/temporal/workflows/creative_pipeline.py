@@ -68,8 +68,7 @@ class CreativePipelineWorkflow:
                 from temporal.activities.supabase import (
                     get_creative,
                     save_decomposed_creative,
-                    check_idea_exists,
-                    create_idea,
+                    upsert_idea,
                     update_creative_status,
                     emit_event,
                     save_transcript,
@@ -260,29 +259,22 @@ class CreativePipelineWorkflow:
                 retry_policy=default_retry,
             )
 
-            # Step 4: Idea Registry
+            # Step 4: Idea Registry (atomic upsert - fixes TOCTOU race condition #471)
             self._status = "registering_idea"
 
-            # Check if idea already exists
-            existing_idea = await workflow.execute_activity(
-                check_idea_exists,
-                canonical_hash,
-                start_to_close_timeout=timedelta(seconds=10),
+            # Atomically find or create idea by canonical_hash
+            # Uses INSERT ... ON CONFLICT DO NOTHING pattern
+            idea_result = await workflow.execute_activity(
+                upsert_idea,
+                args=[canonical_hash, decomposed["id"], input.buyer_id],
+                start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
 
-            idea_status = "reused"
-            if existing_idea:
-                self._idea_id = existing_idea["id"]
-            else:
-                idea_status = "new"
-                new_idea = await workflow.execute_activity(
-                    create_idea,
-                    args=[canonical_hash, decomposed["id"], input.buyer_id],
-                    start_to_close_timeout=timedelta(seconds=30),
-                    retry_policy=default_retry,
-                )
-                self._idea_id = new_idea["id"]
+            self._idea_id = idea_result["id"]
+            idea_status = (
+                "new" if idea_result.get("upsert_status") == "created" else "reused"
+            )
 
             # Emit idea event
             await workflow.execute_activity(
