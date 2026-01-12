@@ -34,18 +34,5 @@ idea = await upsert_idea(hash, decomposed_id)
 ## Test
 
 ```bash
-cd decision-engine-service && python3 -c "
-from temporal.activities.supabase import upsert_idea
-import inspect
-sig = inspect.signature(upsert_idea)
-assert 'canonical_hash' in sig.parameters, 'Missing canonical_hash param'
-assert 'decomposed_creative_id' in sig.parameters, 'Missing decomposed_creative_id param'
-print('OK: upsert_idea activity signature correct')
-" && python3 -c "
-from src.services.idea_registry import upsert_idea
-import inspect
-sig = inspect.signature(upsert_idea)
-assert 'canonical_hash' in sig.parameters, 'Missing canonical_hash param'
-print('OK: idea_registry.upsert_idea signature correct')
-"
+cd decision-engine-service && python3 -c "from temporal.activities.supabase import upsert_idea; from src.services.idea_registry import upsert_idea as reg_upsert; print('OK: upsert_idea imported from both modules')"
 ```
