@@ -33,6 +33,9 @@ with workflow.unsafe.imports_passed_through():
         check_staleness,
         release_orphaned_agent_tasks,
         find_stuck_creatives,
+        find_failed_creatives_for_retry,
+        reset_creative_for_retry,
+        abandon_failed_creative,
     )
     from temporal.activities.hygiene_cleanup import (
         run_all_cleanup,
@@ -82,6 +85,12 @@ class MaintenanceInput:
     stuck_decomposition_timeout_minutes: int = 30
     # Orphaned hypotheses cleanup (Issue #475)
     run_orphan_hypothesis_cleanup: bool = True
+    # Failed creatives retry (Issue #472)
+    run_failed_retry: bool = True
+    # Max retry attempts for failed creatives
+    failed_creative_max_retries: int = 3
+    # Min age before retry (minutes)
+    failed_creative_min_age_minutes: int = 30
 
 
 @dataclass
@@ -111,6 +120,9 @@ class MaintenanceResult:
     stuck_creatives_failed: int = 0
     # Orphaned hypotheses cleanup (Issue #475)
     orphaned_hypotheses_deleted: int = 0
+    # Failed creatives retry (Issue #472)
+    failed_creatives_retried: int = 0
+    failed_creatives_abandoned: int = 0
 
 
 @workflow.defn
@@ -431,7 +443,62 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Stuck creatives recovery failed: {e}")
                 result.integrity_issues.append(f"Stuck recovery error: {e}")
 
-        # Step 11: Emit maintenance event
+        # Step 11: Retry failed creatives (Issue #472)
+        if input.run_failed_retry:
+            try:
+                failed_creatives = await workflow.execute_activity(
+                    find_failed_creatives_for_retry,
+                    args=[
+                        input.failed_creative_max_retries,
+                        input.failed_creative_min_age_minutes,
+                    ],
+                    start_to_close_timeout=timedelta(seconds=60),
+                    retry_policy=retry_policy,
+                )
+
+                if failed_creatives:
+                    workflow.logger.info(
+                        f"Found {len(failed_creatives)} failed creatives for retry"
+                    )
+
+                    for creative in failed_creatives:
+                        creative_id = creative["id"]
+                        retry_count = creative.get("retry_count", 0)
+
+                        # Check if max retries exceeded
+                        if retry_count >= input.failed_creative_max_retries:
+                            # Abandon this creative
+                            success = await workflow.execute_activity(
+                                abandon_failed_creative,
+                                creative_id,
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=retry_policy,
+                            )
+                            if success:
+                                result.failed_creatives_abandoned += 1
+                        else:
+                            # Reset for retry
+                            success = await workflow.execute_activity(
+                                reset_creative_for_retry,
+                                creative_id,
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=retry_policy,
+                            )
+                            if success:
+                                result.failed_creatives_retried += 1
+
+                    workflow.logger.info(
+                        f"Failed creatives: {result.failed_creatives_retried} retried, "
+                        f"{result.failed_creatives_abandoned} abandoned"
+                    )
+                else:
+                    workflow.logger.info("No failed creatives to retry")
+
+            except Exception as e:
+                workflow.logger.error(f"Failed creatives retry failed: {e}")
+                result.integrity_issues.append(f"Failed retry error: {e}")
+
+        # Step 12: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
@@ -454,7 +521,9 @@ class MaintenanceWorkflow:
             f"hypothesis_retried={result.hypotheses_retried}, "
             f"orphaned_tasks={result.orphaned_tasks_released}, "
             f"stuck_recovered={result.stuck_creatives_recovered}, "
-            f"orphaned_hypotheses={result.orphaned_hypotheses_deleted}"
+            f"orphaned_hypotheses={result.orphaned_hypotheses_deleted}, "
+            f"failed_retried={result.failed_creatives_retried}, "
+            f"failed_abandoned={result.failed_creatives_abandoned}"
         )
 
         return result

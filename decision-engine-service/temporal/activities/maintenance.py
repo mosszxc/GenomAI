@@ -685,6 +685,159 @@ async def find_stuck_creatives(
 
 
 @activity.defn
+async def find_failed_creatives_for_retry(
+    max_retry_count: int = 3,
+    min_age_minutes: int = 30,
+) -> List[dict]:
+    """
+    Find failed creatives eligible for retry.
+
+    Issue #472: Creatives with status='failed' can be retried up to max_retry_count times.
+    Only creatives that failed more than min_age_minutes ago are considered.
+
+    Args:
+        max_retry_count: Maximum number of retry attempts before abandoning
+        min_age_minutes: Minimum age of failure before retry (to avoid rapid retries)
+
+    Returns:
+        List of creatives eligible for retry with their creative_id, buyer_id, error
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    # Only retry creatives that failed at least min_age_minutes ago
+    cutoff = (datetime.utcnow() - timedelta(minutes=min_age_minutes)).isoformat()
+
+    activity.logger.info(
+        f"Looking for failed creatives to retry (max_retries={max_retry_count}, "
+        f"min_age={min_age_minutes}min)"
+    )
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{rest_url}/creatives"
+            f"?status=eq.failed"
+            f"&retry_count=lt.{max_retry_count}"
+            f"&failed_at=lt.{cutoff}"
+            "&select=id,buyer_id,error,retry_count,failed_at"
+            "&limit=10",  # Process in batches
+            headers=headers,
+        )
+
+        if response.status_code != 200:
+            activity.logger.warning(f"Error finding failed creatives: {response.text}")
+            return []
+
+        failed_creatives = response.json()
+
+        if failed_creatives:
+            activity.logger.info(
+                f"Found {len(failed_creatives)} failed creatives eligible for retry"
+            )
+        else:
+            activity.logger.info("No failed creatives eligible for retry")
+
+        return failed_creatives
+
+
+@activity.defn
+async def reset_creative_for_retry(creative_id: str) -> bool:
+    """
+    Reset a failed creative for retry.
+
+    Issue #472: Increments retry_count and resets status to 'registered'
+    so the creative can be picked up by the pipeline again.
+
+    Args:
+        creative_id: Creative UUID to reset
+
+    Returns:
+        True if reset successful, False otherwise
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    activity.logger.info(f"Resetting creative {creative_id[:8]} for retry")
+
+    async with httpx.AsyncClient() as client:
+        # First get current retry_count
+        get_resp = await client.get(
+            f"{rest_url}/creatives?id=eq.{creative_id}&select=retry_count",
+            headers=_get_headers(supabase_key),
+        )
+
+        if get_resp.status_code != 200 or not get_resp.json():
+            activity.logger.warning(f"Creative {creative_id[:8]} not found")
+            return False
+
+        current_retry = get_resp.json()[0].get("retry_count", 0)
+
+        # Reset for retry
+        response = await client.patch(
+            f"{rest_url}/creatives?id=eq.{creative_id}",
+            headers=headers,
+            json={
+                "status": "registered",
+                "retry_count": current_retry + 1,
+                "error": None,  # Clear previous error
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+        )
+
+        if response.status_code in (200, 204):
+            activity.logger.info(
+                f"Creative {creative_id[:8]} reset for retry #{current_retry + 1}"
+            )
+            return True
+        else:
+            activity.logger.warning(
+                f"Failed to reset creative {creative_id[:8]}: {response.text}"
+            )
+            return False
+
+
+@activity.defn
+async def abandon_failed_creative(creative_id: str) -> bool:
+    """
+    Mark a failed creative as abandoned (too many retries).
+
+    Issue #472: Creatives that exceed max_retry_count are marked as 'abandoned'
+    to prevent infinite retry loops.
+
+    Args:
+        creative_id: Creative UUID to abandon
+
+    Returns:
+        True if successful, False otherwise
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key, for_write=True)
+
+    activity.logger.info(
+        f"Abandoning creative {creative_id[:8]} (max retries exceeded)"
+    )
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{rest_url}/creatives?id=eq.{creative_id}",
+            headers=headers,
+            json={
+                "status": "abandoned",
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+        )
+
+        if response.status_code in (200, 204):
+            activity.logger.info(f"Creative {creative_id[:8]} marked as abandoned")
+            return True
+        else:
+            activity.logger.warning(
+                f"Failed to abandon creative {creative_id[:8]}: {response.text}"
+            )
+            return False
+
+
+@activity.defn
 async def check_staleness(
     avatar_id: Optional[str] = None,
     geo: Optional[str] = None,

@@ -20,5 +20,5 @@
 ## Test
 
 ```bash
-grep -q 'graceful_shutdown' .worktrees/issue-479-*/decision-engine-service/temporal/worker.py && grep -q 'SIGTERM' .worktrees/issue-479-*/decision-engine-service/temporal/worker.py && grep -q 'worker.shutdown()' .worktrees/issue-479-*/decision-engine-service/temporal/worker.py && grep -q 'client.service_client.close()' .worktrees/issue-479-*/decision-engine-service/temporal/worker.py && echo "OK: graceful shutdown implemented"
+grep -q 'graceful_shutdown' decision-engine-service/temporal/worker.py && grep -q 'SIGTERM' decision-engine-service/temporal/worker.py && grep -q 'worker.shutdown()' decision-engine-service/temporal/worker.py && grep -q 'client.service_client.close()' decision-engine-service/temporal/worker.py && echo "OK: graceful shutdown implemented"
 ```
