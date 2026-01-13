@@ -19,6 +19,13 @@ from src.utils.errors import IdeaNotFoundError
 # Current decision epoch (MVP: fixed at 1)
 CURRENT_DECISION_EPOCH = 1
 
+# Decision modes
+MODE_STRICT = "strict"
+MODE_ADVISORY = "advisory"
+
+# Checks that generate warnings in advisory mode (instead of reject)
+ADVISORY_WARNING_CHECKS = {"death_memory", "fatigue_constraint"}
+
 
 def _format_existing_decision(
     existing_decision: dict, existing_trace: dict | None, idea: dict
@@ -87,12 +94,43 @@ def _format_existing_decision(
     }
 
 
+def _create_warning(check_result: dict, severity: str = "medium") -> dict:
+    """
+    Create warning object from failed check result.
+
+    Args:
+        check_result: Failed check result
+        severity: Warning severity (low, medium, high)
+
+    Returns:
+        dict: Warning object
+    """
+    check_name = check_result["name"]
+    details = check_result.get("details", {})
+
+    # Generate human-readable message based on check type
+    if check_name == "death_memory":
+        death_state = details.get("death_state", "unknown")
+        message = f"Idea marked as dead (state: {death_state})"
+    elif check_name == "fatigue_constraint":
+        message = "High fatigue detected for this angle"
+    else:
+        message = f"Check {check_name} failed"
+
+    return {
+        "check": check_name,
+        "message": message,
+        "severity": severity,
+        "details": details,
+    }
+
+
 async def make_decision(input_data: dict) -> dict:
     """
     Make decision for an idea
 
     Args:
-        input_data: Input data with idea_id, idea, system_state, fatigue_state, death_memory
+        input_data: Input data with idea_id, idea, system_state, fatigue_state, death_memory, mode
 
     Returns:
         dict: Decision result with decision and decision_trace
@@ -105,6 +143,7 @@ async def make_decision(input_data: dict) -> dict:
     system_state = input_data.get("system_state")
     fatigue_state = input_data.get("fatigue_state")
     death_memory_data = input_data.get("death_memory")
+    mode = input_data.get("mode", MODE_STRICT)
 
     # Load idea if not provided
     if not idea and idea_id:
@@ -116,6 +155,7 @@ async def make_decision(input_data: dict) -> dict:
         raise IdeaNotFoundError("No idea provided")
 
     # IDEMPOTENCY GUARD: Check if decision already exists for this idea+epoch
+    # Note: In advisory mode, we still check idempotency but only for the same mode
     existing_decision = await get_existing_decision(idea["id"], CURRENT_DECISION_EPOCH)
     if existing_decision:
         # Return existing decision instead of creating duplicate
@@ -128,52 +168,75 @@ async def make_decision(input_data: dict) -> dict:
 
     # Execute checks in fixed order
     check_results = []
+    warnings = []
+    is_advisory = mode == MODE_ADVISORY
 
-    # CHECK 1: Schema Validity
+    # CHECK 1: Schema Validity (always blocking)
     schema_check = schema_validity(idea)
     check_results.append(schema_check)
     if schema_check["result"] == "FAILED":
-        return await _create_decision(idea, "reject", check_results, "schema_invalid")
+        return await _create_decision(idea, "reject", check_results, "schema_invalid", warnings)
 
     # CHECK 2: Death Memory
     death_check = death_memory(idea, death_memory_data)
     check_results.append(death_check)
     if death_check["result"] == "FAILED":
-        return await _create_decision(idea, "reject", check_results, "idea_dead")
+        if is_advisory:
+            # In advisory mode, convert to warning
+            warnings.append(_create_warning(death_check, severity="high"))
+        else:
+            return await _create_decision(idea, "reject", check_results, "idea_dead", warnings)
 
     # CHECK 3: Fatigue Constraint (MVP: заглушка)
     fatigue_check = fatigue_constraint(idea, fatigue_state)
     check_results.append(fatigue_check)
     if fatigue_check["result"] == "FAILED":
-        return await _create_decision(idea, "reject", check_results, "fatigue_constraint")
+        if is_advisory:
+            # In advisory mode, convert to warning
+            warnings.append(_create_warning(fatigue_check, severity="medium"))
+        else:
+            return await _create_decision(
+                idea, "reject", check_results, "fatigue_constraint", warnings
+            )
 
-    # CHECK 4: Risk Budget
+    # CHECK 4: Risk Budget (always blocking)
     risk_check = risk_budget(idea, system_state)
     check_results.append(risk_check)
     if risk_check["result"] == "FAILED":
-        return await _create_decision(idea, "defer", check_results, "risk_budget_exceeded")
+        return await _create_decision(
+            idea, "defer", check_results, "risk_budget_exceeded", warnings
+        )
 
-    # All checks passed → APPROVE
-    return await _create_decision(idea, "approve", check_results, None)
+    # All checks passed or only warnings in advisory mode
+    if warnings:
+        return await _create_decision(idea, "approve_with_warnings", check_results, None, warnings)
+
+    return await _create_decision(idea, "approve", check_results, None, warnings)
 
 
 async def _create_decision(
-    idea: dict, decision_type: str, check_results: list, failed_check: str | None
+    idea: dict,
+    decision_type: str,
+    check_results: list,
+    failed_check: str | None,
+    warnings: list | None = None,
 ) -> dict:
     """
     Create Decision and Decision Trace
 
     Args:
         idea: Idea object
-        decision_type: Decision type (approve, reject, defer)
+        decision_type: Decision type (approve, reject, defer, approve_with_warnings)
         check_results: List of check results
         failed_check: Name of failed check (if any)
+        warnings: List of warnings (for advisory mode)
 
     Returns:
         dict: Decision result with decision and decision_trace
     """
     decision_id = str(uuid.uuid4())
     timestamp = datetime.now().isoformat()
+    warnings = warnings or []
 
     # Create Decision
     decision = {
@@ -201,16 +264,28 @@ async def _create_decision(
         "created_at": timestamp,
     }
 
+    # Include warnings in trace if present
+    if warnings:
+        decision_trace["warnings"] = warnings
+
     # Save to Supabase atomically (both or none via RPC transaction)
     await save_decision_with_trace(decision, decision_trace)
 
+    # Determine decision reason
+    if decision_type == "approve_with_warnings":
+        decision_reason = "approved_with_warnings"
+    elif failed_check:
+        decision_reason = failed_check
+    else:
+        decision_reason = "all_checks_passed"
+
     # Return response
-    return {
+    response = {
         "decision": {
             "decision_id": decision_id,
             "idea_id": idea["id"],
             "decision_type": decision_type,
-            "decision_reason": failed_check or "all_checks_passed",
+            "decision_reason": decision_reason,
             "passed_checks": [c["name"] for c in check_results if c["result"] == "PASSED"],
             "failed_checks": [c["name"] for c in check_results if c["result"] == "FAILED"],
             "failed_check": failed_check,
@@ -229,3 +304,9 @@ async def _create_decision(
             "created_at": timestamp,
         },
     }
+
+    # Add warnings to response if present
+    if warnings:
+        response["warnings"] = warnings
+
+    return response
