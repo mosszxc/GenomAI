@@ -25,7 +25,9 @@ from tests.integration.assertions.db_assertions import DbAssertions, wait_for_co
 # Test configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://ftrerelppsnbdcmtcwya.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-N8N_WEBHOOK_BASE = os.getenv("N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook")
+N8N_WEBHOOK_BASE = os.getenv(
+    "N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook"
+)
 DE_API_URL = os.getenv("DE_API_URL", "https://genomai.onrender.com")
 API_KEY = os.getenv("API_KEY", "")
 
@@ -66,20 +68,22 @@ class TestLearningPipeline:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
                 f"{DE_API_URL}/learning/status",
-                headers={"Authorization": f"Bearer {API_KEY}"}
+                headers={"Authorization": f"Bearer {API_KEY}"},
             )
 
             assert response.status_code == 200
             data = response.json()
             # Response format: {"success": true, "data": {"pending_outcomes": N}}
-            assert data.get("success") is True or "pending_outcomes" in data.get("data", {})
+            assert data.get("success") is True or "pending_outcomes" in data.get(
+                "data", {}
+            )
 
     @pytest.mark.integration
     async def test_raw_metrics_exist(self, db: DbAssertions):
         """Verify raw metrics are being collected."""
         metrics = await db._query(
             "raw_metrics_current",
-            "select=tracker_id,metrics,updated_at&order=updated_at.desc&limit=5"
+            "select=tracker_id,metrics,updated_at&order=updated_at.desc&limit=5",
         )
 
         # Should have some metrics if keitaro_poller is running
@@ -99,7 +103,7 @@ class TestLearningPipeline:
 
         snapshots = await db._query(
             "daily_metrics_snapshot",
-            f"date=gte.{yesterday}&select=id,tracker_id,date&limit=10"
+            f"date=gte.{yesterday}&select=id,tracker_id,date&limit=10",
         )
 
         # Log for debugging
@@ -115,13 +119,14 @@ class TestLearningPipeline:
         # Get recent outcomes with origin_type='system'
         outcomes = await db._query(
             "outcome_aggregates",
-            "origin_type=eq.system&select=id,creative_id,decision_id,learning_applied&order=created_at.desc&limit=10"
+            "origin_type=eq.system&select=id,creative_id,decision_id,learning_applied&order=created_at.desc&limit=10",
         )
 
         for outcome in outcomes:
             # System outcomes must have decision_id
-            assert outcome.get("decision_id") is not None, \
+            assert outcome.get("decision_id") is not None, (
                 f"Outcome {outcome['id']} missing decision_id"
+            )
 
     @pytest.mark.integration
     async def test_learning_applied_flag(self, db: DbAssertions):
@@ -132,13 +137,12 @@ class TestLearningPipeline:
         """
         # Count processed vs unprocessed
         processed = await db._query(
-            "outcome_aggregates",
-            "learning_applied=eq.true&select=id&limit=100"
+            "outcome_aggregates", "learning_applied=eq.true&select=id&limit=100"
         )
 
         unprocessed = await db._query(
             "outcome_aggregates",
-            "learning_applied=eq.false&origin_type=eq.system&select=id&limit=100"
+            "learning_applied=eq.false&origin_type=eq.system&select=id&limit=100",
         )
 
         print(f"Processed outcomes: {len(processed)}")
@@ -157,7 +161,7 @@ class TestLearningPipeline:
         """
         versions = await db._query(
             "idea_confidence_versions",
-            "select=idea_id,version,confidence_value,source_outcome_id&order=updated_at.desc&limit=10"
+            "select=idea_id,version,confidence_value,source_outcome_id&order=updated_at.desc&limit=10",
         )
 
         if not versions:
@@ -184,7 +188,7 @@ class TestLearningPipeline:
         # Get ideas with death_state set
         dead_ideas = await db._query(
             "ideas",
-            "death_state=neq.null&select=id,canonical_hash,death_state&limit=10"
+            "death_state=neq.null&select=id,canonical_hash,death_state&limit=10",
         )
 
         valid_states = {"soft_dead", "hard_dead", "permanent_dead"}
@@ -208,7 +212,7 @@ class TestLearningPipeline:
             # Get status
             response = await client.get(
                 f"{DE_API_URL}/learning/status",
-                headers={"Authorization": f"Bearer {API_KEY}"}
+                headers={"Authorization": f"Bearer {API_KEY}"},
             )
             assert response.status_code == 200
 
@@ -219,7 +223,7 @@ class TestLearningPipeline:
                 headers={
                     "Authorization": f"Bearer {API_KEY}",
                     "Content-Type": "application/json",
-                }
+                },
             )
 
             # Should return valid response
@@ -228,7 +232,9 @@ class TestLearningPipeline:
             if response.status_code == 200:
                 data = response.json()
                 # Response format: {"success": true, "data": {"processed_count": N, ...}}
-                assert data.get("success") is True or "processed_count" in data.get("data", {})
+                assert data.get("success") is True or "processed_count" in data.get(
+                    "data", {}
+                )
 
 
 class TestLearningPipelineContracts:
@@ -247,7 +253,7 @@ class TestLearningPipelineContracts:
         """
         outcomes = await db._query(
             "outcome_aggregates",
-            "origin_type=eq.system&learning_applied=eq.false&select=*&limit=5"
+            "origin_type=eq.system&learning_applied=eq.false&select=*&limit=5",
         )
 
         for outcome in outcomes:
@@ -275,7 +281,7 @@ class TestLearningPipelineContracts:
         # Get a snapshot
         snapshots = await db._query(
             "daily_metrics_snapshot",
-            "select=id,tracker_id,date&order=created_at.desc&limit=1"
+            "select=id,tracker_id,date&order=created_at.desc&limit=1",
         )
 
         if not snapshots:
@@ -295,7 +301,9 @@ class TestLearningPipelineContracts:
 
         # Not all snapshots will have outcomes (only if idea+decision exist)
         # But the linkage should be possible
-        print(f"Snapshot {snapshot['id']} -> Tracker {tracker_id} -> Creative {creative['id']} -> Outcome: {outcome is not None}")
+        print(
+            f"Snapshot {snapshot['id']} -> Tracker {tracker_id} -> Creative {creative['id']} -> Outcome: {outcome is not None}"
+        )
 
 
 class TestLearningPipelineRegressions:
@@ -311,7 +319,7 @@ class TestLearningPipelineRegressions:
         # Outcomes should be linked via creative_id -> decomposed_creatives -> idea_id
         outcomes = await db._query(
             "outcome_aggregates",
-            "learning_applied=eq.false&origin_type=eq.system&select=id,creative_id&limit=20"
+            "learning_applied=eq.false&origin_type=eq.system&select=id,creative_id&limit=20",
         )
 
         orphan_count = 0
@@ -324,7 +332,9 @@ class TestLearningPipelineRegressions:
                 orphan_count += 1
 
         # Allow some orphans for in-progress, but warn if many
-        assert orphan_count < 5, f"Found {orphan_count} orphan outcomes without resolvable idea"
+        assert orphan_count < 5, (
+            f"Found {orphan_count} orphan outcomes without resolvable idea"
+        )
 
     @pytest.mark.integration
     async def test_learning_events_emitted(self, db: DbAssertions):
@@ -334,9 +344,11 @@ class TestLearningPipelineRegressions:
         # Query all recent events and filter in Python (PostgREST LIKE has issues)
         all_events = await db._query(
             "event_log",
-            "select=event_type,entity_id,occurred_at&order=occurred_at.desc&limit=50"
+            "select=event_type,entity_id,occurred_at&order=occurred_at.desc&limit=50",
         )
-        events = [e for e in all_events if e.get("event_type", "").startswith("learning")]
+        events = [
+            e for e in all_events if e.get("event_type", "").startswith("learning")
+        ]
 
         # Log for visibility
         print(f"Found {len(events)} learning events")
@@ -352,8 +364,7 @@ class TestLearningPipelineRegressions:
         """
         # Get ideas with multiple confidence versions
         ideas_with_versions = await db._query(
-            "idea_confidence_versions",
-            "select=idea_id&order=idea_id&limit=100"
+            "idea_confidence_versions", "select=idea_id&order=idea_id&limit=100"
         )
 
         if not ideas_with_versions:
@@ -365,12 +376,13 @@ class TestLearningPipelineRegressions:
         for idea_id in list(idea_ids)[:5]:  # Check first 5
             versions = await db._query(
                 "idea_confidence_versions",
-                f"idea_id=eq.{idea_id}&select=version&order=version.asc"
+                f"idea_id=eq.{idea_id}&select=version&order=version.asc",
             )
 
             if len(versions) > 1:
                 for i in range(1, len(versions)):
                     prev = versions[i - 1]["version"]
                     curr = versions[i]["version"]
-                    assert curr == prev + 1, \
+                    assert curr == prev + 1, (
                         f"Version gap for idea {idea_id}: {prev} -> {curr}"
+                    )

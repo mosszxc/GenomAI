@@ -68,7 +68,9 @@ def get_property_types(schema: dict) -> dict:
     return types
 
 
-def validate_contract_pair(producer_name: str, consumer_name: str, verbose: bool = False) -> list[str]:
+def validate_contract_pair(
+    producer_name: str, consumer_name: str, verbose: bool = False
+) -> list[str]:
     """
     Validate that producer output satisfies consumer input requirements.
 
@@ -232,7 +234,9 @@ def main():
     else:
         print("VALIDATION PASSED")
         print("=" * 60)
-        print(f"\nAll {len([p for p, c in CONTRACT_PAIRS if c])} contract pairs are compatible")
+        print(
+            f"\nAll {len([p for p, c in CONTRACT_PAIRS if c])} contract pairs are compatible"
+        )
         sys.exit(0)
 
 
