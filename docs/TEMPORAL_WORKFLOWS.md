@@ -404,13 +404,14 @@ Multi-agent task distribution supervisor:
 
 | Schedule ID | Workflow | Interval | Description |
 |-------------|----------|----------|-------------|
-| `keitaro-poller` | KeitaroPollerWorkflow | 10 min | Collect Keitaro metrics |
-| `metrics-processor` | MetricsProcessingWorkflow | 30 min | Process metrics into outcomes |
-| `learning-loop` | LearningLoopWorkflow | 1 hour | Update component scores |
+| `keitaro-poller` | KeitaroPollerWorkflow | 1 hour | Collect Keitaro metrics, triggers chain |
 | `daily-recommendations` | DailyRecommendationWorkflow | 09:00 UTC | Generate daily recommendations |
 | `maintenance` | MaintenanceWorkflow | 6 hours | Cleanup and integrity checks |
 | `health-check` | HealthCheckWorkflow | 3 hours | Health monitoring + alerts |
-| `agent-supervisor` | AgentSupervisorWorkflow | 2 hours | Multi-agent task distribution |
+
+**Child workflows (not scheduled separately):**
+- `metrics-processor` — triggered by keitaro-poller after snapshots created
+- `learning-loop` — triggered by metrics-processor after outcomes created
 
 ### Schedule Management
 

@@ -74,9 +74,11 @@ POST `/api/decision/` | POST `/learning/process` | GET `/health`
 | Workflow | Schedule |
 |----------|----------|
 | KeitaroPollerWorkflow | Every 1 hour |
-| LearningLoopWorkflow | Child of KeitaroPoller |
+| MetricsProcessingWorkflow | Child of KeitaroPoller |
+| LearningLoopWorkflow | Child of MetricsProcessing |
 | DailyRecommendationWorkflow | 09:00 UTC |
 | MaintenanceWorkflow | Every 6 hours |
+| HealthCheckWorkflow | Every 3 hours |
 
 ```bash
 python -m temporal.schedules list
