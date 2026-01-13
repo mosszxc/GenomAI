@@ -6,7 +6,7 @@ Tests circuit breaker state transitions and graceful degradation.
 
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 from temporal.circuit_breaker import (
     CircuitState,
@@ -18,6 +18,15 @@ from temporal.circuit_breaker import (
     should_allow_request,
     get_metrics_staleness,
 )
+
+
+def create_mock_response(json_data, status_code=200):
+    """Create a mock httpx response"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = json_data
+    mock_response.status_code = status_code
+    mock_response.raise_for_status = MagicMock()
+    return mock_response
 
 
 class TestCircuitBreakerState:
@@ -83,16 +92,19 @@ class TestCircuitBreakerTransitions:
     @pytest.mark.asyncio
     async def test_success_resets_failure_count(self):
         """Recording success should reset failure count"""
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={"value": {"state": "closed", "failure_count": 2}}
+        mock_get_response = create_mock_response(
+            [{"value": {"state": "closed", "failure_count": 2}}]
         )
-        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = None
+        mock_post_response = create_mock_response([])
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_get_response)
+            mock_client.post = AsyncMock(return_value=mock_post_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             state = await record_success()
 
         assert state.failure_count == 0
@@ -101,16 +113,19 @@ class TestCircuitBreakerTransitions:
     @pytest.mark.asyncio
     async def test_failure_increments_count(self):
         """Recording failure should increment failure count"""
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={"value": {"state": "closed", "failure_count": 0}}
+        mock_get_response = create_mock_response(
+            [{"value": {"state": "closed", "failure_count": 0}}]
         )
-        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = None
+        mock_post_response = create_mock_response([])
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_get_response)
+            mock_client.post = AsyncMock(return_value=mock_post_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             state = await record_failure("Test error")
 
         assert state.failure_count == 1
@@ -118,16 +133,19 @@ class TestCircuitBreakerTransitions:
     @pytest.mark.asyncio
     async def test_circuit_opens_after_threshold(self):
         """Circuit should open after FAILURE_THRESHOLD failures"""
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={"value": {"state": "closed", "failure_count": FAILURE_THRESHOLD - 1}}
+        mock_get_response = create_mock_response(
+            [{"value": {"state": "closed", "failure_count": FAILURE_THRESHOLD - 1}}]
         )
-        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = None
+        mock_post_response = create_mock_response([])
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_get_response)
+            mock_client.post = AsyncMock(return_value=mock_post_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             state = await record_failure("Final error")
 
         assert state.failure_count == FAILURE_THRESHOLD
@@ -141,15 +159,17 @@ class TestCircuitBreakerRequests:
     @pytest.mark.asyncio
     async def test_closed_circuit_allows_requests(self):
         """CLOSED circuit should allow requests"""
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={"value": {"state": "closed", "failure_count": 0}}
+        mock_get_response = create_mock_response(
+            [{"value": {"state": "closed", "failure_count": 0}}]
         )
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_get_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             allow, state = await should_allow_request()
 
         assert allow is True
@@ -161,21 +181,25 @@ class TestCircuitBreakerRequests:
         now = datetime.utcnow()
         opened_at = now - timedelta(minutes=1)  # Opened 1 minute ago
 
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={
-                "value": {
-                    "state": "open",
-                    "failure_count": 3,
-                    "opened_at": opened_at.isoformat(),
+        mock_get_response = create_mock_response(
+            [
+                {
+                    "value": {
+                        "state": "open",
+                        "failure_count": 3,
+                        "opened_at": opened_at.isoformat(),
+                    }
                 }
-            }
+            ]
         )
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_get_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             allow, state = await should_allow_request()
 
         assert allow is False
@@ -188,22 +212,27 @@ class TestCircuitBreakerRequests:
         # Opened more than RECOVERY_TIMEOUT_MINUTES ago
         opened_at = now - timedelta(minutes=RECOVERY_TIMEOUT_MINUTES + 1)
 
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={
-                "value": {
-                    "state": "open",
-                    "failure_count": 3,
-                    "opened_at": opened_at.isoformat(),
+        mock_get_response = create_mock_response(
+            [
+                {
+                    "value": {
+                        "state": "open",
+                        "failure_count": 3,
+                        "opened_at": opened_at.isoformat(),
+                    }
                 }
-            }
+            ]
         )
-        mock_client.schema.return_value.table.return_value.upsert.return_value.execute.return_value = None
+        mock_post_response = create_mock_response([])
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_get_response)
+            mock_client.post = AsyncMock(return_value=mock_post_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             allow, state = await should_allow_request()
 
         assert allow is True
@@ -212,20 +241,24 @@ class TestCircuitBreakerRequests:
     @pytest.mark.asyncio
     async def test_half_open_allows_test_request(self):
         """HALF_OPEN circuit should allow test request"""
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={
-                "value": {
-                    "state": "half_open",
-                    "failure_count": 3,
+        mock_get_response = create_mock_response(
+            [
+                {
+                    "value": {
+                        "state": "half_open",
+                        "failure_count": 3,
+                    }
                 }
-            }
+            ]
         )
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=mock_get_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             allow, state = await should_allow_request()
 
         assert allow is True
@@ -241,20 +274,29 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         recent_update = now - timedelta(minutes=5)
 
-        mock_client = MagicMock()
-        # For raw_metrics_current query
-        mock_client.schema.return_value.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[{"updated_at": recent_update.isoformat()}]
-        )
-        # For circuit breaker state query
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={"value": {"state": "closed", "failure_count": 0}}
+        # Response for metrics query
+        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat()}])
+        # Response for circuit breaker state query
+        circuit_response = create_mock_response(
+            [{"value": {"state": "closed", "failure_count": 0}}]
         )
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        call_count = [0]
+
+        async def mock_get(*args, **kwargs):
+            call_count[0] += 1
+            # First call is for metrics, second is for circuit breaker
+            if "raw_metrics_current" in args[0]:
+                return metrics_response
+            return circuit_response
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = mock_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             result = await get_metrics_staleness()
 
         assert result["status"] == "healthy"
@@ -267,18 +309,23 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         old_update = now - timedelta(minutes=45)
 
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[{"updated_at": old_update.isoformat()}]
-        )
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={"value": {"state": "closed", "failure_count": 0}}
+        metrics_response = create_mock_response([{"updated_at": old_update.isoformat()}])
+        circuit_response = create_mock_response(
+            [{"value": {"state": "closed", "failure_count": 0}}]
         )
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        async def mock_get(*args, **kwargs):
+            if "raw_metrics_current" in args[0]:
+                return metrics_response
+            return circuit_response
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = mock_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             result = await get_metrics_staleness()
 
         assert result["status"] == "degraded"
@@ -290,24 +337,31 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         recent_update = now - timedelta(minutes=5)
 
-        mock_client = MagicMock()
-        mock_client.schema.return_value.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[{"updated_at": recent_update.isoformat()}]
-        )
-        mock_client.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(
-            data={
-                "value": {
-                    "state": "open",
-                    "failure_count": 3,
-                    "opened_at": now.isoformat(),
+        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat()}])
+        circuit_response = create_mock_response(
+            [
+                {
+                    "value": {
+                        "state": "open",
+                        "failure_count": 3,
+                        "opened_at": now.isoformat(),
+                    }
                 }
-            }
+            ]
         )
 
-        with patch(
-            "temporal.circuit_breaker._get_supabase_client",
-            return_value=mock_client,
-        ):
+        async def mock_get(*args, **kwargs):
+            if "raw_metrics_current" in args[0]:
+                return metrics_response
+            return circuit_response
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get = mock_get
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+
             result = await get_metrics_staleness()
 
         assert result["status"] == "degraded"
