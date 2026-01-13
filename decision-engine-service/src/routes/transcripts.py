@@ -19,9 +19,9 @@ class TranscriptStatusPayload(BaseModel):
 
     id: int
     creative_id: str
-    ConvertStatus: Optional[str] = None
-    TranscribeStatus: Optional[str] = None
-    TranslateStatus: Optional[str] = None
+    convert_status: Optional[str] = None
+    transcribe_status: Optional[str] = None
+    translate_status: Optional[str] = None
     changed_at: Optional[str] = None
 
 
@@ -30,16 +30,16 @@ async def transcript_status_webhook(request: Request, background_tasks: Backgrou
     """
     Receive transcript status updates from Supabase pg_net trigger.
 
-    Called when ConvertStatus, TranscribeStatus, or TranslateStatus
+    Called when convert_status, transcribe_status, or translate_status
     changes in genomai.transcripts table.
     """
     try:
         payload = await request.json()
         logger.info(
             f"Transcript status update: id={payload.get('id')}, "
-            f"ConvertStatus={payload.get('ConvertStatus')}, "
-            f"TranscribeStatus={payload.get('TranscribeStatus')}, "
-            f"TranslateStatus={payload.get('TranslateStatus')}"
+            f"convert_status={payload.get('convert_status')}, "
+            f"transcribe_status={payload.get('transcribe_status')}, "
+            f"translate_status={payload.get('translate_status')}"
         )
 
         return {"ok": True, "received": payload.get("id")}

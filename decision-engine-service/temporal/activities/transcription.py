@@ -145,19 +145,19 @@ async def transcribe_via_n8n(
     log.info("Creating transcript record")
 
     client = get_http_client()
-    # Extract Google Drive file ID for VideoID field
+    # Extract Google Drive file ID for video_id field
     video_id = extract_gdrive_file_id(video_url)
 
-    # Insert transcript record with VideoID for pg_cron worker
+    # Insert transcript record with video_id for pg_cron worker
     insert_resp = await client.post(
         f"{supabase_url}/rest/v1/transcripts",
         headers=headers,
         json={
             "creative_id": creative_id,
-            "Name": f"transcript_{creative_id[:8]}",  # Required by pg_cron
-            "VideoID": video_id,  # Google Drive file ID for Convert stage
-            "ConvertStatus": "queued",  # Triggers pg_cron worker
-            "Status": "queued",
+            "name": f"transcript_{creative_id[:8]}",  # Required by pg_cron
+            "video_id": video_id,  # Google Drive file ID for Convert stage
+            "convert_status": "queued",  # Triggers pg_cron worker
+            "status": "queued",
         },
     )
 
@@ -188,8 +188,8 @@ async def transcribe_via_n8n(
 
     # Step 2: Poll transcripts table for result
     # pg_cron worker will pick up the record and call webhooks:
-    # ConvertStatus=queued → MP3MP4 webhook → AudioID
-    # TranscribeStatus=queued → AudioTranscribe webhook → transcript_text
+    # convert_status=queued → MP3MP4 webhook → audio_id
+    # transcribe_status=queued → AudioTranscribe webhook → transcript_text
     log.info(
         "Waiting for pg_cron worker to process transcript",
         transcript_db_id=transcript_db_id,
@@ -218,7 +218,7 @@ async def transcribe_via_n8n(
             headers=headers,
             params={
                 "id": f"eq.{transcript_db_id}",
-                "select": "id,transcript_text,TranscribeStatus,assemblyai_transcript_id",
+                "select": "id,transcript_text,transcribe_status,assemblyai_transcript_id",
             },
         )
 
@@ -226,18 +226,18 @@ async def transcribe_via_n8n(
             records = check_resp.json()
             if records:
                 record = records[0]
-                status = record.get("TranscribeStatus", "")
+                status = record.get("transcribe_status", "")
 
                 if status == "finish":
                     log.info("Transcription completed via n8n")
 
-                    # Update Status to finish to unblock pg_cron queue
-                    # n8n webhook only sets TranscribeStatus, not Status
+                    # Update status to finish to unblock pg_cron queue
+                    # n8n webhook only sets transcribe_status, not status
                     await client.patch(
                         f"{supabase_url}/rest/v1/transcripts",
                         headers=headers,
                         params={"id": f"eq.{transcript_db_id}"},
-                        json={"Status": "finish"},
+                        json={"status": "finish"},
                     )
 
                     return {

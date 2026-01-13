@@ -47,7 +47,7 @@
 | `ideas` | Канонические идеи | Yes (death_state) | idea_registry, learning |
 | `decisions` | Решения DE | No (append-only) | Decision Engine API |
 
-#### transcripts (Issue #370)
+#### transcripts (Issue #370, #710)
 ```
 PK: id (bigint, legacy)
 UNIQUE: (creative_id, version)
@@ -57,6 +57,17 @@ Columns:
   transcript_text           text      -- Full transcript from AssemblyAI
   assemblyai_transcript_id  text      -- AssemblyAI ID for audit trail
   created_at                timestamp
+  -- pg_cron pipeline columns (Issue #710: renamed from PascalCase)
+  name                      text      -- Transcript name for pg_cron identification
+  status                    text      -- Overall status (queued, finish, error)
+  video_id                  text      -- Google Drive video file ID
+  audio_id                  text      -- Google Drive audio file ID after conversion
+  convert_status            text      -- MP4→MP3 conversion status
+  transcribe_status         text      -- AssemblyAI transcription status
+  translate_status          text      -- Translation status
+  translate_text            text      -- Translated transcript text
+  render_status             text      -- Render status
+  last_webhook_at           timestamp -- Last webhook callback timestamp
 ```
 **Note:** Immutable table - UPDATE forbidden by trigger. New versions create new rows.
 
