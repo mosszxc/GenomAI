@@ -20,6 +20,8 @@ Circuit Breaker (Issue #474):
 - Does NOT trigger downstream workflows in degraded mode
 """
 
+from __future__ import annotations
+
 from datetime import timedelta
 from dataclasses import dataclass
 
@@ -72,7 +74,7 @@ class KeitaroPollerResult:
     metrics_collected: int
     metrics_failed: int
     snapshots_created: int
-    errors: list[str] = None
+    errors: list[str] | None = None
     metrics_processing_triggered: bool = False
     is_degraded: bool = False  # True when circuit breaker prevented API calls
     circuit_state: str = "closed"  # Current circuit breaker state
@@ -194,8 +196,8 @@ class KeitaroPollerWorkflow:
                     start_to_close_timeout=timedelta(seconds=10),
                     retry_policy=CIRCUIT_BREAKER_RETRY_POLICY,
                 )
-            except Exception:
-                pass  # Best effort
+            except Exception as record_err:
+                workflow.logger.debug(f"Failed to record circuit failure outcome: {record_err}")
 
             return KeitaroPollerResult(
                 trackers_found=0,
@@ -217,6 +219,7 @@ class KeitaroPollerWorkflow:
                 metrics_failed=0,
                 snapshots_created=0,
                 errors=[],
+                circuit_state=circuit_state,  # Issue #548: propagate circuit state
             )
 
         # Step 2: Batch fetch metrics (more efficient than individual calls)
@@ -233,6 +236,7 @@ class KeitaroPollerWorkflow:
             errors.append(f"Batch metrics error: {str(e)}")
             batch_result = BatchMetricsOutput(metrics=[], failed_ids=tracker_ids)
             api_success = False
+            is_degraded = True  # Issue #548: explicitly mark as degraded on API failure
 
             # Record failure to circuit breaker
             try:
@@ -242,8 +246,8 @@ class KeitaroPollerWorkflow:
                     start_to_close_timeout=timedelta(seconds=10),
                     retry_policy=CIRCUIT_BREAKER_RETRY_POLICY,
                 )
-            except Exception:
-                pass  # Best effort
+            except Exception as record_err:
+                workflow.logger.debug(f"Failed to record circuit failure outcome: {record_err}")
 
         workflow.logger.info(
             f"Batch metrics: {len(batch_result.metrics)} success, "
@@ -283,8 +287,8 @@ class KeitaroPollerWorkflow:
                         start_to_close_timeout=timedelta(seconds=15),
                         retry_policy=SUPABASE_RETRY_POLICY,
                     )
-                except Exception:
-                    pass  # Event emission is best-effort
+                except Exception as event_err:
+                    workflow.logger.debug(f"Failed to emit RawMetricsUpserted event: {event_err}")
 
                 # Step 4: Create snapshot if enabled
                 if input.create_snapshots:
@@ -317,8 +321,10 @@ class KeitaroPollerWorkflow:
                                     start_to_close_timeout=timedelta(seconds=15),
                                     retry_policy=SUPABASE_RETRY_POLICY,
                                 )
-                            except Exception:
-                                pass  # Event emission is best-effort
+                            except Exception as event_err:
+                                workflow.logger.debug(
+                                    f"Failed to emit DailyMetricsSnapshotCreated event: {event_err}"
+                                )
                     except Exception as e:
                         # Duplicate snapshot is expected - not an error
                         if "duplicate" not in str(e).lower():
@@ -362,14 +368,21 @@ class KeitaroPollerWorkflow:
                 start_to_close_timeout=timedelta(seconds=15),
                 retry_policy=SUPABASE_RETRY_POLICY,
             )
-        except Exception:
-            pass  # Event emission is best-effort
+        except Exception as event_err:
+            workflow.logger.debug(f"Failed to emit keitaro.polling.completed event: {event_err}")
 
-        workflow.logger.info(
-            f"Keitaro Poller complete: "
-            f"{metrics_collected} metrics, {snapshots_created} snapshots, "
-            f"circuit: {circuit_state}"
-        )
+        # Issue #548: Log degraded state for monitoring visibility
+        if is_degraded:
+            workflow.logger.warning(
+                f"Keitaro Poller completed in DEGRADED mode: "
+                f"{metrics_collected} metrics, {len(errors)} errors, circuit: {circuit_state}"
+            )
+        else:
+            workflow.logger.info(
+                f"Keitaro Poller complete: "
+                f"{metrics_collected} metrics, {snapshots_created} snapshots, "
+                f"circuit: {circuit_state}"
+            )
 
         # Step 5: Trigger MetricsProcessingWorkflow as child workflow
         # This creates the chain: keitaro → metrics-processor → learning-loop

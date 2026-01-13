@@ -222,7 +222,8 @@ def compute_pearson_correlation(
     cpa_values = np.array([p.cpa for p in pairs])
 
     # Check for constant values (no variance)
-    if np.std(feature_values) == 0 or np.std(cpa_values) == 0:
+    # Use np.isclose to handle floating-point precision issues
+    if np.isclose(np.std(feature_values), 0) or np.isclose(np.std(cpa_values), 0):
         return None, None
 
     correlation, p_value = pearsonr(feature_values, cpa_values)

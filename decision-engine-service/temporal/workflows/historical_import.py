@@ -499,8 +499,8 @@ class HistoricalVideoHandlerWorkflow:
                         start_to_close_timeout=timedelta(seconds=30),
                         retry_policy=default_retry,
                     )
-                except Exception:
-                    pass
+                except Exception as status_err:
+                    workflow.logger.debug(f"Failed to update import status to failed: {status_err}")
 
             return self._build_result()
 

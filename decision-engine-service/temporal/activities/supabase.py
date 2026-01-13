@@ -288,12 +288,15 @@ async def create_idea(
     avatar_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Create new idea in Supabase.
+    Create new idea in Supabase atomically with decomposed_creative link.
+
+    Uses RPC function create_idea_with_link for atomic operation.
+    Issue #576: Ensures idea creation and link are in single transaction.
 
     Args:
         canonical_hash: SHA256 hash
         decomposed_creative_id: Linked decomposed creative
-        buyer_id: Optional buyer reference
+        buyer_id: Optional buyer reference (not stored)
         avatar_id: Optional avatar reference
 
     Returns:
@@ -301,6 +304,7 @@ async def create_idea(
 
     Raises:
         ValueError: If input validation fails
+        RuntimeError: If RPC call fails
     """
     import uuid
 
@@ -310,42 +314,35 @@ async def create_idea(
     buyer_id = validate_optional_uuid(buyer_id, "buyer_id")
     avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
 
-    rest_url, supabase_key = _get_credentials()
-    headers = _get_headers(supabase_key, for_write=True)
+    supabase_url, supabase_key = _get_credentials()
+    # RPC URL is at /rest/v1/rpc/<function_name>
+    rpc_url = f"{supabase_url}/rpc/create_idea_with_link"
 
-    # Note: buyer_id is not stored in ideas table, only avatar_id
-    idea = {
-        "id": str(uuid.uuid4()),
-        "canonical_hash": canonical_hash,
-        "status": "active",
-        "created_at": datetime.utcnow().isoformat(),
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
     }
 
-    if avatar_id:
-        idea["avatar_id"] = avatar_id
+    payload = {
+        "p_idea_id": str(uuid.uuid4()),
+        "p_canonical_hash": canonical_hash,
+        "p_avatar_id": avatar_id,
+        "p_decomposed_creative_id": decomposed_creative_id,
+    }
 
     client = get_http_client()
-    response = await client.post(
-        f"{rest_url}/ideas",
-        headers=headers,
-        json=idea,
-    )
+    response = await client.post(rpc_url, headers=headers, json=payload)
     response.raise_for_status()
-    data = response.json()
+    result = response.json()
 
-    if not data:
-        raise RuntimeError("Failed to create idea: no data returned")
+    if not result or "idea" not in result:
+        raise RuntimeError("Failed to create idea: no data returned from RPC")
 
-    created_idea = data[0]
-
-    # Link decomposed_creative to idea
-    patch_response = await client.patch(
-        f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
-        headers=headers,
-        json={"idea_id": created_idea["id"]},
+    created_idea = result["idea"]
+    activity.logger.info(
+        f"Created idea {created_idea['id']} with linked decomposed_creative {decomposed_creative_id}"
     )
-    patch_response.raise_for_status()
-
     return created_idea
 
 
@@ -357,10 +354,11 @@ async def upsert_idea(
     avatar_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Atomically find or create idea by canonical_hash.
+    Atomically find or create idea by canonical_hash with decomposed_creative link.
 
-    Uses INSERT ... ON CONFLICT DO NOTHING + SELECT pattern.
-    Safe from TOCTOU race conditions (fixes issue #471).
+    Uses RPC function upsert_idea_with_link for atomic operation.
+    Issue #576: Ensures all operations are in single transaction.
+    Safe from TOCTOU race conditions (also fixes issue #471).
 
     Args:
         canonical_hash: SHA256 hash
@@ -373,6 +371,7 @@ async def upsert_idea(
 
     Raises:
         ValueError: If input validation fails
+        RuntimeError: If RPC call fails
     """
     import uuid
 
@@ -382,82 +381,39 @@ async def upsert_idea(
     buyer_id = validate_optional_uuid(buyer_id, "buyer_id")
     avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
 
-    rest_url, supabase_key = _get_credentials()
+    supabase_url, supabase_key = _get_credentials()
+    rpc_url = f"{supabase_url}/rpc/upsert_idea_with_link"
 
-    # Step 1: Try INSERT with resolution=ignore-duplicates
-    # This does INSERT ... ON CONFLICT DO NOTHING atomically
-    headers = _get_headers(supabase_key, for_write=True)
-    headers["Prefer"] = "return=representation,resolution=ignore-duplicates"
-
-    idea = {
-        "id": str(uuid.uuid4()),
-        "canonical_hash": canonical_hash,
-        "status": "active",
-        "created_at": datetime.utcnow().isoformat(),
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
     }
 
-    if avatar_id:
-        idea["avatar_id"] = avatar_id
+    payload = {
+        "p_idea_id": str(uuid.uuid4()),
+        "p_canonical_hash": canonical_hash,
+        "p_avatar_id": avatar_id,
+        "p_decomposed_creative_id": decomposed_creative_id,
+    }
 
     client = get_http_client()
-    response = await client.post(
-        f"{rest_url}/ideas",
-        headers=headers,
-        json=idea,
-    )
+    response = await client.post(rpc_url, headers=headers, json=payload)
     response.raise_for_status()
-    data = response.json()
+    result = response.json()
 
-    if data:
-        # INSERT succeeded - this is a new idea
-        created_idea = data[0]
-        created_idea["upsert_status"] = "created"
+    if not result or "idea" not in result:
+        raise RuntimeError("Failed to upsert idea: no data returned from RPC")
 
-        # Link decomposed_creative to idea
-        link_headers = _get_headers(supabase_key, for_write=True)
-        patch_response = await client.patch(
-            f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
-            headers=link_headers,
-            json={"idea_id": created_idea["id"]},
-        )
-        patch_response.raise_for_status()
+    idea = result["idea"]
+    upsert_status = result.get("upsert_status", "unknown")
+    idea["upsert_status"] = upsert_status
 
-        activity.logger.info(
-            f"Created new idea {created_idea['id']} for hash {canonical_hash[:16]}..."
-        )
-        return created_idea
-
-    # Step 2: INSERT returned empty (conflict) - fetch existing
-    read_headers = _get_headers(supabase_key)
-    response = await client.get(
-        f"{rest_url}/ideas?canonical_hash=eq.{canonical_hash}&select=*&limit=1",
-        headers=read_headers,
+    activity.logger.info(
+        f"{'Created new' if upsert_status == 'created' else 'Found existing'} idea "
+        f"{idea['id']} for hash {canonical_hash[:16]}..."
     )
-    response.raise_for_status()
-    existing = response.json()
-
-    if existing:
-        existing_idea = existing[0]
-        existing_idea["upsert_status"] = "existing"
-
-        # Link decomposed_creative to existing idea
-        link_headers = _get_headers(supabase_key, for_write=True)
-        patch_response = await client.patch(
-            f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
-            headers=link_headers,
-            json={"idea_id": existing_idea["id"]},
-        )
-        patch_response.raise_for_status()
-
-        activity.logger.info(
-            f"Found existing idea {existing_idea['id']} for hash {canonical_hash[:16]}..."
-        )
-        return existing_idea
-
-    # This should not happen - UNIQUE conflict but no record found
-    raise RuntimeError(
-        f"Race condition recovery failed: idea with hash {canonical_hash} not found after conflict"
-    )
+    return idea
 
 
 @activity.defn

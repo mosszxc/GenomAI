@@ -16,9 +16,10 @@ import os
 import re
 import logging
 import asyncio
+import uuid
 from datetime import datetime
 from html import escape as html_escape
-from typing import Optional
+from typing import Any, Optional
 import secrets
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -132,8 +133,6 @@ def parse_callback_data(data: str) -> tuple[str, str]:
     Raises:
         CallbackDataError: If validation fails
     """
-    import uuid as uuid_module
-
     if not data:
         raise CallbackDataError("Empty callback data")
 
@@ -154,17 +153,17 @@ def parse_callback_data(data: str) -> tuple[str, str]:
     if not action or not identifier:
         raise CallbackDataError("Empty action or identifier")
 
-    # Type-specific validation to prevent injection attacks
+    # Strict type validation based on action
     if action in ("ke_approve", "ke_reject", "ke_skip"):
-        # extraction_id must be a valid UUID
         try:
-            uuid_module.UUID(identifier)
+            uuid.UUID(identifier)
         except ValueError:
-            raise CallbackDataError(f"Invalid UUID for {action}: {identifier[:20]}") from None
+            raise CallbackDataError(
+                f"Invalid UUID format for {action}: {identifier[:20]}"
+            ) from None
     elif action == "chat":
-        # buyer_telegram_id must be numeric
         if not identifier.isdigit():
-            raise CallbackDataError(f"Invalid telegram_id: {identifier[:20]}")
+            raise CallbackDataError(f"Invalid telegram_id format: {identifier[:20]}")
 
     return action, identifier
 
@@ -228,10 +227,10 @@ def _should_retry(status_code: int, error_code: int | None = None) -> bool:
 def _get_retry_delay(attempt: int, retry_after: int | None = None) -> float:
     """Calculate delay before next retry with exponential backoff."""
     if retry_after:
-        return min(float(retry_after), TELEGRAM_MAX_DELAY)
+        return float(min(float(retry_after), TELEGRAM_MAX_DELAY))
     # Exponential backoff: 1s, 2s, 4s, ...
     delay = TELEGRAM_BASE_DELAY * (2**attempt)
-    return min(delay, TELEGRAM_MAX_DELAY)
+    return float(min(delay, TELEGRAM_MAX_DELAY))
 
 
 async def send_telegram_message(chat_id: str, text: str, reply_markup: dict | None = None) -> bool:
@@ -250,7 +249,7 @@ async def send_telegram_message(chat_id: str, text: str, reply_markup: dict | No
         logger.error("TELEGRAM_BOT_TOKEN not configured")
         return False
 
-    payload = {
+    payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
@@ -1281,6 +1280,81 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
         )
 
 
+async def handle_meta_command(message: TelegramMessage) -> None:
+    """
+    Handle /meta command - show Meta Dashboard with HOT/COLD/GAPS analysis.
+
+    Usage:
+        /meta - Show global meta dashboard
+        /meta US - Show meta dashboard for specific geo
+
+    Shows component performance summary:
+    - HOT: High-performing components (>30% win rate)
+    - COLD: Fatigued components (overused, declining)
+    - GAPS: Components needing more testing
+    """
+    from src.services.meta_dashboard import (
+        generate_meta_dashboard,
+        format_meta_dashboard_telegram,
+    )
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
+        return
+
+    # Parse optional geo filter
+    text = message.text or "/meta"
+    parts = text.split(maxsplit=1)
+    geo = parts[1].upper() if len(parts) > 1 else None
+
+    # Validate geo if provided
+    if geo and geo not in VALID_GEOS:
+        await send_telegram_message(
+            message.chat_id,
+            f"Неизвестный гео: {geo}\nДоступные: {', '.join(sorted(VALID_GEOS))}",
+        )
+        return
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Generate meta dashboard
+        dashboard = await generate_meta_dashboard(geo=geo)
+
+        # Format for Telegram
+        result_text = format_meta_dashboard_telegram(dashboard)
+
+        await send_telegram_message(message.chat_id, result_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=result_text,
+            context={
+                "geo": geo,
+                "hot_count": len(dashboard.hot_components),
+                "cold_count": len(dashboard.cold_components),
+                "gaps_count": len(dashboard.gap_components),
+                "week_num": dashboard.week_num,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Не удалось сгенерировать Meta Dashboard: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Не удалось сгенерировать дашборд: {str(e)[:100]}",
+        )
+
+
 # =============================================================================
 # ADMIN MONITORING COMMANDS
 # =============================================================================
@@ -2281,7 +2355,11 @@ async def get_buyer_name(telegram_id: str) -> str | None:
         )
         buyers = response.json()
         return buyers[0].get("name") if buyers else None
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        logger.debug(f"HTTP error getting buyer name for telegram_id={telegram_id}: {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"Unexpected error getting buyer name for telegram_id={telegram_id}: {e}")
         return None
 
 
@@ -2677,6 +2755,8 @@ async def _process_telegram_update_inner(update: dict) -> None:
             await handle_correlations_command(message)
         elif text.startswith("/recommend"):
             await handle_recommend_command(message)
+        elif text.startswith("/meta"):
+            await handle_meta_command(message)
         elif text.startswith("/simulate"):
             await handle_simulate_command(message)
         elif text.startswith("/feedback"):

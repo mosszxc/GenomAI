@@ -13,6 +13,23 @@ Structure:
 - worker.py: Worker entrypoint
 """
 
-from temporal.config import settings
+from typing import TYPE_CHECKING
 
-__all__ = ["settings"]
+if TYPE_CHECKING:
+    from temporal.config import Settings
+
+__all__ = ["settings", "get_settings"]
+
+
+def get_settings() -> "Settings":
+    """Get settings singleton. Validates required env vars on first call."""
+    from temporal.config import get_settings as _get_settings
+
+    return _get_settings()
+
+
+def __getattr__(name: str):
+    """Lazy loading for backward compatibility with `from temporal import settings`."""
+    if name == "settings":
+        return get_settings()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

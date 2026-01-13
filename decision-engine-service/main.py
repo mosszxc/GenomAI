@@ -21,6 +21,7 @@ from src.routes.historical import router as historical_router
 from src.routes.schedules import router as schedules_router
 from src.routes.knowledge import router as knowledge_router
 from src.routes.transcripts import router as transcripts_router
+from src.routes.dashboard import router as dashboard_router
 from src.utils.errors import DecisionEngineError
 
 # Environment variables
@@ -54,6 +55,7 @@ app.include_router(transcripts_router, tags=["transcripts"])
 app.include_router(historical_router, prefix="/api/historical", tags=["historical"])
 app.include_router(schedules_router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(knowledge_router, prefix="/api/knowledge", tags=["knowledge"])
+app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
 
 
 @app.get("/health")

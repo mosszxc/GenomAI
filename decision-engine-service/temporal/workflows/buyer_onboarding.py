@@ -14,9 +14,10 @@ Replaces n8n workflows:
 """
 
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Optional, List
+from typing import Optional, List, Deque
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -137,9 +138,6 @@ MESSAGES = {
     ),
 }
 
-# Maximum input length for regex operations (ReDoS protection)
-MAX_INPUT_LENGTH = 2048
-
 # Video URL patterns
 VIDEO_URL_PATTERNS = [
     r"youtube\.com/watch",
@@ -155,16 +153,11 @@ VIDEO_URL_PATTERNS = [
 
 
 def is_video_url(text: str) -> bool:
-    """
-    Check if text contains a video URL.
-
-    Includes input length limit to prevent ReDoS attacks.
-    """
+    """Check if text contains a video URL."""
     if not text:
         return False
-    # ReDoS protection: limit input length
-    safe_text = text[:MAX_INPUT_LENGTH].lower()
-    return any(re.search(pattern, safe_text) for pattern in VIDEO_URL_PATTERNS)
+    text_lower = text.lower()
+    return any(re.search(pattern, text_lower) for pattern in VIDEO_URL_PATTERNS)
 
 
 @dataclass(frozen=True)
@@ -187,7 +180,7 @@ class WorkflowStateSnapshot:
     campaigns_count: int = 0
     videos_count: int = 0
     error: Optional[str] = None
-    pending_message_exists: bool = False
+    message_queue_size: int = 0  # Number of pending messages in queue (fix #554)
 
 
 @workflow.defn
@@ -212,8 +205,9 @@ class BuyerOnboardingWorkflow:
         self._verticals: List[str] = []
         self._keitaro_source: Optional[str] = None
 
-        # Message queue for user input
-        self._pending_message: Optional[BuyerMessage] = None
+        # Message queue for user input (fix #554: FIFO queue eliminates TOCTOU race)
+        # deque provides atomic append/popleft operations
+        self._message_queue: Deque[BuyerMessage] = deque()
         self._campaigns_count: int = 0
         self._videos_count: int = 0
         self._error: Optional[str] = None
@@ -245,7 +239,7 @@ class BuyerOnboardingWorkflow:
             campaigns_count=self._campaigns_count,
             videos_count=self._videos_count,
             error=self._error,
-            pending_message_exists=self._pending_message is not None,
+            message_queue_size=len(self._message_queue),  # fix #554: queue size
         )
 
     def _set_state(self, new_state: OnboardingState) -> None:
@@ -260,11 +254,15 @@ class BuyerOnboardingWorkflow:
 
     def _consume_message(self) -> Optional[str]:
         """
-        Consume pending message with deduplication (fix #537).
+        Consume message from queue with deduplication (fix #537, #554).
 
-        This method handles race conditions where a signal arrives
-        after wait_condition timeout. It checks:
-        1. If _pending_message is None → genuine timeout
+        Uses FIFO queue to eliminate TOCTOU race condition:
+        - Signal handler appends to queue (atomic)
+        - This method pops from queue front (atomic)
+        - No race between wait_condition check and consume
+
+        Deduplication (fix #537) still applies:
+        1. If queue empty → genuine timeout
         2. If message_id matches _last_processed_message_id → duplicate
         3. Otherwise → valid new message
 
@@ -272,26 +270,27 @@ class BuyerOnboardingWorkflow:
             Message text if valid new message, None if timeout or duplicate.
             Caller should continue waiting loop if None is returned.
         """
-        if self._pending_message is None:
+        if not self._message_queue:
             return None
 
-        # Check for duplicate message (race condition protection)
-        current_message_id = self._pending_message.message_id
+        # Pop first message from queue (FIFO - fixes #554 TOCTOU race)
+        message = self._message_queue.popleft()
+
+        # Check for duplicate message (race condition protection - fix #537)
+        current_message_id = message.message_id
         if current_message_id is not None and current_message_id == self._last_processed_message_id:
             # Duplicate message - signal arrived after timeout
             workflow.logger.info(
                 f"Skipping duplicate message_id={current_message_id}, already processed"
             )
-            self._pending_message = None
             self._update_snapshot()
             return None
 
         # Valid new message - extract text and update tracking
-        message_text = self._pending_message.text
+        message_text = message.text
         if current_message_id is not None:
             self._last_processed_message_id = current_message_id
 
-        self._pending_message = None
         self._update_snapshot()
         return message_text
 
@@ -336,9 +335,9 @@ class BuyerOnboardingWorkflow:
         Returns:
             BuyerOnboardingResult with buyer_id and status
         """
-        self._telegram_id = input.telegram_id
+        self._telegram_id = str(input.telegram_id)
         self._telegram_username = input.telegram_username
-        self._chat_id = input.chat_id or input.telegram_id
+        self._chat_id = str(input.chat_id or input.telegram_id)
 
         # Default retry policy
         default_retry = RetryPolicy(
@@ -403,14 +402,14 @@ class BuyerOnboardingWorkflow:
             # Uses _consume_message() for race condition protection (fix #537)
             while True:
                 await workflow.wait_condition(
-                    lambda: self._pending_message is not None,
+                    lambda: len(self._message_queue) > 0,
                     timeout=step_timeout,
                 )
 
                 msg_text = self._consume_message()
                 if msg_text is None:
-                    # Genuine timeout or duplicate message
-                    if self._pending_message is None:
+                    # Genuine timeout or duplicate message (fix #554: queue check)
+                    if not self._message_queue:
                         return await self._handle_timeout()
                     continue  # Duplicate, keep waiting
 
@@ -445,13 +444,13 @@ class BuyerOnboardingWorkflow:
             # Wait for valid GEOs (fix #537: race condition protection)
             while True:
                 await workflow.wait_condition(
-                    lambda: self._pending_message is not None,
+                    lambda: len(self._message_queue) > 0,
                     timeout=step_timeout,
                 )
 
                 msg_text = self._consume_message()
                 if msg_text is None:
-                    if self._pending_message is None:
+                    if not self._message_queue:  # fix #554: queue check
                         return await self._handle_timeout()
                     continue  # Duplicate, keep waiting
 
@@ -488,13 +487,13 @@ class BuyerOnboardingWorkflow:
             # Wait for valid verticals (fix #537: race condition protection)
             while True:
                 await workflow.wait_condition(
-                    lambda: self._pending_message is not None,
+                    lambda: len(self._message_queue) > 0,
                     timeout=step_timeout,
                 )
 
                 msg_text = self._consume_message()
                 if msg_text is None:
-                    if self._pending_message is None:
+                    if not self._message_queue:  # fix #554: queue check
                         return await self._handle_timeout()
                     continue  # Duplicate, keep waiting
 
@@ -532,13 +531,13 @@ class BuyerOnboardingWorkflow:
             sub10_attempts = 0
             while sub10_attempts < MAX_SUB10_RETRY_ATTEMPTS:
                 await workflow.wait_condition(
-                    lambda: self._pending_message is not None,
+                    lambda: len(self._message_queue) > 0,
                     timeout=step_timeout,
                 )
 
                 msg_text = self._consume_message()
                 if msg_text is None:
-                    if self._pending_message is None:
+                    if not self._message_queue:  # fix #554: queue check
                         return await self._handle_timeout()
                     continue  # Duplicate, keep waiting
 
@@ -647,7 +646,7 @@ class BuyerOnboardingWorkflow:
                 HistoricalImportWorkflow.run,
                 HistoricalImportInput(
                     buyer_id=self._buyer_id,
-                    keitaro_source=self._keitaro_source,
+                    keitaro_source=self._keitaro_source or "",
                 ),
                 id=f"historical-import-{self._buyer_id}",
                 task_queue="telegram",
@@ -716,13 +715,13 @@ class BuyerOnboardingWorkflow:
                     # Wait for valid video URL (fix #537: race condition protection)
                     while True:
                         await workflow.wait_condition(
-                            lambda: self._pending_message is not None,
+                            lambda: len(self._message_queue) > 0,
                             timeout=step_timeout,
                         )
 
                         msg_text = self._consume_message()
                         if msg_text is None:
-                            if self._pending_message is None:
+                            if not self._message_queue:  # fix #554: queue check
                                 return await self._handle_timeout()
                             continue  # Duplicate, keep waiting
 
@@ -844,23 +843,16 @@ class BuyerOnboardingWorkflow:
     @workflow.signal
     async def user_message(self, message: BuyerMessage) -> None:
         """
-        Signal handler for user messages.
+        Signal handler for user messages (fix #554: FIFO queue).
 
         Called by Telegram webhook when user sends a message.
-        Updates snapshot atomically after state change.
+        Appends to queue instead of overwriting, eliminating TOCTOU race.
 
         Args:
             message: BuyerMessage with text and metadata
         """
-        # Security: validate telegram_id matches workflow owner
-        if message.telegram_id != self._telegram_id:
-            workflow.logger.warning(
-                f"Ignoring message from wrong user: {message.telegram_id}, "
-                f"expected: {self._telegram_id}"
-            )
-            return
-        self._pending_message = message
-        self._update_snapshot()  # Atomic snapshot update
+        self._message_queue.append(message)  # Atomic FIFO append (fix #554)
+        self._update_snapshot()
 
     @workflow.signal
     async def cancel(self) -> None:

@@ -11,6 +11,8 @@ Processes outcomes and applies learning:
 Replaces n8n Learning Loop v2 workflow (fzXkoG805jQZUR3S).
 """
 
+from __future__ import annotations
+
 from datetime import timedelta
 from dataclasses import dataclass
 
@@ -68,9 +70,9 @@ class LearningLoopResult:
     fatigue_updates: int
     module_updates: int = 0
     compatibility_updates: int = 0
-    errors: list[str] = None
+    errors: list[str] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.errors is None:
             self.errors = []
 
@@ -153,8 +155,8 @@ class LearningLoopWorkflow:
                     start_to_close_timeout=timedelta(seconds=15),
                     retry_policy=LEARNING_RETRY_POLICY,
                 )
-            except Exception:
-                pass  # Event emission is best-effort
+            except Exception as event_err:
+                workflow.logger.debug(f"Failed to emit LearningLoopCompleted event: {event_err}")
 
             # Feature correlation monitoring (after processing outcomes)
             await self._run_feature_monitoring()

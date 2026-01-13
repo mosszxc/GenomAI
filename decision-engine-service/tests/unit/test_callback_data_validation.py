@@ -73,21 +73,22 @@ class TestParseCallbackData:
         with pytest.raises(CallbackDataError, match="Invalid callback data format"):
             parse_callback_data("KE_APPROVE_abc123")
 
-    def test_valid_uuid_within_64_char_limit(self):
-        """Test callback_data with UUID is well within 64 char limit."""
-        # ke_approve_ = 11 chars + UUID = 36 chars = 47 chars total
-        data = "ke_approve_550e8400-e29b-41d4-a716-446655440000"
-        assert len(data) == 47  # Well under 64 char limit
+    def test_valid_64_char_boundary(self):
+        """Test callback_data within 64 char limit works with UUID."""
+        # ke_approve_ = 11 chars + UUID 36 chars = 47 chars (within 64 limit)
+        uuid_val = "550e8400-e29b-41d4-a716-446655440000"
+        data = "ke_approve_" + uuid_val
+        assert len(data) == 47
         action, identifier = parse_callback_data(data)
         assert action == "ke_approve"
-        assert identifier == "550e8400-e29b-41d4-a716-446655440000"
+        assert identifier == uuid_val
 
-    def test_invalid_uuid_rejected(self):
-        """Test that non-UUID identifiers are rejected for ke_ actions."""
-        with pytest.raises(CallbackDataError, match="Invalid UUID"):
-            parse_callback_data("ke_approve_not-a-valid-uuid")
+    def test_invalid_uuid_format_rejected(self):
+        """Test non-UUID identifier for ke_* actions is rejected."""
+        with pytest.raises(CallbackDataError, match="Invalid UUID format"):
+            parse_callback_data("ke_approve_abc123")
 
-    def test_non_numeric_telegram_id_rejected(self):
-        """Test that non-numeric telegram_id is rejected for chat_ action."""
-        with pytest.raises(CallbackDataError, match="Invalid telegram_id"):
+    def test_non_numeric_chat_id_rejected(self):
+        """Test non-numeric identifier for chat action is rejected."""
+        with pytest.raises(CallbackDataError, match="Invalid telegram_id format"):
             parse_callback_data("chat_abc123")

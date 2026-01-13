@@ -12,6 +12,8 @@ Main workflow that processes a creative through the entire pipeline:
 Replaces 6 n8n workflows with single durable workflow.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from typing import Optional
 from temporalio import workflow
@@ -141,8 +143,8 @@ class CreativePipelineWorkflow:
             )
 
             transcript_text: str
-            assemblyai_transcript_id: str = None
-            saved_transcript_id: str = None
+            assemblyai_transcript_id: str | None = None
+            saved_transcript_id: str | None = None
 
             if existing_transcript:
                 # RECOVERY: Use existing transcript, skip AssemblyAI (saves time & money)
