@@ -3024,3 +3024,117 @@ async def telegram_webhook_errors():
         - error_types: Breakdown by exception type
     """
     return webhook_error_stats.get_stats()
+
+
+@router.get("/webhook/telegram/debug/{telegram_id}")
+async def telegram_webhook_debug(telegram_id: str, text: str = "test") -> dict:
+    """
+    Debug endpoint to trace message processing flow.
+
+    Returns step-by-step what would happen for a given telegram_id and text.
+    """
+    steps: list[dict] = []
+    result: dict = {
+        "telegram_id": telegram_id,
+        "text": text,
+        "steps": steps,
+    }
+
+    # Step 1: Check active onboarding
+    try:
+        active_workflow = await check_active_onboarding(telegram_id)
+        steps.append(
+            {
+                "step": "check_active_onboarding",
+                "result": active_workflow,
+                "status": "ok",
+            }
+        )
+    except Exception as e:
+        steps.append(
+            {
+                "step": "check_active_onboarding",
+                "error": str(e),
+                "status": "error",
+            }
+        )
+        return result
+
+    if active_workflow:
+        steps.append(
+            {
+                "step": "route_decision",
+                "result": "signal_to_workflow",
+                "workflow_id": active_workflow,
+            }
+        )
+        return result
+
+    # Step 2: Extract video URL
+    video_url = extract_video_url(text)
+    steps.append(
+        {
+            "step": "extract_video_url",
+            "result": video_url,
+            "status": "ok" if video_url else "no_match",
+        }
+    )
+
+    if not video_url:
+        steps.append(
+            {
+                "step": "route_decision",
+                "result": "unknown_message",
+            }
+        )
+        return result
+
+    # Step 3: Check buyer exists
+    try:
+        sb = get_supabase()
+        headers = sb.get_headers()
+        http_client = get_http_client()
+
+        buyer_resp = await http_client.get(
+            f"{sb.rest_url}/buyers?telegram_id=eq.{telegram_id}&select=id",
+            headers=headers,
+        )
+        buyers = safe_json_response(buyer_resp, "Debug: Get buyer", [])
+
+        steps.append(
+            {
+                "step": "get_buyer",
+                "result": buyers,
+                "status": "ok" if buyers else "not_found",
+            }
+        )
+
+        if not buyers:
+            steps.append(
+                {
+                    "step": "route_decision",
+                    "result": "buyer_not_registered",
+                }
+            )
+            return result
+
+        buyer_id = buyers[0]["id"]
+        steps.append(
+            {
+                "step": "route_decision",
+                "result": "start_creative_registration",
+                "buyer_id": buyer_id,
+                "video_url": video_url,
+            }
+        )
+
+    except Exception as e:
+        steps.append(
+            {
+                "step": "get_buyer",
+                "error": str(e),
+                "status": "error",
+            }
+        )
+
+    return result
