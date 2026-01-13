@@ -8,22 +8,22 @@ class TestParseCallbackData:
     """Test parse_callback_data function."""
 
     def test_valid_ke_approve(self):
-        """Test valid ke_approve callback."""
-        action, identifier = parse_callback_data("ke_approve_abc123")
+        """Test valid ke_approve callback with UUID."""
+        action, identifier = parse_callback_data("ke_approve_550e8400-e29b-41d4-a716-446655440000")
         assert action == "ke_approve"
-        assert identifier == "abc123"
+        assert identifier == "550e8400-e29b-41d4-a716-446655440000"
 
     def test_valid_ke_reject(self):
-        """Test valid ke_reject callback."""
-        action, identifier = parse_callback_data("ke_reject_def456")
+        """Test valid ke_reject callback with UUID."""
+        action, identifier = parse_callback_data("ke_reject_6ba7b810-9dad-11d1-80b4-00c04fd430c8")
         assert action == "ke_reject"
-        assert identifier == "def456"
+        assert identifier == "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 
     def test_valid_ke_skip(self):
-        """Test valid ke_skip callback."""
-        action, identifier = parse_callback_data("ke_skip_xyz789")
+        """Test valid ke_skip callback with UUID."""
+        action, identifier = parse_callback_data("ke_skip_f47ac10b-58cc-4372-a567-0e02b2c3d479")
         assert action == "ke_skip"
-        assert identifier == "xyz789"
+        assert identifier == "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 
     def test_valid_chat(self):
         """Test valid chat callback with numeric ID."""
@@ -73,11 +73,21 @@ class TestParseCallbackData:
         with pytest.raises(CallbackDataError, match="Invalid callback data format"):
             parse_callback_data("KE_APPROVE_abc123")
 
-    def test_valid_64_char_boundary(self):
-        """Test callback_data exactly at 64 char limit works."""
-        # ke_approve_ = 11 chars, so identifier can be 53 chars
-        data = "ke_approve_" + "a" * 53
-        assert len(data) == 64
+    def test_valid_uuid_within_64_char_limit(self):
+        """Test callback_data with UUID is well within 64 char limit."""
+        # ke_approve_ = 11 chars + UUID = 36 chars = 47 chars total
+        data = "ke_approve_550e8400-e29b-41d4-a716-446655440000"
+        assert len(data) == 47  # Well under 64 char limit
         action, identifier = parse_callback_data(data)
         assert action == "ke_approve"
-        assert len(identifier) == 53
+        assert identifier == "550e8400-e29b-41d4-a716-446655440000"
+
+    def test_invalid_uuid_rejected(self):
+        """Test that non-UUID identifiers are rejected for ke_ actions."""
+        with pytest.raises(CallbackDataError, match="Invalid UUID"):
+            parse_callback_data("ke_approve_not-a-valid-uuid")
+
+    def test_non_numeric_telegram_id_rejected(self):
+        """Test that non-numeric telegram_id is rejected for chat_ action."""
+        with pytest.raises(CallbackDataError, match="Invalid telegram_id"):
+            parse_callback_data("chat_abc123")
