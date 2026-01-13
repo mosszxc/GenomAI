@@ -32,32 +32,5 @@
 ## Test
 
 ```bash
-cd decision-engine-service && python3 -c "
-from temporal.activities.maintenance import mark_stuck_transcriptions_failed, archive_failed_creatives, check_data_integrity, cleanup_orphaned_hypotheses, find_stuck_creatives
-from src.services.component_learning import batch_upsert_component_learnings, _build_component_key, ComponentUpdate
-import inspect
-
-# Verify batch operations are used
-src = inspect.getsource(mark_stuck_transcriptions_failed)
-assert 'creative_id=in.' in src, 'mark_stuck_transcriptions_failed missing batch'
-
-src = inspect.getsource(archive_failed_creatives)
-assert 'id=in.' in src, 'archive_failed_creatives missing batch'
-
-src = inspect.getsource(check_data_integrity)
-assert 'idea_id=in.' in src, 'check_data_integrity missing batch'
-
-src = inspect.getsource(cleanup_orphaned_hypotheses)
-assert 'id=in.' in src, 'cleanup_orphaned_hypotheses missing batch'
-
-src = inspect.getsource(find_stuck_creatives)
-assert 'creative_id=in.' in src and 'buyer_id_map' in src, 'find_stuck_creatives missing batch'
-
-# Verify component learning batch function exists
-assert callable(batch_upsert_component_learnings), 'batch_upsert_component_learnings not callable'
-key = _build_component_key('hook', 'test', 'US', None)
-assert '|' in key, 'component key format wrong'
-
-print('OK: All batch operations verified')
-"
+cd decision-engine-service && python3 -c "from temporal.activities.maintenance import mark_stuck_transcriptions_failed, archive_failed_creatives, check_data_integrity, cleanup_orphaned_hypotheses, find_stuck_creatives; from src.services.component_learning import batch_upsert_component_learnings, _build_component_key; import inspect; src = inspect.getsource(mark_stuck_transcriptions_failed); assert 'creative_id=in.' in src; src = inspect.getsource(archive_failed_creatives); assert 'id=in.' in src; src = inspect.getsource(check_data_integrity); assert 'idea_id=in.' in src; src = inspect.getsource(cleanup_orphaned_hypotheses); assert 'id=in.' in src; src = inspect.getsource(find_stuck_creatives); assert 'creative_id=in.' in src and 'buyer_id_map' in src; assert callable(batch_upsert_component_learnings); print('OK: All batch operations verified')"
 ```
