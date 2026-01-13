@@ -507,6 +507,7 @@ def extract_video_url(text: str) -> Optional[str]:
     patterns = [
         r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)/\S+",
         r"https?://(?:www\.)?vimeo\.com/\S+",
+        r"https?://drive\.google\.com/\S+",  # Google Drive links
         r"https?://\S+\.mp4",
         r"https?://\S+\.mov",
         r"https?://\S+\.webm",
