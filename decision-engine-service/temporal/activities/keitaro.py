@@ -390,17 +390,16 @@ async def get_campaigns_by_source(
     metrics_url = _get_keitaro_url("/report/build")
 
     # Get metrics for last 30 days grouped by campaign_id
+    # Keitaro API format: https://admin-api.docs.keitaro.io/
+    # Uses: dimensions (grouping), measures (metrics), range (from/to dates)
+    today = datetime.utcnow().date()
+    date_from = (today - timedelta(days=30)).isoformat()
+    date_to = today.isoformat()
+
     metrics_payload = {
-        "range": {"interval": "last_30_days"},
-        "metrics": ["clicks", "sales", "revenue", "cost"],
-        "grouping": ["campaign_id"],
-        "filters": [
-            {
-                "name": "campaign_id",
-                "operator": "IN_LIST",
-                "expression": campaign_ids,
-            }
-        ],
+        "range": {"from": date_from, "to": date_to, "timezone": "UTC"},
+        "dimensions": ["campaign_id"],
+        "measures": ["clicks", "sales", "revenue", "cost", "profit"],
     }
 
     try:
