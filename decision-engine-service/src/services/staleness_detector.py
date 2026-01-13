@@ -51,6 +51,12 @@ DAYS_STALE_THRESHOLD = 14
 # Fatigue threshold for counting as "high fatigue"
 FATIGUE_THRESHOLD = 0.7
 
+# Total number of metrics tracked
+TOTAL_METRICS = 5
+
+# Quality threshold - if more than 50% metrics failed, quality is "low"
+QUALITY_FAILURE_THRESHOLD = 0.5
+
 
 @dataclass
 class StalenessMetrics:
@@ -71,6 +77,9 @@ class StalenessMetrics:
 
     # Error tracking - which metrics failed to fetch from DB
     error_sources: list = field(default_factory=list)
+
+    # Quality indicator: "high" if most metrics are real, "low" if too many fallbacks
+    quality: str = "high"
 
 
 def _get_credentials():
@@ -507,12 +516,25 @@ async def calculate_staleness_metrics(
         error_sources.append("exploration_success_rate")
         exploration = 0.5  # Neutral fallback
 
-    # Log warning if any metrics failed - indicates potential DB issues
-    if error_sources:
+    # Determine quality based on failure ratio
+    failed_count = len(error_sources)
+    failure_ratio = failed_count / TOTAL_METRICS
+    quality = "low" if failure_ratio > QUALITY_FAILURE_THRESHOLD else "high"
+
+    # Log appropriate warning based on quality
+    if quality == "low":
+        logger.warning(
+            "Staleness score UNRELIABLE: %d/%d metrics failed (>50%%). "
+            "Failed metrics: %s. Score should not be used for decisions.",
+            failed_count,
+            TOTAL_METRICS,
+            error_sources,
+        )
+    elif error_sources:
         logger.warning(
             "Staleness metrics calculated with %d/%d fallback values due to errors: %s",
-            len(error_sources),
-            5,
+            failed_count,
+            TOTAL_METRICS,
             error_sources,
         )
 
@@ -529,6 +551,7 @@ async def calculate_staleness_metrics(
         geo=geo,
         vertical=vertical,
         error_sources=error_sources,
+        quality=quality,
     )
 
     # Compute composite score
@@ -647,6 +670,8 @@ async def check_staleness_and_act(
         # Error tracking - indicates which metrics used fallback values due to DB errors
         "has_db_errors": len(metrics.error_sources) > 0,
         "error_sources": metrics.error_sources,
+        # Quality indicator: "high" = reliable score, "low" = >50% metrics failed
+        "quality": metrics.quality,
     }
 
     if metrics.is_stale:
@@ -654,10 +679,16 @@ async def check_staleness_and_act(
         # Priority: cross_transfer (cheaper) > external_injection
         result["recommended_action"] = "cross_transfer"
 
-    # Save snapshot
+    # Save snapshot with quality metadata
     snapshot = await save_staleness_snapshot(
         metrics,
         action_taken="none",  # Action will be updated after actual injection
+        action_details={
+            "quality": metrics.quality,
+            "failed_metrics_count": len(metrics.error_sources),
+            "total_metrics": TOTAL_METRICS,
+            "error_sources": metrics.error_sources,
+        },
     )
     result["snapshot_id"] = snapshot.get("id")
 
