@@ -33,7 +33,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+# Find main repo root (not worktree root)
+CURRENT_ROOT="$(git rev-parse --show-toplevel)"
+if [[ "$CURRENT_ROOT" == */.worktrees/* ]]; then
+    PROJECT_ROOT="${CURRENT_ROOT%/.worktrees/*}"
+else
+    PROJECT_ROOT="$CURRENT_ROOT"
+fi
 WORKTREES_DIR="$PROJECT_ROOT/.worktrees"
 
 if [ -z "$ISSUE_NUM" ]; then
