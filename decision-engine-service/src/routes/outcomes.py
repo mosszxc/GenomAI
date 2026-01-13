@@ -133,12 +133,8 @@ async def aggregate_outcome(
             creative_id=result.outcome.creative_id,
             decision_id=result.outcome.decision_id,
             window_id=result.outcome.window_id,
-            window_start=str(result.outcome.window_start)
-            if result.outcome.window_start
-            else None,
-            window_end=str(result.outcome.window_end)
-            if result.outcome.window_end
-            else None,
+            window_start=str(result.outcome.window_start) if result.outcome.window_start else None,
+            window_end=str(result.outcome.window_end) if result.outcome.window_end else None,
             conversions=result.outcome.conversions,
             spend=float(result.outcome.spend) if result.outcome.spend else 0,
             cpa=float(result.outcome.cpa) if result.outcome.cpa else None,

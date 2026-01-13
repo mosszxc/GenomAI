@@ -303,12 +303,8 @@ async def run_worker():
         ],
     )
 
-    logger.info(
-        f"Starting worker on queue: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
-    )
-    logger.info(
-        "Registered workflows: CreativePipelineWorkflow, ModularHypothesisWorkflow"
-    )
+    logger.info(f"Starting worker on queue: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
+    logger.info("Registered workflows: CreativePipelineWorkflow, ModularHypothesisWorkflow")
     logger.info("Press Ctrl+C to stop")
 
     # Run worker
@@ -530,9 +526,7 @@ async def run_all_workers():
     workers = [creative_worker, metrics_worker, telegram_worker, knowledge_worker]
 
     logger.info("Workers configured:")
-    logger.info(
-        f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
-    )
+    logger.info(f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
     logger.info(f"  - Metrics & Learning: {settings.temporal.TASK_QUEUE_METRICS}")
     logger.info(f"  - Telegram & Buyer: {settings.temporal.TASK_QUEUE_TELEGRAM}")
     logger.info(f"  - Knowledge Extraction: {settings.temporal.TASK_QUEUE_KNOWLEDGE}")

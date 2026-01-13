@@ -97,13 +97,9 @@ MESSAGES = {
         "• /help — список команд"
     ),
     "timeout": ("⏰ Сессия истекла.\n\nОтправь /start чтобы начать заново."),
-    "invalid_name": (
-        "❌ Имя должно быть не менее 2 символов.\n\n<i>Попробуй ещё раз:</i>"
-    ),
+    "invalid_name": ("❌ Имя должно быть не менее 2 символов.\n\n<i>Попробуй ещё раз:</i>"),
     "invalid_geo": (
-        "❌ Неверные коды стран.\n"
-        "Примеры: US, UK, DE, FR, IT, ES\n\n"
-        "<i>Попробуй ещё раз:</i>"
+        "❌ Неверные коды стран.\nПримеры: US, UK, DE, FR, IT, ES\n\n<i>Попробуй ещё раз:</i>"
     ),
     "invalid_vertical": (
         "❌ Неверные вертикали.\n"
@@ -125,9 +121,7 @@ MESSAGES = {
         "📭 Кампаний для привязки видео не найдено.\n"
         "Можешь скидывать видео позже через обычные сообщения."
     ),
-    "invalid_video_url": (
-        "❌ Не распознал ссылку на видео.\nОтправь URL (YouTube, .mp4 и т.д.)"
-    ),
+    "invalid_video_url": ("❌ Не распознал ссылку на видео.\nОтправь URL (YouTube, .mp4 и т.д.)"),
     "validating_sub10": ("🔍 Проверяю sub10 <code>{sub10}</code> в Keitaro..."),
     "sub10_found": (
         "✅ Найдено <b>{count}</b> кампаний с sub10='{sub10}'\n\nПродолжаю настройку..."
@@ -217,9 +211,7 @@ class BuyerOnboardingWorkflow:
         self._error: Optional[str] = None
 
         # Immutable snapshot for thread-safe query access (fixes race condition #483)
-        self._snapshot = WorkflowStateSnapshot(
-            state=OnboardingState.AWAITING_NAME.value
-        )
+        self._snapshot = WorkflowStateSnapshot(state=OnboardingState.AWAITING_NAME.value)
 
     def _update_snapshot(self) -> None:
         """
@@ -334,7 +326,9 @@ class BuyerOnboardingWorkflow:
                     self._keitaro_source = existing_buyer.keitaro_source
                 self._set_state(OnboardingState.COMPLETED)
 
-                welcome_back_msg = f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."
+                welcome_back_msg = (
+                    f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."
+                )
                 await workflow.execute_activity(
                     send_telegram_message,
                     args=[self._chat_id, welcome_back_msg],
@@ -409,9 +403,7 @@ class BuyerOnboardingWorkflow:
                 raw_geo_input = self._pending_message.text
                 await self._log_incoming(raw_geo_input, "geo_input")
                 # Filter empty strings after split (fix #534)
-                geos_input = [
-                    g for g in raw_geo_input.upper().replace(" ", "").split(",") if g
-                ]
+                geos_input = [g for g in raw_geo_input.upper().replace(" ", "").split(",") if g]
                 self._pending_message = None
 
                 # Validate GEOs
@@ -431,9 +423,7 @@ class BuyerOnboardingWorkflow:
 
             # Step 3: Ask for verticals
             self._set_state(OnboardingState.AWAITING_VERTICAL)
-            ask_vertical_msg = MESSAGES["ask_vertical"].format(
-                geos=", ".join(self._geos)
-            )
+            ask_vertical_msg = MESSAGES["ask_vertical"].format(geos=", ".join(self._geos))
             await workflow.execute_activity(
                 send_telegram_message,
                 args=[self._chat_id, ask_vertical_msg],
@@ -455,9 +445,7 @@ class BuyerOnboardingWorkflow:
                 await self._log_incoming(raw_vertical_input, "vertical_input")
                 # Filter empty strings after split (fix #534)
                 verticals_input = [
-                    v
-                    for v in raw_vertical_input.lower().replace(" ", "").split(",")
-                    if v
+                    v for v in raw_vertical_input.lower().replace(" ", "").split(",") if v
                 ]
                 self._pending_message = None
 
@@ -474,15 +462,11 @@ class BuyerOnboardingWorkflow:
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
-                await self._log_outgoing(
-                    MESSAGES["invalid_vertical"], "invalid_vertical"
-                )
+                await self._log_outgoing(MESSAGES["invalid_vertical"], "invalid_vertical")
 
             # Step 4: Ask for Keitaro source with validation
             self._set_state(OnboardingState.AWAITING_KEITARO)
-            ask_keitaro_msg = MESSAGES["ask_keitaro"].format(
-                verticals=", ".join(self._verticals)
-            )
+            ask_keitaro_msg = MESSAGES["ask_keitaro"].format(verticals=", ".join(self._verticals))
             await workflow.execute_activity(
                 send_telegram_message,
                 args=[self._chat_id, ask_keitaro_msg],
@@ -571,9 +555,7 @@ class BuyerOnboardingWorkflow:
 
             # Step 5: Create buyer and load history
             self._set_state(OnboardingState.LOADING_HISTORY)
-            loading_msg = MESSAGES["loading_history"].format(
-                keitaro_source=self._keitaro_source
-            )
+            loading_msg = MESSAGES["loading_history"].format(keitaro_source=self._keitaro_source)
             await workflow.execute_activity(
                 send_telegram_message,
                 args=[self._chat_id, loading_msg],
@@ -637,9 +619,7 @@ class BuyerOnboardingWorkflow:
                 total_campaigns = len(pending_campaigns)
 
                 # Send intro message
-                ask_videos_intro_msg = MESSAGES["ask_videos_intro"].format(
-                    total=total_campaigns
-                )
+                ask_videos_intro_msg = MESSAGES["ask_videos_intro"].format(total=total_campaigns)
                 await workflow.execute_activity(
                     send_telegram_message,
                     args=[self._chat_id, ask_videos_intro_msg],
@@ -657,9 +637,7 @@ class BuyerOnboardingWorkflow:
                 # Iterate through each campaign
                 for i, campaign in enumerate(pending_campaigns, 1):
                     metrics = campaign.get("metrics", {})
-                    campaign_name = metrics.get(
-                        "name", f"Campaign {campaign['campaign_id']}"
-                    )
+                    campaign_name = metrics.get("name", f"Campaign {campaign['campaign_id']}")
                     clicks = metrics.get("clicks", 0)
                     conversions = metrics.get("conversions", 0)
 

@@ -233,9 +233,7 @@ async def send_recommendation_to_telegram(
         result = data.get("result", {})
         message_id = result.get("message_id")
 
-        activity.logger.info(
-            f"Recommendation sent successfully: message_id={message_id}"
-        )
+        activity.logger.info(f"Recommendation sent successfully: message_id={message_id}")
 
         return {
             "recommendation_id": recommendation_id,
@@ -297,9 +295,7 @@ def _format_recommendation_message(
         }.get(comp_type, "•")
 
         readable_type = comp_type.replace("_", " ").title()
-        component_lines.append(
-            f"{type_emoji} {readable_type}: {comp_value} ({confidence_pct}%)"
-        )
+        component_lines.append(f"{type_emoji} {readable_type}: {comp_value} ({confidence_pct}%)")
 
     components_text = "\n".join(component_lines)
 

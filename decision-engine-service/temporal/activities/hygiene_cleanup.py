@@ -112,9 +112,7 @@ async def cleanup_rejected_knowledge(retention_days: int = 30) -> int:
 
     client = get_http_client()
     response = await client.delete(
-        f"{rest_url}/knowledge_extractions"
-        f"?status=eq.rejected"
-        f"&reviewed_at=lt.{cutoff_iso}",
+        f"{rest_url}/knowledge_extractions?status=eq.rejected&reviewed_at=lt.{cutoff_iso}",
         headers=headers,
     )
 
@@ -155,9 +153,7 @@ async def cleanup_orphan_raw_metrics() -> int:
         activity.logger.warning("Could not fetch valid tracker_ids")
         return 0
 
-    valid_trackers = {
-        r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")
-    }
+    valid_trackers = {r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")}
 
     # Get all metrics tracker_ids
     metrics_response = await client.get(
@@ -169,9 +165,7 @@ async def cleanup_orphan_raw_metrics() -> int:
         activity.logger.warning("Could not fetch metrics tracker_ids")
         return 0
 
-    metrics_trackers = {
-        r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")
-    }
+    metrics_trackers = {r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")}
 
     # Find orphans
     orphan_trackers = metrics_trackers - valid_trackers
@@ -404,9 +398,7 @@ async def retry_failed_hypotheses(
         content = hypothesis.get("content", "")
 
         if not buyer_id or not content:
-            activity.logger.warning(
-                f"Hypothesis {hypothesis_id} missing buyer_id or content"
-            )
+            activity.logger.warning(f"Hypothesis {hypothesis_id} missing buyer_id or content")
             stats["skipped"] += 1
             continue
 
@@ -444,9 +436,7 @@ async def retry_failed_hypotheses(
         )
 
         # Check if we claimed this retry (row was updated)
-        claimed_rows = (
-            claim_response.json() if claim_response.status_code == 200 else []
-        )
+        claimed_rows = claim_response.json() if claim_response.status_code == 200 else []
         if not claimed_rows:
             # Another attempt already incremented retry_count - this is a Temporal retry
             # Skip Telegram to avoid duplicate message
@@ -495,9 +485,7 @@ async def retry_failed_hypotheses(
                     },
                 )
                 stats["failed"] += 1
-                activity.logger.warning(
-                    f"Retry failed for {hypothesis_id}: {error_msg}"
-                )
+                activity.logger.warning(f"Retry failed for {hypothesis_id}: {error_msg}")
 
         except Exception as e:
             # Network error - update error only (retry_count already set)
@@ -539,9 +527,7 @@ async def cleanup_exhausted_hypotheses(retention_days: int = 7) -> int:
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     cutoff_iso = cutoff.isoformat()
 
-    activity.logger.info(
-        f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned"
-    )
+    activity.logger.info(f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned")
 
     client = get_http_client()
     response = await client.patch(

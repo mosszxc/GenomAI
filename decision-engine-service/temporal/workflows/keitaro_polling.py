@@ -289,17 +289,15 @@ class KeitaroPollerWorkflow:
                 # Step 4: Create snapshot if enabled
                 if input.create_snapshots:
                     try:
-                        snapshot_result: CreateSnapshotOutput = (
-                            await workflow.execute_activity(
-                                create_daily_snapshot,
-                                CreateSnapshotInput(
-                                    tracker_id=metrics.tracker_id,
-                                    snapshot_date=metrics.date,
-                                    metrics=metrics.to_dict(),
-                                ),
-                                start_to_close_timeout=timedelta(seconds=30),
-                                retry_policy=SUPABASE_RETRY_POLICY,
-                            )
+                        snapshot_result: CreateSnapshotOutput = await workflow.execute_activity(
+                            create_daily_snapshot,
+                            CreateSnapshotInput(
+                                tracker_id=metrics.tracker_id,
+                                snapshot_date=metrics.date,
+                                metrics=metrics.to_dict(),
+                            ),
+                            start_to_close_timeout=timedelta(seconds=30),
+                            retry_policy=SUPABASE_RETRY_POLICY,
                         )
                         if snapshot_result.created:
                             snapshots_created += 1
@@ -324,9 +322,7 @@ class KeitaroPollerWorkflow:
                     except Exception as e:
                         # Duplicate snapshot is expected - not an error
                         if "duplicate" not in str(e).lower():
-                            errors.append(
-                                f"Snapshot error {metrics.tracker_id}: {str(e)}"
-                            )
+                            errors.append(f"Snapshot error {metrics.tracker_id}: {str(e)}")
 
             except Exception as e:
                 errors.append(f"Upsert error {metrics.tracker_id}: {str(e)}")
@@ -341,9 +337,7 @@ class KeitaroPollerWorkflow:
                     retry_policy=CIRCUIT_BREAKER_RETRY_POLICY,
                 )
                 circuit_state = cb_result.state
-                workflow.logger.info(
-                    f"Circuit breaker recorded success, state: {circuit_state}"
-                )
+                workflow.logger.info(f"Circuit breaker recorded success, state: {circuit_state}")
             except Exception as e:
                 workflow.logger.warning(f"Failed to record circuit success: {e}")
 
@@ -390,9 +384,7 @@ class KeitaroPollerWorkflow:
                     task_queue="metrics",
                 )
                 metrics_processing_triggered = True
-                workflow.logger.info(
-                    "Triggered MetricsProcessingWorkflow as child workflow"
-                )
+                workflow.logger.info("Triggered MetricsProcessingWorkflow as child workflow")
             except Exception as e:
                 # Log but don't fail - metrics processing can be triggered manually
                 workflow.logger.warning(f"Failed to trigger metrics processing: {e}")

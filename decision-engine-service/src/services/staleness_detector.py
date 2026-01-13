@@ -188,9 +188,7 @@ async def calculate_win_rate_trend(
         return 0.0  # No data = neutral
 
     # Split into 7d and 30d
-    date_7d_dt = datetime.fromisoformat(
-        date_7d.replace("Z", "+00:00").replace("+00:00", "")
-    )
+    date_7d_dt = datetime.fromisoformat(date_7d.replace("Z", "+00:00").replace("+00:00", ""))
 
     wins_7d = 0
     total_7d = 0
@@ -298,9 +296,7 @@ async def calculate_fatigue_ratio(
 
     # Count high fatigue ideas
     high_fatigue_count = sum(
-        1
-        for fv in latest_fatigue.values()
-        if fv is not None and float(fv) > FATIGUE_THRESHOLD
+        1 for fv in latest_fatigue.values() if fv is not None and float(fv) > FATIGUE_THRESHOLD
     )
 
     # Ratio based on active ideas count
@@ -346,9 +342,7 @@ async def calculate_days_since_new_component(
         return DAYS_STALE_THRESHOLD * 2
 
     try:
-        last_dt = datetime.fromisoformat(
-            last_created.replace("Z", "+00:00").replace("+00:00", "")
-        )
+        last_dt = datetime.fromisoformat(last_created.replace("Z", "+00:00").replace("+00:00", ""))
         now = datetime.utcnow()
         delta = now - last_dt.replace(tzinfo=None)
         return delta.days
@@ -415,9 +409,7 @@ def compute_staleness_score(metrics: StalenessMetrics) -> float:
     fatigue_staleness = metrics.fatigue_ratio
 
     # Normalize days to 0..1 (cap at 2x threshold)
-    days_staleness = min(
-        1.0, metrics.days_since_new_component / (DAYS_STALE_THRESHOLD * 2)
-    )
+    days_staleness = min(1.0, metrics.days_since_new_component / (DAYS_STALE_THRESHOLD * 2))
 
     # Invert exploration success (high success = low staleness)
     exploration_staleness = 1.0 - metrics.exploration_success_rate
@@ -582,9 +574,7 @@ async def save_staleness_snapshot(
     payload = {k: v for k, v in payload.items() if v is not None}
 
     client = get_http_client()
-    response = await client.post(
-        f"{rest_url}/staleness_snapshots", headers=headers, json=payload
-    )
+    response = await client.post(f"{rest_url}/staleness_snapshots", headers=headers, json=payload)
     response.raise_for_status()
     return response.json()[0] if response.json() else {}
 

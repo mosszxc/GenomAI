@@ -48,9 +48,7 @@ class ValidationResult:
                 }
                 for e in self.errors
             ],
-            "warnings": [
-                {"field": w.field, "message": w.message} for w in self.warnings
-            ],
+            "warnings": [{"field": w.field, "message": w.message} for w in self.warnings],
         }
 
 
@@ -63,9 +61,7 @@ class SchemaValidator:
     # Schema directory relative to project root
     # __file__ = decision-engine-service/src/services/schema_validator.py
     # .parent (x4) = GenomAI/
-    SCHEMA_DIR = (
-        Path(__file__).parent.parent.parent.parent / "infrastructure" / "schemas"
-    )
+    SCHEMA_DIR = Path(__file__).parent.parent.parent.parent / "infrastructure" / "schemas"
 
     # Schema file mapping
     SCHEMA_FILES = {
@@ -140,9 +136,7 @@ class SchemaValidator:
 
         return code_mapping.get(validator, "VALIDATION_ERROR")
 
-    def _format_error_message(
-        self, error: JsonSchemaValidationError, field: str
-    ) -> str:
+    def _format_error_message(self, error: JsonSchemaValidationError, field: str) -> str:
         """Format user-friendly error message"""
         validator = error.validator
 
@@ -222,9 +216,7 @@ class SchemaValidator:
             # Get the invalid value for context
             value = error.instance if error.absolute_path else None
 
-            errors.append(
-                ValidationError(field=field, message=message, code=code, value=value)
-            )
+            errors.append(ValidationError(field=field, message=message, code=code, value=value))
 
         # Check for extra fields (warning, not error if additionalProperties is not false)
         if schema.get("additionalProperties") is not False:
@@ -239,9 +231,7 @@ class SchemaValidator:
                     )
                 )
 
-        return ValidationResult(
-            valid=len(errors) == 0, errors=errors, warnings=warnings
-        )
+        return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
 # Singleton instance

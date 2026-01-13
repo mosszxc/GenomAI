@@ -346,9 +346,7 @@ async def get_unprocessed_snapshots(
 
     activity.logger.info(f"Found {len(snapshot_ids)} snapshots to check")
 
-    return GetUnprocessedSnapshotsOutput(
-        snapshot_ids=snapshot_ids, total=len(snapshot_ids)
-    )
+    return GetUnprocessedSnapshotsOutput(snapshot_ids=snapshot_ids, total=len(snapshot_ids))
 
 
 @dataclass

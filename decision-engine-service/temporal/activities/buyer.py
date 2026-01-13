@@ -323,9 +323,7 @@ class LogInteractionInput:
 
     telegram_id: str
     direction: str  # "in" or "out"
-    message_type: (
-        str  # "text", "video", "photo", "document", "command", "callback", "system"
-    )
+    message_type: str  # "text", "video", "photo", "document", "command", "callback", "system"
     content: str
     context: Optional[dict] = None
     buyer_id: Optional[str] = None
@@ -356,9 +354,7 @@ async def log_buyer_interaction(input: LogInteractionInput) -> str:
         "telegram_id": input.telegram_id,
         "direction": input.direction,
         "message_type": input.message_type,
-        "content": input.content[:2000]
-        if input.content
-        else "",  # Truncate long messages
+        "content": input.content[:2000] if input.content else "",  # Truncate long messages
         "context": input.context or {},
         "created_at": datetime.utcnow().isoformat(),
     }
@@ -593,9 +589,7 @@ async def get_import_by_campaign_id(
     Returns:
         ImportQueueRecord or None if not found
     """
-    activity.logger.info(
-        f"Getting import by campaign_id: {campaign_id}, buyer_id: {buyer_id}"
-    )
+    activity.logger.info(f"Getting import by campaign_id: {campaign_id}, buyer_id: {buyer_id}")
 
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
@@ -618,9 +612,7 @@ async def get_import_by_campaign_id(
         return ImportQueueRecord.from_dict(data[0])
 
     # Step 2: Try campaign_id only (buyer_id mismatch scenario)
-    activity.logger.info(
-        f"Exact match not found, trying campaign_id only: {campaign_id}"
-    )
+    activity.logger.info(f"Exact match not found, trying campaign_id only: {campaign_id}")
     response = await client.get(
         f"{base_url}/historical_import_queue?campaign_id=eq.{campaign_id}&limit=1",
         headers=headers,
@@ -667,9 +659,7 @@ async def update_import_with_video(input: UpdateImportVideoInput) -> ImportQueue
     Returns:
         Updated ImportQueueRecord
     """
-    activity.logger.info(
-        f"Updating import with video: {input.import_id} -> {input.video_url}"
-    )
+    activity.logger.info(f"Updating import with video: {input.import_id} -> {input.video_url}")
 
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()

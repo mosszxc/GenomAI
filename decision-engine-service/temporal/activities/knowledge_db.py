@@ -67,9 +67,7 @@ async def save_knowledge_source(
     )
 
     if response.status_code not in (200, 201):
-        raise ApplicationError(
-            f"Failed to save source: {response.status_code} {response.text}"
-        )
+        raise ApplicationError(f"Failed to save source: {response.status_code} {response.text}")
 
     result = response.json()
     source_id = result[0]["id"]
@@ -144,9 +142,7 @@ async def mark_source_processed(source_id: str) -> bool:
     )
 
     if response.status_code not in (200, 204):
-        raise ApplicationError(
-            f"Failed to mark processed: {response.status_code} {response.text}"
-        )
+        raise ApplicationError(f"Failed to mark processed: {response.status_code} {response.text}")
 
     return True
 
@@ -165,9 +161,7 @@ async def get_pending_extractions(limit: int = 10) -> List[dict]:
     )
 
     if response.status_code != 200:
-        raise ApplicationError(
-            f"Failed to get extractions: {response.status_code} {response.text}"
-        )
+        raise ApplicationError(f"Failed to get extractions: {response.status_code} {response.text}")
 
     return response.json()
 
@@ -185,9 +179,7 @@ async def get_extraction(extraction_id: str) -> dict:
     )
 
     if response.status_code != 200:
-        raise ApplicationError(
-            f"Failed to get extraction: {response.status_code} {response.text}"
-        )
+        raise ApplicationError(f"Failed to get extraction: {response.status_code} {response.text}")
 
     results = response.json()
     if not results:
@@ -229,9 +221,7 @@ async def update_extraction_status(
     )
 
     if response.status_code not in (200, 204):
-        raise ApplicationError(
-            f"Failed to update status: {response.status_code} {response.text}"
-        )
+        raise ApplicationError(f"Failed to update status: {response.status_code} {response.text}")
 
     return True
 
@@ -266,9 +256,7 @@ async def apply_premise_knowledge(extraction: dict) -> dict:
     )
 
     if response.status_code not in (200, 201):
-        raise ApplicationError(
-            f"Failed to create premise: {response.status_code} {response.text}"
-        )
+        raise ApplicationError(f"Failed to create premise: {response.status_code} {response.text}")
 
     result = response.json()
     premise_id = result[0]["id"]
@@ -320,9 +308,7 @@ async def apply_process_rule(extraction: dict) -> dict:
     )
 
     if response.status_code not in (200, 201):
-        raise ApplicationError(
-            f"Failed to create config: {response.status_code} {response.text}"
-        )
+        raise ApplicationError(f"Failed to create config: {response.status_code} {response.text}")
 
     result = response.json()
     config_key = result[0]["key"] if result else config_data["key"]
@@ -376,9 +362,7 @@ async def apply_component_weight(extraction: dict) -> dict:
 
     if response.status_code not in (200, 201):
         # Might fail due to unique constraint - that's OK
-        activity.logger.warning(
-            f"Component learning might exist: {response.status_code}"
-        )
+        activity.logger.warning(f"Component learning might exist: {response.status_code}")
         return {
             "target_table": "component_learnings",
             "target_id": None,

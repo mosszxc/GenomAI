@@ -186,9 +186,7 @@ async def update_hypothesis_delivery_status(
 
     update_data = {
         "delivery_status": status,
-        "delivered_at": datetime.utcnow().isoformat()
-        if status == "delivered"
-        else None,
+        "delivered_at": datetime.utcnow().isoformat() if status == "delivered" else None,
     }
 
     if message_id:
@@ -204,9 +202,7 @@ async def update_hypothesis_delivery_status(
         json=update_data,
     )
 
-    activity.logger.info(
-        f"Updated hypothesis delivery status: {hypothesis_id} -> {status}"
-    )
+    activity.logger.info(f"Updated hypothesis delivery status: {hypothesis_id} -> {status}")
 
 
 @activity.defn

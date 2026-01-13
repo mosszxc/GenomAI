@@ -114,9 +114,7 @@ async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/decomposed_creatives"
-        f"?creative_id=eq.{creative_id}"
-        f"&select=payload,idea_id",
+        f"{rest_url}/decomposed_creatives?creative_id=eq.{creative_id}&select=payload,idea_id",
         headers=headers,
     )
     response.raise_for_status()
@@ -215,9 +213,7 @@ async def batch_upsert_component_learnings(
     # Build unique keys for all updates
     update_keys = {}
     for u in updates:
-        key = _build_component_key(
-            u.component_type, u.component_value, u.geo, u.avatar_id
-        )
+        key = _build_component_key(u.component_type, u.component_value, u.geo, u.avatar_id)
         if key not in update_keys:
             update_keys[key] = u
         else:
@@ -234,17 +230,13 @@ async def batch_upsert_component_learnings(
             )
 
     # Extract unique component_type/component_value pairs for batch lookup
-    type_value_pairs = list(
-        {(u.component_type, u.component_value) for u in update_keys.values()}
-    )
+    type_value_pairs = list({(u.component_type, u.component_value) for u in update_keys.values()})
 
     # Batch fetch existing records (O(1) query)
     # Use OR conditions for type/value pairs
     or_conditions = []
     for comp_type, comp_value in type_value_pairs:
-        or_conditions.append(
-            f"and(component_type.eq.{comp_type},component_value.eq.{comp_value})"
-        )
+        or_conditions.append(f"and(component_type.eq.{comp_type},component_value.eq.{comp_value})")
 
     response = await client.get(
         f"{rest_url}/component_learnings"
@@ -278,8 +270,7 @@ async def batch_upsert_component_learnings(
             updates_by_id[rec["id"]] = {
                 "sample_size": (rec.get("sample_size") or 0) + 1,
                 "win_count": (rec.get("win_count") or 0) + (1 if update.was_win else 0),
-                "loss_count": (rec.get("loss_count") or 0)
-                + (0 if update.was_win else 1),
+                "loss_count": (rec.get("loss_count") or 0) + (0 if update.was_win else 1),
                 "total_spend": float(rec.get("total_spend") or 0) + update.spend,
                 "total_revenue": float(rec.get("total_revenue") or 0) + update.revenue,
                 "updated_at": "now()",
@@ -326,9 +317,7 @@ async def batch_upsert_component_learnings(
             )
             resp.raise_for_status()
 
-        await asyncio.gather(
-            *[update_one(rid, data) for rid, data in updates_by_id.items()]
-        )
+        await asyncio.gather(*[update_one(rid, data) for rid, data in updates_by_id.items()])
         result["updated"] = len(updates_by_id)
 
     return result
@@ -411,9 +400,7 @@ async def process_component_learnings(
         batch_result = await batch_upsert_component_learnings(updates)
         result["global_updates"] = len(components)
         result["avatar_updates"] = len(components) if avatar_id else 0
-        result["components_updated"] = (
-            batch_result["inserted"] + batch_result["updated"]
-        )
+        result["components_updated"] = batch_result["inserted"] + batch_result["updated"]
     except Exception as e:
         result["errors"].append(f"Batch update error: {str(e)}")
 

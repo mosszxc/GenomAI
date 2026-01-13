@@ -81,9 +81,7 @@ def _get_headers(supabase_key: str) -> dict:
     }
 
 
-async def get_feature_cpa_pairs(
-    feature_name: str, limit: int = 1000
-) -> list[FeatureCpaPair]:
+async def get_feature_cpa_pairs(feature_name: str, limit: int = 1000) -> list[FeatureCpaPair]:
     """
     Get pairs of (feature_value, cpa) for correlation calculation.
 
@@ -179,9 +177,7 @@ async def get_feature_cpa_pairs(
 
     # Average CPA per decision (skip empty lists to avoid ZeroDivisionError)
     decision_to_avg_cpa = {
-        dec_id: sum(cpas) / len(cpas)
-        for dec_id, cpas in decision_to_cpa.items()
-        if cpas
+        dec_id: sum(cpas) / len(cpas) for dec_id, cpas in decision_to_cpa.items() if cpas
     }
 
     # Step 5: Join feature values with CPA
@@ -348,9 +344,7 @@ async def auto_deprecate_low_correlation_features() -> list[str]:
     return deprecated
 
 
-async def detect_feature_drift(
-    feature_name: str, recent_days: int = 30
-) -> Optional[DriftResult]:
+async def detect_feature_drift(feature_name: str, recent_days: int = 30) -> Optional[DriftResult]:
     """
     Detect if an active feature's correlation has drifted.
 

@@ -268,10 +268,7 @@ async def generate_best_bet() -> BestBetRecommendation:
 
             for corr in related_corrs:
                 # Find the "other" component in correlation
-                if (
-                    corr.component_a_type == comp_type
-                    and corr.component_a_value == comp_value
-                ):
+                if corr.component_a_type == comp_type and corr.component_a_value == comp_value:
                     other_type = corr.component_b_type
                     other_value = corr.component_b_value
                 else:
@@ -306,9 +303,7 @@ async def generate_best_bet() -> BestBetRecommendation:
 
             if score.freshness_score < 1.0:
                 if score.freshness_score <= 0.5:
-                    score.reasoning.append(
-                        f"Fatigued ({usage} uses in {FRESHNESS_WINDOW_DAYS}d)"
-                    )
+                    score.reasoning.append(f"Fatigued ({usage} uses in {FRESHNESS_WINDOW_DAYS}d)")
                 else:
                     score.reasoning.append(f"Recently used ({usage}x)")
 
@@ -324,13 +319,8 @@ async def generate_best_bet() -> BestBetRecommendation:
 
             # Track fatigued components that were skipped
             for cand in scored_candidates[1:]:
-                if (
-                    cand.freshness_score <= 0.5
-                    and cand.base_win_rate > best.base_win_rate
-                ):
-                    fatigued_components.append(
-                        f"{cand.component_value} ({cand.component_type})"
-                    )
+                if cand.freshness_score <= 0.5 and cand.base_win_rate > best.base_win_rate:
+                    fatigued_components.append(f"{cand.component_value} ({cand.component_type})")
 
             # Track synergies and conflicts
             for reason in best.reasoning:
@@ -347,8 +337,7 @@ async def generate_best_bet() -> BestBetRecommendation:
         total_samples = sum(c.sample_size for c in selected_components)
         if total_samples > 0:
             expected_win_rate = (
-                sum(c.final_score * c.sample_size for c in selected_components)
-                / total_samples
+                sum(c.final_score * c.sample_size for c in selected_components) / total_samples
             )
         else:
             expected_win_rate = sum(c.final_score for c in selected_components) / len(
@@ -357,9 +346,7 @@ async def generate_best_bet() -> BestBetRecommendation:
 
         # Overall confidence based on lowest confidence component
         confidence_order = {"high": 3, "medium": 2, "low": 1}
-        min_confidence = min(
-            confidence_order[c.confidence] for c in selected_components
-        )
+        min_confidence = min(confidence_order[c.confidence] for c in selected_components)
         overall_confidence = {3: "high", 2: "medium", 1: "low"}[min_confidence]
     else:
         expected_win_rate = 0.0

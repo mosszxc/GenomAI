@@ -202,10 +202,7 @@ def format_confidence_telegram(data: list[ComponentConfidence]) -> str:
         Formatted Telegram message with HTML
     """
     if not data:
-        return (
-            "Данных о доверительных интервалах нет.\n\n"
-            "Нужно минимум 3 семпла для расчёта."
-        )
+        return "Данных о доверительных интервалах нет.\n\nНужно минимум 3 семпла для расчёта."
 
     lines = ["<b>Доверительные интервалы компонентов</b>", ""]
 
@@ -222,16 +219,12 @@ def format_confidence_telegram(data: list[ComponentConfidence]) -> str:
 
         # Win rate line with CI
         lines.append(f"  {win_pct:.0f}% \u00b1{ci_pct:.0f}% (95% CI)")
-        lines.append(
-            f"  \u251c\u2500 Диапазон: {ci_lower_pct:.0f}% - {ci_upper_pct:.0f}%"
-        )
+        lines.append(f"  \u251c\u2500 Диапазон: {ci_lower_pct:.0f}% - {ci_upper_pct:.0f}%")
         lines.append(f"  \u251c\u2500 Семплов: {comp.sample_size}")
 
         # Required samples if high variance
         if comp.required_samples:
-            lines.append(
-                f"  \u251c\u2500 For \u00b15% CI: +{comp.required_samples} samples"
-            )
+            lines.append(f"  \u251c\u2500 For \u00b15% CI: +{comp.required_samples} samples")
 
         # Trend indicator
         trend_arrow = {"up": "\u2191", "down": "\u2193", "stable": "\u2194"}.get(
@@ -268,9 +261,7 @@ async def get_available_component_types() -> list[str]:
 
     client = get_http_client()
     response = await client.get(
-        f"{supabase_url}/rest/v1/component_learnings"
-        f"?select=component_type"
-        f"&sample_size=gt.0",
+        f"{supabase_url}/rest/v1/component_learnings?select=component_type&sample_size=gt.0",
         headers=headers,
     )
 

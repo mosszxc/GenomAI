@@ -298,13 +298,8 @@ class TestPremiseExtractionIntegration:
         )
 
         # Both should have data for extraction
-        assert (
-            win_creative.payload is not None or win_creative.transcript_text is not None
-        )
-        assert (
-            loss_creative.payload is not None
-            or loss_creative.transcript_text is not None
-        )
+        assert win_creative.payload is not None or win_creative.transcript_text is not None
+        assert loss_creative.payload is not None or loss_creative.transcript_text is not None
 
         # Both test results are valid
         assert win_creative.test_result in ("win", "loss")

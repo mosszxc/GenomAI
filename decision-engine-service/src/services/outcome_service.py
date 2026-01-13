@@ -271,9 +271,7 @@ class OutcomeService:
         data = response.json()
         return data[0] if data else None
 
-    async def get_historical_cpa(
-        self, creative_id: str, lookback_days: int = 7
-    ) -> List[Decimal]:
+    async def get_historical_cpa(self, creative_id: str, lookback_days: int = 7) -> List[Decimal]:
         """
         Get historical CPA values for volatility calculation.
 
@@ -549,9 +547,7 @@ class OutcomeService:
                 error_message=f"Database error: {e.response.text}",
             )
         except Exception as e:
-            return AggregateResult(
-                success=False, error_code="INTERNAL_ERROR", error_message=str(e)
-            )
+            return AggregateResult(success=False, error_code="INTERNAL_ERROR", error_message=str(e))
 
 
 # Singleton instance

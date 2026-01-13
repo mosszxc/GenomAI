@@ -148,9 +148,7 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
     payload = {
         "range": {"interval": input.interval},
         "metrics": ["clicks", "conversions", "revenue", "cost", "profit_confirmed"],
-        "filters": [
-            {"name": "sub_id_1", "operator": "EQUALS", "expression": input.tracker_id}
-        ],
+        "filters": [{"name": "sub_id_1", "operator": "EQUALS", "expression": input.tracker_id}],
     }
 
     client = get_http_client()
@@ -422,9 +420,7 @@ async def get_campaign_creatives(
             )
         )
 
-    activity.logger.info(
-        f"Found {len(creatives)} creatives for campaign: {input.campaign_id}"
-    )
+    activity.logger.info(f"Found {len(creatives)} creatives for campaign: {input.campaign_id}")
 
     return GetCampaignCreativesOutput(
         creatives=creatives, campaign_id=input.campaign_id, total=len(creatives)
@@ -445,9 +441,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     Returns:
         BatchMetricsOutput with all metrics and any failed IDs
     """
-    activity.logger.info(
-        f"Fetching batch metrics for {len(input.tracker_ids)} trackers"
-    )
+    activity.logger.info(f"Fetching batch metrics for {len(input.tracker_ids)} trackers")
 
     url = _get_keitaro_url("/report/build")
     headers = _get_keitaro_headers()
@@ -474,9 +468,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
 
     # Build lookup from response
     rows = data.get("rows", [])
-    metrics_by_tracker = {
-        row.get("sub_id_1"): row for row in rows if row.get("sub_id_1")
-    }
+    metrics_by_tracker = {row.get("sub_id_1"): row for row in rows if row.get("sub_id_1")}
 
     # Match with requested tracker IDs
     results = []
@@ -498,8 +490,6 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
         else:
             failed_ids.append(tracker_id)
 
-    activity.logger.info(
-        f"Batch metrics: {len(results)} found, {len(failed_ids)} not found"
-    )
+    activity.logger.info(f"Batch metrics: {len(results)} found, {len(failed_ids)} not found")
 
     return BatchMetricsOutput(metrics=results, failed_ids=failed_ids)

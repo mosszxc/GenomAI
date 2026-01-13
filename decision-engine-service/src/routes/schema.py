@@ -98,20 +98,15 @@ async def validate_schema(
     """
     validator = get_schema_validator()
 
-    result = validator.validate(
-        payload=request.payload, schema_version=request.schema_version
-    )
+    result = validator.validate(payload=request.payload, schema_version=request.schema_version)
 
     return SchemaValidateResponse(
         valid=result.valid,
         errors=[
-            ValidationErrorResponse(
-                field=e.field, message=e.message, code=e.code, value=e.value
-            )
+            ValidationErrorResponse(field=e.field, message=e.message, code=e.code, value=e.value)
             for e in result.errors
         ],
         warnings=[
-            ValidationWarningResponse(field=w.field, message=w.message)
-            for w in result.warnings
+            ValidationWarningResponse(field=w.field, message=w.message) for w in result.warnings
         ],
     )

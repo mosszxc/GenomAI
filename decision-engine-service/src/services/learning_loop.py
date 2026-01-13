@@ -249,9 +249,7 @@ async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
     return response.json()
 
 
-def calculate_confidence_delta(
-    cpa: float, outcome_date: str, env_ctx: Optional[dict]
-) -> float:
+def calculate_confidence_delta(cpa: float, outcome_date: str, env_ctx: Optional[dict]) -> float:
     """
     Calculate confidence delta based on CPA, time decay, and environment.
 
@@ -280,9 +278,7 @@ def calculate_confidence_delta(
     return weighted_delta
 
 
-def check_death_condition(
-    outcomes: list, was_resurrected: bool = False
-) -> Optional[str]:
+def check_death_condition(outcomes: list, was_resurrected: bool = False) -> Optional[str]:
     """
     Check if idea should die based on consecutive failures.
 
@@ -411,10 +407,7 @@ async def is_outcome_already_processed(outcome_id: str) -> bool:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/idea_confidence_versions"
-        f"?source_outcome_id=eq.{outcome_id}"
-        f"&select=id"
-        f"&limit=1",
+        f"{rest_url}/idea_confidence_versions?source_outcome_id=eq.{outcome_id}&select=id&limit=1",
         headers=headers,
     )
     response.raise_for_status()
@@ -629,17 +622,13 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                         elif "errors" in comp_result and comp_result["errors"]:
                             result.errors.extend(comp_result["errors"])
                         if "components_updated" in comp_result:
-                            result.component_updates += comp_result[
-                                "components_updated"
-                            ]
+                            result.component_updates += comp_result["components_updated"]
 
                     # Track premise learning updates (issue #167)
                     prem_result = learn_result.get("premise_learning")
                     if prem_result:
                         if "error" in prem_result:
-                            result.errors.append(
-                                f"Premise learning error: {prem_result['error']}"
-                            )
+                            result.errors.append(f"Premise learning error: {prem_result['error']}")
                         elif "errors" in prem_result and prem_result["errors"]:
                             result.errors.extend(prem_result["errors"])
                         if prem_result.get("premise_updated"):
@@ -650,9 +639,7 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                         result.fatigue_updates += 1
 
             except Exception as e:
-                result.errors.append(
-                    f"Error processing outcome {outcome['id']}: {str(e)}"
-                )
+                result.errors.append(f"Error processing outcome {outcome['id']}: {str(e)}")
 
     except Exception as e:
         result.errors.append(f"Failed to fetch outcomes: {str(e)}")

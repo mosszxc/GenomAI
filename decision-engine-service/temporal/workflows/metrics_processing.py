@@ -78,9 +78,7 @@ class MetricsProcessingWorkflow:
         2. Process each snapshot into outcome
         3. Trigger learning loop if enabled
         """
-        workflow.logger.info(
-            f"Starting Metrics Processing (limit: {input.batch_limit})"
-        )
+        workflow.logger.info(f"Starting Metrics Processing (limit: {input.batch_limit})")
 
         errors = []
         outcomes_created = 0
@@ -88,13 +86,11 @@ class MetricsProcessingWorkflow:
 
         # Step 1: Get unprocessed snapshots
         try:
-            snapshots_result: GetUnprocessedSnapshotsOutput = (
-                await workflow.execute_activity(
-                    get_unprocessed_snapshots,
-                    GetUnprocessedSnapshotsInput(limit=input.batch_limit),
-                    start_to_close_timeout=timedelta(minutes=1),
-                    retry_policy=SUPABASE_RETRY_POLICY,
-                )
+            snapshots_result: GetUnprocessedSnapshotsOutput = await workflow.execute_activity(
+                get_unprocessed_snapshots,
+                GetUnprocessedSnapshotsInput(limit=input.batch_limit),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=SUPABASE_RETRY_POLICY,
             )
         except Exception as e:
             workflow.logger.error(f"Failed to get snapshots: {e}")
@@ -130,9 +126,7 @@ class MetricsProcessingWorkflow:
 
                 if outcome_result.success:
                     outcomes_created += 1
-                    workflow.logger.info(
-                        f"Outcome created: {outcome_result.outcome_id}"
-                    )
+                    workflow.logger.info(f"Outcome created: {outcome_result.outcome_id}")
                 else:
                     # Some errors are expected (no idea found, no decision, etc.)
                     if outcome_result.error_code not in [

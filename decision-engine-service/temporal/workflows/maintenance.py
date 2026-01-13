@@ -181,9 +181,7 @@ class MaintenanceWorkflow:
             )
             result.stuck_transcriptions_failed = stuck_count
             if stuck_count > 0:
-                workflow.logger.warning(
-                    f"Marked {stuck_count} stuck transcriptions as failed"
-                )
+                workflow.logger.warning(f"Marked {stuck_count} stuck transcriptions as failed")
             else:
                 workflow.logger.info("No stuck transcriptions found")
         except Exception as e:
@@ -248,9 +246,7 @@ class MaintenanceWorkflow:
                     start_to_close_timeout=timedelta(seconds=120),
                     retry_policy=retry_policy,
                 )
-                result.staleness_score = staleness_result.get("metrics", {}).get(
-                    "staleness_score"
-                )
+                result.staleness_score = staleness_result.get("metrics", {}).get("staleness_score")
                 result.is_stale = staleness_result.get("is_stale", False)
                 result.staleness_action = staleness_result.get("recommended_action")
 
@@ -283,9 +279,7 @@ class MaintenanceWorkflow:
                 result.cleanup_stats = cleanup_stats
                 total_cleaned = sum(cleanup_stats.values())
                 if total_cleaned > 0:
-                    workflow.logger.info(
-                        f"Cleaned {total_cleaned} records: {cleanup_stats}"
-                    )
+                    workflow.logger.info(f"Cleaned {total_cleaned} records: {cleanup_stats}")
                 else:
                     workflow.logger.info("No records to clean")
             except Exception as e:
@@ -340,9 +334,7 @@ class MaintenanceWorkflow:
                 )
                 result.orphaned_tasks_released = released_count
                 if released_count > 0:
-                    workflow.logger.warning(
-                        f"Released {released_count} orphaned agent tasks"
-                    )
+                    workflow.logger.warning(f"Released {released_count} orphaned agent tasks")
             except Exception as e:
                 workflow.logger.error(f"Orphan detection failed: {e}")
                 result.integrity_issues.append(f"Orphan detection error: {e}")
@@ -371,10 +363,7 @@ class MaintenanceWorkflow:
 
                         try:
                             # Issue #481: If stuck for too long, force cancel + reset + restart
-                            if (
-                                stuck_duration
-                                >= input.stuck_recovery_force_threshold_minutes
-                            ):
+                            if stuck_duration >= input.stuck_recovery_force_threshold_minutes:
                                 workflow.logger.warning(
                                     f"Creative {creative_id[:8]} stuck for {stuck_duration}min "
                                     f"(>{input.stuck_recovery_force_threshold_minutes}min), "

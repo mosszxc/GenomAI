@@ -46,9 +46,7 @@ class TestFormatModuleContent:
 
         module = {
             "id": "test-id",
-            "content": json.dumps(
-                {"proof_type": "testimonial", "proof_source": "customer"}
-            ),
+            "content": json.dumps({"proof_type": "testimonial", "proof_source": "customer"}),
         }
 
         formatted = _format_module_content(module)

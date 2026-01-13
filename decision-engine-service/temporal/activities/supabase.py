@@ -187,9 +187,7 @@ async def create_historical_creative(
 
     # If we have metrics, create outcome_aggregate record
     if metrics:
-        activity.logger.info(
-            f"Historical creative {created_creative['id']} has metrics: {metrics}"
-        )
+        activity.logger.info(f"Historical creative {created_creative['id']} has metrics: {metrics}")
         # Metrics will be processed by outcome_aggregator later
 
     return created_creative
@@ -308,9 +306,7 @@ async def create_idea(
 
     # Input validation
     canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
-    decomposed_creative_id = validate_uuid(
-        decomposed_creative_id, "decomposed_creative_id"
-    )
+    decomposed_creative_id = validate_uuid(decomposed_creative_id, "decomposed_creative_id")
     buyer_id = validate_optional_uuid(buyer_id, "buyer_id")
     avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
 
@@ -381,9 +377,7 @@ async def upsert_idea(
 
     # Input validation
     canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
-    decomposed_creative_id = validate_uuid(
-        decomposed_creative_id, "decomposed_creative_id"
-    )
+    decomposed_creative_id = validate_uuid(decomposed_creative_id, "decomposed_creative_id")
     buyer_id = validate_optional_uuid(buyer_id, "buyer_id")
     avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
 
@@ -459,8 +453,7 @@ async def upsert_idea(
 
     # This should not happen - UNIQUE conflict but no record found
     raise RuntimeError(
-        f"Race condition recovery failed: idea with hash {canonical_hash} "
-        "not found after conflict"
+        f"Race condition recovery failed: idea with hash {canonical_hash} not found after conflict"
     )
 
 
@@ -711,9 +704,7 @@ async def save_transcript(
     if not data:
         raise RuntimeError("Failed to save transcript: no data returned")
 
-    activity.logger.info(
-        f"Saved transcript for creative={creative_id}, version={next_version}"
-    )
+    activity.logger.info(f"Saved transcript for creative={creative_id}, version={next_version}")
     return data[0]
 
 
@@ -742,11 +733,7 @@ async def get_existing_transcript(creative_id: str) -> Optional[Dict[str, Any]]:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/transcripts"
-        f"?creative_id=eq.{creative_id}"
-        f"&select=*"
-        f"&order=version.desc"
-        f"&limit=1",
+        f"{rest_url}/transcripts?creative_id=eq.{creative_id}&select=*&order=version.desc&limit=1",
         headers=headers,
     )
     response.raise_for_status()

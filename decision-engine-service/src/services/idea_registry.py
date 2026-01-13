@@ -144,9 +144,7 @@ async def load_buyer_by_creative(creative_id: str) -> Optional[dict]:
 
     # Load buyer by telegram_id (buyer_id in creatives is telegram_id)
     response = await client.get(
-        f"{rest_url}/buyers"
-        f"?telegram_id=eq.{buyer_id}"
-        f"&select=id,telegram_id,vertical,geo",
+        f"{rest_url}/buyers?telegram_id=eq.{buyer_id}&select=id,telegram_id,vertical,geo",
         headers=headers,
     )
     response.raise_for_status()
@@ -218,9 +216,7 @@ async def create_idea(
         existing = await find_idea_by_hash(canonical_hash)
         if existing:
             return existing
-        raise SupabaseError(
-            f"Idea with hash {canonical_hash} already exists but not found"
-        )
+        raise SupabaseError(f"Idea with hash {canonical_hash} already exists but not found")
 
     response.raise_for_status()
     data = response.json()
@@ -275,8 +271,7 @@ async def upsert_idea(
 
     # This should not happen - UNIQUE conflict but no record found
     raise SupabaseError(
-        f"Race condition recovery failed: idea with hash {canonical_hash} "
-        "not found after conflict"
+        f"Race condition recovery failed: idea with hash {canonical_hash} not found after conflict"
     )
 
 
@@ -333,9 +328,7 @@ async def emit_idea_registered_event(
     response.raise_for_status()
 
 
-async def register_idea(
-    creative_id: str, schema_version: str = "v1"
-) -> IdeaRegistryResult:
+async def register_idea(creative_id: str, schema_version: str = "v1") -> IdeaRegistryResult:
     """
     Register idea for a creative.
 

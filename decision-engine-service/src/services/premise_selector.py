@@ -145,9 +145,7 @@ async def get_premise_learnings(
     filter_str = "&".join(filters)
 
     client = get_http_client()
-    response = await client.get(
-        f"{rest_url}/premise_learnings?{filter_str}", headers=headers
-    )
+    response = await client.get(f"{rest_url}/premise_learnings?{filter_str}", headers=headers)
     response.raise_for_status()
     data = response.json()
 
@@ -236,9 +234,7 @@ async def select_best_premise(
     """
     Select the best premise by win_rate (exploitation).
     """
-    top_premises = await get_top_premises(
-        vertical=vertical, geo=geo, avatar_id=avatar_id, limit=1
-    )
+    top_premises = await get_top_premises(vertical=vertical, geo=geo, avatar_id=avatar_id, limit=1)
 
     if not top_premises:
         # No premises with enough samples - fall back to any active premise
@@ -282,9 +278,7 @@ async def select_exploration_premise(
     # Thompson Sampling among undersampled
     scored = []
     for premise in undersampled:
-        score = thompson_sample(
-            premise.get("win_count", 0), premise.get("loss_count", 0)
-        )
+        score = thompson_sample(premise.get("win_count", 0), premise.get("loss_count", 0))
         scored.append((score, premise))
 
     # Select highest Thompson score
@@ -360,9 +354,7 @@ async def select_premise_for_hypothesis(
             )
     else:
         # Exploitation mode
-        premise = await select_best_premise(
-            vertical=vertical, geo=geo, avatar_id=avatar_id
-        )
+        premise = await select_best_premise(vertical=vertical, geo=geo, avatar_id=avatar_id)
 
         if premise is None:
             # No premises at all - trigger generation

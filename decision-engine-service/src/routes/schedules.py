@@ -262,9 +262,7 @@ async def get_schedule(schedule_id: str) -> ScheduleDetailResponse:
     summary="Trigger schedule",
     description="Manually trigger a schedule to run immediately. Requires API key.",
 )
-async def trigger_schedule(
-    schedule_id: str, _: bool = Depends(verify_api_key)
-) -> TriggerResponse:
+async def trigger_schedule(schedule_id: str, _: bool = Depends(verify_api_key)) -> TriggerResponse:
     """
     POST /api/schedules/{id}/trigger
 

@@ -115,9 +115,7 @@ def generate_description(
     parts = []
 
     for comp in components[:5]:  # Top 5 components
-        readable_type = COMPONENT_DESCRIPTIONS.get(
-            comp.component_type, comp.component_type
-        )
+        readable_type = COMPONENT_DESCRIPTIONS.get(comp.component_type, comp.component_type)
         confidence_pct = int(comp.confidence * 100)
         parts.append(f"{comp.component_value} {readable_type} ({confidence_pct}%)")
 
@@ -301,9 +299,7 @@ async def generate_exploration_recommendation(
     """
     # Try cross-segment transfer first (10% of explorations)
     if random.random() < CROSS_TRANSFER_RATE:
-        transfer_components, success = await generate_cross_transfer_recommendation(
-            avatar_id, geo
-        )
+        transfer_components, success = await generate_cross_transfer_recommendation(avatar_id, geo)
         if success and transfer_components:
             return transfer_components, "cross_transfer"
 
@@ -387,9 +383,7 @@ async def save_recommendation(recommendation: Recommendation) -> str:
     payload = {k: v for k, v in payload.items() if v is not None}
 
     client = get_http_client()
-    response = await client.post(
-        f"{rest_url}/recommendations", headers=headers, json=payload
-    )
+    response = await client.post(f"{rest_url}/recommendations", headers=headers, json=payload)
     response.raise_for_status()
     data = response.json()
 
@@ -423,9 +417,7 @@ async def generate_recommendation(
     # Decide mode
     if force_exploration or should_explore():
         mode = "exploration"
-        components, exploration_type = await generate_exploration_recommendation(
-            avatar_id, geo
-        )
+        components, exploration_type = await generate_exploration_recommendation(avatar_id, geo)
     else:
         mode = "exploitation"
         components = await generate_exploitation_recommendation(avatar_id, geo)
@@ -473,9 +465,7 @@ async def generate_recommendation(
     return recommendation
 
 
-async def mark_recommendation_executed(
-    recommendation_id: str, creative_id: str
-) -> dict:
+async def mark_recommendation_executed(recommendation_id: str, creative_id: str) -> dict:
     """
     Mark recommendation as executed when buyer creates creative.
 

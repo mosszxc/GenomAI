@@ -72,9 +72,7 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
         UpdateModuleStatsOutput with new stats
     """
 
-    activity.logger.info(
-        f"Updating module stats: {input.module_id}, win={input.is_win}"
-    )
+    activity.logger.info(f"Updating module stats: {input.module_id}, win={input.is_win}")
 
     sb = get_supabase()
     headers = sb.get_headers(for_write=True)
@@ -226,9 +224,7 @@ async def update_compatibility_stats(
                 "updated_at": datetime.utcnow().isoformat(),
             }
 
-            response = await client.patch(
-                update_url, headers=headers, json=update_payload
-            )
+            response = await client.patch(update_url, headers=headers, json=update_payload)
             response.raise_for_status()
         else:
             # Create new
@@ -243,9 +239,7 @@ async def update_compatibility_stats(
                 "win_count": win_count,
             }
 
-            response = await client.post(
-                create_url, headers=headers, json=create_payload
-            )
+            response = await client.post(create_url, headers=headers, json=create_payload)
             response.raise_for_status()
 
         activity.logger.info(
@@ -262,9 +256,7 @@ async def update_compatibility_stats(
         )
 
     except httpx.HTTPStatusError as e:
-        activity.logger.error(
-            f"HTTP error updating compatibility: {e.response.status_code}"
-        )
+        activity.logger.error(f"HTTP error updating compatibility: {e.response.status_code}")
         return UpdateCompatibilityOutput(
             success=False,
             module_a_id=module_a_id,
@@ -554,9 +546,7 @@ async def process_module_learning_batch(
     """
     from datetime import timedelta as td
 
-    activity.logger.info(
-        f"Processing module learning batch (lookback: {input.hours_lookback}h)"
-    )
+    activity.logger.info(f"Processing module learning batch (lookback: {input.hours_lookback}h)")
 
     sb = get_supabase()
     headers = sb.get_headers()
@@ -625,9 +615,7 @@ async def process_module_learning_batch(
                 if learning_result.success:
                     creatives_processed += 1
                     total_modules_updated += learning_result.modules_updated
-                    total_compatibilities_updated += (
-                        learning_result.compatibilities_updated
-                    )
+                    total_compatibilities_updated += learning_result.compatibilities_updated
                 else:
                     errors.extend(learning_result.errors)
 

@@ -26,9 +26,7 @@ class TranscriptStatusPayload(BaseModel):
 
 
 @router.post("/webhook/transcript-status")
-async def transcript_status_webhook(
-    request: Request, background_tasks: BackgroundTasks
-):
+async def transcript_status_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Receive transcript status updates from Supabase pg_net trigger.
 

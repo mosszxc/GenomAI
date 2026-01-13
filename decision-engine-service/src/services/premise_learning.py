@@ -88,9 +88,7 @@ async def get_hypothesis_premise(hypothesis_id: str) -> Optional[dict]:
     client = get_http_client()
     # Get hypothesis with premise
     response = await client.get(
-        f"{rest_url}/hypotheses"
-        f"?id=eq.{hypothesis_id}"
-        f"&select=premise_id,premises(id,premise_type)",
+        f"{rest_url}/hypotheses?id=eq.{hypothesis_id}&select=premise_id,premises(id,premise_type)",
         headers=headers,
     )
     response.raise_for_status()

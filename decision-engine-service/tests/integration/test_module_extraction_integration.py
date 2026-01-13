@@ -10,9 +10,7 @@ import pytest
 import asyncio
 
 # Skip if no Supabase credentials
-pytestmark = pytest.mark.skipif(
-    not os.getenv("SUPABASE_URL"), reason="SUPABASE_URL not set"
-)
+pytestmark = pytest.mark.skipif(not os.getenv("SUPABASE_URL"), reason="SUPABASE_URL not set")
 
 
 class TestModuleExtractionIntegration:
@@ -70,6 +68,4 @@ class TestModuleExtractionIntegration:
 
 
 if __name__ == "__main__":
-    asyncio.run(
-        TestModuleExtractionIntegration().test_extract_modules_creates_records()
-    )
+    asyncio.run(TestModuleExtractionIntegration().test_extract_modules_creates_records())
