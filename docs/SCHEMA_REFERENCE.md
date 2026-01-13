@@ -75,7 +75,7 @@ Columns:
 ```
 PK: id
 UNIQUE: (idea_id, decision_epoch)  -- Idempotency guard (#284)
-CHECK: decision IN ('approve', 'reject', 'defer')
+CHECK: decision IN ('approve', 'reject', 'defer', 'approve_with_warnings')
 ```
 | `decision_traces` | Trace решений | No (append-only) | Decision Engine API |
 | `hypotheses` | Генерированные гипотезы | Yes (status) | hypothesis_factory |
