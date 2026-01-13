@@ -7,6 +7,8 @@ all operations use the genomai schema.
 
 import logging
 import os
+from typing import Optional
+
 import httpx
 from src.core.http_client import get_http_client
 from src.utils.errors import SupabaseError
@@ -48,7 +50,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
     return headers
 
 
-async def load_idea(idea_id: str) -> dict | None:
+async def load_idea(idea_id: str) -> Optional[dict]:
     """
     Load Idea from Supabase with Canonical Schema payload (schema: genomai)
 
@@ -179,7 +181,7 @@ async def load_system_state() -> dict:
         raise SupabaseError(f"Failed to load system state: {str(e)}") from e
 
 
-async def get_existing_decision(idea_id: str, decision_epoch: int) -> dict | None:
+async def get_existing_decision(idea_id: str, decision_epoch: int) -> Optional[dict]:
     """
     Check if a decision already exists for this idea and epoch.
 
@@ -219,7 +221,7 @@ async def get_existing_decision(idea_id: str, decision_epoch: int) -> dict | Non
         return None
 
 
-async def get_decision_trace(decision_id: str) -> dict | None:
+async def get_decision_trace(decision_id: str) -> Optional[dict]:
     """
     Load Decision Trace by decision_id.
 
