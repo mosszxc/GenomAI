@@ -10,6 +10,7 @@ Processes outcome_aggregates and applies learning to ideas:
 Based on LEARNING_MEMORY_POLICY.md and ARCHITECTURE_LOCK.md
 """
 
+import logging
 import os
 from src.core.http_client import get_http_client
 from datetime import datetime
@@ -24,6 +25,8 @@ from src.services.premise_learning import process_premise_learning
 from src.services.features.component_pair_winrate import compute_and_store_for_idea
 
 
+logger = logging.getLogger(__name__)
+
 SCHEMA = "genomai"
 
 # Learning configuration
@@ -32,6 +35,7 @@ CONFIDENCE_DELTA_GOOD = 0.1  # Delta for good outcome (CPA < target)
 CONFIDENCE_DELTA_BAD = -0.15  # Delta for bad outcome (CPA >= target)
 CONSECUTIVE_FAILURES_SOFT_DEAD = 3
 CONSECUTIVE_FAILURES_HARD_DEAD = 5
+MAX_FATIGUE = 1000.0  # Issue #566: Maximum fatigue value before overflow warning
 
 
 @dataclass
@@ -180,7 +184,10 @@ async def get_current_confidence(idea_id: str) -> tuple[float, int]:
     data = response.json()
 
     if data:
-        return float(data[0]["confidence_value"]), int(data[0]["version"])
+        raw_confidence = float(data[0]["confidence_value"])
+        # Issue #566: Validate confidence from DB is in valid range
+        confidence = max(0.0, min(1.0, raw_confidence))
+        return confidence, int(data[0]["version"])
 
     return 0.0, 0
 
@@ -208,7 +215,10 @@ async def get_current_fatigue(idea_id: str) -> tuple[float, int]:
     data = response.json()
 
     if data:
-        return float(data[0]["fatigue_value"]), int(data[0]["version"])
+        raw_fatigue = float(data[0]["fatigue_value"])
+        # Issue #566: Validate fatigue from DB is non-negative
+        fatigue = max(0.0, raw_fatigue)
+        return fatigue, int(data[0]["version"])
 
     return 0.0, 0
 
@@ -505,6 +515,10 @@ async def process_single_outcome(outcome: dict) -> dict:
     # MVP: fatigue_value = exposure count (incremented by 1 for each outcome)
     current_fatigue, fatigue_version = await get_current_fatigue(idea_id)
     new_fatigue = current_fatigue + 1.0  # Simple exposure count
+    # Issue #566: Validate fatigue is non-negative and warn on overflow
+    new_fatigue = max(0.0, new_fatigue)
+    if new_fatigue > MAX_FATIGUE:
+        logger.warning(f"Fatigue overflow for idea {idea_id}: {new_fatigue}")
     new_fatigue_version = fatigue_version + 1
 
     await insert_fatigue_version(
