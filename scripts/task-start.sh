@@ -50,8 +50,9 @@ else
 fi
 
 # Mark issue as in-progress
-echo ""
-gh issue edit "$ISSUE_NUM" --add-label "status:in-progress" --remove-label "status:ready" 2>/dev/null || true
+gh issue edit "$ISSUE_NUM" --remove-label "status:ready" 2>/dev/null || true
+gh issue edit "$ISSUE_NUM" --add-label "status:in-progress"
+echo "✓ Issue #$ISSUE_NUM marked as in-progress"
 
 echo ""
 echo "=== Ready ==="
