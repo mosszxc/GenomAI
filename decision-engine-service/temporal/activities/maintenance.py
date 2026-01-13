@@ -10,6 +10,7 @@ Includes:
 - Staleness detection (Inspiration System)
 """
 
+import logging
 import os
 import uuid
 from dataclasses import dataclass
@@ -19,7 +20,10 @@ from typing import List, Optional
 from temporalio import activity
 from temporalio.client import Client as TemporalClient
 from temporalio.exceptions import ApplicationError
+
 from src.core.http_client import get_http_client
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -501,7 +505,8 @@ def _calculate_stuck_duration_minutes(stuck_since_iso: str) -> int:
         else:
             stuck_dt = datetime.fromisoformat(stuck_since).replace(tzinfo=None)
         return int((datetime.utcnow() - stuck_dt).total_seconds() / 60)
-    except Exception:
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Failed to parse stuck_since timestamp '{stuck_since_iso}': {e}")
         return 0
 
 

@@ -155,8 +155,8 @@ class LearningLoopWorkflow:
                     start_to_close_timeout=timedelta(seconds=15),
                     retry_policy=LEARNING_RETRY_POLICY,
                 )
-            except Exception:
-                pass  # Event emission is best-effort
+            except Exception as event_err:
+                workflow.logger.debug(f"Failed to emit LearningLoopCompleted event: {event_err}")
 
             # Feature correlation monitoring (after processing outcomes)
             await self._run_feature_monitoring()

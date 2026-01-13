@@ -110,8 +110,9 @@ async def get_circuit_state() -> CircuitBreakerState:
             return CircuitBreakerState.from_dict(result.data["value"])
 
         return CircuitBreakerState.default()
-    except Exception:
+    except Exception as e:
         # On error, assume closed (fail-open for availability)
+        activity.logger.warning(f"Failed to load circuit state, using default: {e}")
         return CircuitBreakerState.default()
 
 

@@ -196,8 +196,8 @@ class KeitaroPollerWorkflow:
                     start_to_close_timeout=timedelta(seconds=10),
                     retry_policy=CIRCUIT_BREAKER_RETRY_POLICY,
                 )
-            except Exception:
-                pass  # Best effort
+            except Exception as record_err:
+                workflow.logger.debug(f"Failed to record circuit failure outcome: {record_err}")
 
             return KeitaroPollerResult(
                 trackers_found=0,
@@ -246,8 +246,8 @@ class KeitaroPollerWorkflow:
                     start_to_close_timeout=timedelta(seconds=10),
                     retry_policy=CIRCUIT_BREAKER_RETRY_POLICY,
                 )
-            except Exception:
-                pass  # Best effort
+            except Exception as record_err:
+                workflow.logger.debug(f"Failed to record circuit failure outcome: {record_err}")
 
         workflow.logger.info(
             f"Batch metrics: {len(batch_result.metrics)} success, "
@@ -287,8 +287,8 @@ class KeitaroPollerWorkflow:
                         start_to_close_timeout=timedelta(seconds=15),
                         retry_policy=SUPABASE_RETRY_POLICY,
                     )
-                except Exception:
-                    pass  # Event emission is best-effort
+                except Exception as event_err:
+                    workflow.logger.debug(f"Failed to emit RawMetricsUpserted event: {event_err}")
 
                 # Step 4: Create snapshot if enabled
                 if input.create_snapshots:
@@ -321,8 +321,10 @@ class KeitaroPollerWorkflow:
                                     start_to_close_timeout=timedelta(seconds=15),
                                     retry_policy=SUPABASE_RETRY_POLICY,
                                 )
-                            except Exception:
-                                pass  # Event emission is best-effort
+                            except Exception as event_err:
+                                workflow.logger.debug(
+                                    f"Failed to emit DailyMetricsSnapshotCreated event: {event_err}"
+                                )
                     except Exception as e:
                         # Duplicate snapshot is expected - not an error
                         if "duplicate" not in str(e).lower():
@@ -366,8 +368,8 @@ class KeitaroPollerWorkflow:
                 start_to_close_timeout=timedelta(seconds=15),
                 retry_policy=SUPABASE_RETRY_POLICY,
             )
-        except Exception:
-            pass  # Event emission is best-effort
+        except Exception as event_err:
+            workflow.logger.debug(f"Failed to emit keitaro.polling.completed event: {event_err}")
 
         # Issue #548: Log degraded state for monitoring visibility
         if is_degraded:

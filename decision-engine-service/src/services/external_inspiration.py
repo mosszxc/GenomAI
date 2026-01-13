@@ -13,6 +13,7 @@ Flow:
 Issue: Inspiration System
 """
 
+import logging
 import os
 from src.core.http_client import get_http_client
 from typing import Any, Optional, List
@@ -20,6 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -270,9 +273,8 @@ async def inject_external_components(
             )
             injected.append(result)
             injected_components[component_type] = component_value
-        except Exception:
-            # Continue with other components
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to inject component {component_type}={component_value}: {e}")
 
     # Update inspiration status
     await update_external_inspiration(

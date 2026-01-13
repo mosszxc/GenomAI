@@ -178,8 +178,8 @@ class MetricsProcessingWorkflow:
                 start_to_close_timeout=timedelta(seconds=15),
                 retry_policy=SUPABASE_RETRY_POLICY,
             )
-        except Exception:
-            pass  # Event emission is best-effort
+        except Exception as event_err:
+            workflow.logger.debug(f"Failed to emit metrics.processing.completed event: {event_err}")
 
         workflow.logger.info(
             f"Metrics Processing complete: "

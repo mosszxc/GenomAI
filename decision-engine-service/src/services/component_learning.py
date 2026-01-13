@@ -7,6 +7,7 @@ based on outcome results (win/loss).
 Issue: #122
 """
 
+import logging
 import os
 from src.core.http_client import get_http_client
 from typing import Optional
@@ -14,6 +15,8 @@ from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
 from temporal.models.validators import validate_uuid
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -191,8 +194,8 @@ async def get_creative_geos(creative_id: str) -> list[str]:
             geos = data[0]["geos"]
             return geos if isinstance(geos, list) else []
         return []
-    except Exception:
-        # Geo is optional, don't fail if unavailable
+    except Exception as e:
+        logger.debug(f"Failed to get geo list (optional, continuing): {e}")
         return []
 
 
