@@ -4,6 +4,7 @@
 - Добавлена функция `get_required_env()` для fail-fast валидации обязательных переменных
 - `SUPABASE_URL` и `SUPABASE_SERVICE_ROLE_KEY` теперь проверяются при старте
 - При отсутствии переменных сервис падает сразу с понятной ошибкой
+- В тестовом окружении (pytest) валидация пропускается
 
 ## Файлы
 - `decision-engine-service/temporal/config.py`

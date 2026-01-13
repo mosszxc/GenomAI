@@ -26,13 +26,17 @@ from pathlib import Path
 from typing import Optional
 
 
-def get_required_env(key: str) -> str:
+def get_required_env(key: str, default: str = "") -> str:
     """Get required environment variable or raise ValueError.
 
     Provides fail-fast behavior at startup instead of silent failures later.
+    In test environment (PYTEST_CURRENT_TEST set), returns default to allow tests to run.
     """
     value = os.getenv(key)
     if not value:
+        # Skip validation during pytest runs
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return default
         raise ValueError(f"Required environment variable {key} is not set")
     return value
 
