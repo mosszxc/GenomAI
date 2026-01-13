@@ -376,7 +376,15 @@ class BuyerOnboardingWorkflow:
                 self._set_state(OnboardingState.COMPLETED)
 
                 welcome_back_msg = (
-                    f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."
+                    f"👋 <b>Добро пожаловать в GenomAI, {self._name}!</b>\n\n"
+                    "<b>Как это работает:</b>\n"
+                    "1. Отправь ссылку на креатив\n"
+                    "2. Система проанализирует и создаст гипотезы\n"
+                    "3. Получай инсайты по win rate\n\n"
+                    "<b>Команды:</b>\n"
+                    "/stats — твоя статистика\n"
+                    "/help — справка\n\n"
+                    "Отправь первый креатив!"
                 )
                 await workflow.execute_activity(
                     send_telegram_message,
