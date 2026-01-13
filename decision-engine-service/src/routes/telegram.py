@@ -101,6 +101,31 @@ class WebhookErrorStats:
 webhook_error_stats = WebhookErrorStats()
 
 
+def safe_json_response(
+    response: httpx.Response,
+    context: str = "API call",
+    default: Any = None,
+) -> Any:
+    """Safely extract JSON from HTTP response with status check.
+
+    Args:
+        response: httpx Response object
+        context: Description of the API call for logging
+        default: Value to return on error (None or [] typically)
+
+    Returns:
+        Parsed JSON data or default value on error
+    """
+    if response.status_code != 200:
+        logger.error(f"{context} failed: status={response.status_code}, body={response.text[:200]}")
+        return default
+    try:
+        return response.json()
+    except Exception as e:
+        logger.error(f"{context} JSON parse error: {e}, body={response.text[:200]}")
+        return default
+
+
 # Callback data validation constants
 CALLBACK_DATA_MAX_LENGTH = 64  # Telegram limit
 CALLBACK_DATA_PATTERN = re.compile(r"^[a-z_]+_[a-zA-Z0-9\-]+$")
@@ -265,7 +290,7 @@ async def send_telegram_message(chat_id: str, text: str, reply_markup: dict | No
             client = get_http_client()
             response = await client.post(url, json=payload, timeout=30.0)
 
-            data = response.json()
+            data = safe_json_response(response, "Telegram sendMessage", {})
 
             if data.get("ok"):
                 return True
@@ -354,7 +379,7 @@ async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -
             client = get_http_client()
             response = await client.post(url, json=payload, timeout=30.0)
 
-            data = response.json()
+            data = safe_json_response(response, "Telegram sendPhoto", {})
 
             if data.get("ok"):
                 return True
@@ -606,7 +631,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             f"{sb.rest_url}/buyers?telegram_id=eq.{message.user_id}&select=id,name,geos,verticals",
             headers=headers,
         )
-        buyers = buyer_resp.json()
+        buyers = safe_json_response(buyer_resp, "Get buyer for stats", [])
 
         if not buyers:
             await send_telegram_message(
@@ -625,7 +650,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             f"&select=id,status,test_result,tracking_status,tracker_id",
             headers=headers,
         )
-        creatives = creatives_resp.json()
+        creatives = safe_json_response(creatives_resp, "Get creatives for stats", [])
 
         total = len(creatives)
         wins = len([c for c in creatives if c.get("test_result") == "win"])
@@ -648,7 +673,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
                 f"{sb.rest_url}/raw_metrics_current?tracker_id=in.({tracker_list})&select=metrics",
                 headers=headers,
             )
-            metrics_rows = metrics_resp.json()
+            metrics_rows = safe_json_response(metrics_resp, "Get metrics for stats", [])
 
             if isinstance(metrics_rows, list):
                 for row in metrics_rows:
@@ -1384,7 +1409,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=10",
             headers=headers,
         )
-        buyers = buyers_resp.json()
+        buyers = safe_json_response(buyers_resp, "Get buyers list", [])
 
         if not buyers:
             await send_telegram_message(message.chat_id, "Баеров пока нет.")
@@ -1398,7 +1423,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
             f"&select=buyer_id,test_result",
             headers=headers,
         )
-        creatives = creatives_resp.json()
+        creatives = safe_json_response(creatives_resp, "Get creatives for buyers", [])
 
         # Aggregate stats per buyer
         buyer_stats = {}
@@ -1477,7 +1502,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=15",
             headers=headers,
         )
-        interactions = response.json()
+        interactions = safe_json_response(response, "Get buyer interactions", [])
 
         if not interactions:
             await send_telegram_message(message.chat_id, "Активности пока нет.")
@@ -1491,7 +1516,8 @@ async def handle_activity_command(message: TelegramMessage) -> None:
             f"&select=telegram_id,telegram_username,name",
             headers=headers,
         )
-        buyers = {b["telegram_id"]: b for b in buyers_resp.json()}
+        buyers_data = safe_json_response(buyers_resp, "Get buyers for interactions", [])
+        buyers = {b["telegram_id"]: b for b in buyers_data}
 
         # Format response
         lines = ["📋 <b>Активность (последние 15)</b>\n"]
@@ -1546,7 +1572,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
             f"&limit=1",
             headers=headers,
         )
-        buyers = buyer_resp.json()
+        buyers = safe_json_response(buyer_resp, "Get buyer for chat", [])
         buyer = buyers[0] if buyers else {}
         buyer_uuid = buyer.get("id")
 
@@ -1570,7 +1596,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
                 f"&order=created_at.desc&limit=20",
                 headers=headers,
             )
-        interactions = response.json()
+        interactions = safe_json_response(response, "Get chat history", [])
 
         if not interactions:
             await send_telegram_message(chat_id, "Сообщений с этим байером нет.")
@@ -1629,7 +1655,7 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=50",
             headers=headers,
         )
-        decisions = response.json()
+        decisions = safe_json_response(response, "Get decisions", [])
 
         # Count by decision type
         counts = {"approve": 0, "reject": 0, "defer": 0}
@@ -1690,7 +1716,7 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=10",
             headers=headers,
         )
-        creatives = response.json()
+        creatives = safe_json_response(response, "Get creatives list", [])
 
         if not creatives:
             await send_telegram_message(message.chat_id, "Креативов пока нет.")
@@ -1812,7 +1838,7 @@ async def handle_errors_command(message: TelegramMessage) -> None:
             f"&order=last_retry_at.desc&limit=10",
             headers=headers,
         )
-        failed = response.json()
+        failed = safe_json_response(response, "Get failed hypotheses", [])
 
         if not failed:
             await send_telegram_message(
@@ -2180,7 +2206,7 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
             f"{sb.rest_url}/knowledge_extractions?status=eq.pending&order=created_at.asc&limit=5",
             headers=headers,
         )
-        extractions = response.json()
+        extractions = safe_json_response(response, "Get knowledge extractions", [])
 
         if not extractions:
             await send_telegram_message(
@@ -2353,7 +2379,7 @@ async def get_buyer_name(telegram_id: str) -> str | None:
             f"{sb.rest_url}/buyers?telegram_id=eq.{telegram_id}&select=name",
             headers=headers,
         )
-        buyers = response.json()
+        buyers = safe_json_response(response, "Get buyer name", [])
         return buyers[0].get("name") if buyers else None
     except httpx.HTTPStatusError as e:
         logger.debug(f"HTTP error getting buyer name for telegram_id={telegram_id}: {e}")
@@ -2401,7 +2427,7 @@ async def handle_document_upload(message: TelegramMessage) -> None:
             params={"file_id": file_id},
             timeout=30.0,
         )
-        file_data = file_resp.json()
+        file_data = safe_json_response(file_resp, "Telegram getFile", {})
 
         if not file_data.get("ok"):
             await send_telegram_message(message.chat_id, "Не удалось получить файл.")
@@ -2625,7 +2651,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             f"{sb.rest_url}/buyers?telegram_id=eq.{message.user_id}&select=id",
             headers=headers,
         )
-        buyers = buyer_resp.json()
+        buyers = safe_json_response(buyer_resp, "Get buyer for creative", [])
 
         if not buyers:
             await send_telegram_message(
@@ -2855,7 +2881,7 @@ async def telegram_webhook_status():
             f"https://api.telegram.org/bot{bot_token}/getWebhookInfo",
             timeout=10.0,
         )
-        data = response.json()
+        data = safe_json_response(response, "Telegram getWebhookInfo", {})
 
         if data.get("ok"):
             result = data.get("result", {})
