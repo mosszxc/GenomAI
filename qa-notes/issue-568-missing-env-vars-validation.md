@@ -10,5 +10,5 @@
 
 ## Test
 ```bash
-cd decision-engine-service && python3 -c "from temporal.config import get_required_env; get_required_env('NONEXISTENT_VAR')" 2>&1 | grep -q "NONEXISTENT_VAR is not set" && echo "OK: validation works"
+cd decision-engine-service && python3 -c "import sys; sys.path.insert(0,'.'); exec(open('temporal/config.py').read().split('settings = ')[0]); get_required_env('MISSING_VAR')" 2>&1 | grep -q "MISSING_VAR is not set" && echo "OK: validation works"
 ```
