@@ -59,24 +59,11 @@ fi
 WORKTREE_PATH=$(find "$WORKTREES_DIR" -maxdepth 1 -type d -name "issue-${ISSUE_NUM}-*" 2>/dev/null | head -1)
 
 if [ -z "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
-    # Fallback: use current directory if branch matches issue
-    CURRENT_BRANCH=$(git branch --show-current)
-    if [[ "$CURRENT_BRANCH" == *"$ISSUE_NUM"* ]] || [[ "$CURRENT_BRANCH" == *"issue-${ISSUE_NUM}"* ]]; then
-        echo "No worktree found, using current branch: $CURRENT_BRANCH"
-        WORKTREE_PATH="$CURRENT_ROOT"
-        BRANCH_NAME="$CURRENT_BRANCH"
-    else
-        echo "Error: No worktree found for issue #$ISSUE_NUM"
-        echo "Current branch '$CURRENT_BRANCH' doesn't match issue number."
-        echo ""
-        echo "Either:"
-        echo "  1. Run ./scripts/task-start.sh $ISSUE_NUM first"
-        echo "  2. Or switch to a branch containing '$ISSUE_NUM' in its name"
-        exit 1
-    fi
-else
-    BRANCH_NAME=$(basename "$WORKTREE_PATH")
+    echo "Error: No worktree found for issue #$ISSUE_NUM"
+    exit 1
 fi
+
+BRANCH_NAME=$(basename "$WORKTREE_PATH")
 
 echo "=== Finishing task ==="
 echo "Issue: #$ISSUE_NUM"
@@ -109,29 +96,28 @@ echo "✓ qa-notes found: $(basename "$QA_NOTE")"
 
 # Run tests unless skipped
 if [ "$SKIP_TESTS" != "true" ]; then
-    # Find dynamic FastAPI port from pid file or probe common ports
+    # Find dynamic FastAPI port
     echo ""
     echo "=== Pre-flight Checks ==="
     FASTAPI_PORT=""
+
+    # Method 1: pid file
     shopt -s nullglob
     for pf in /tmp/genomai-dev/server-*.pid; do
         [ -f "$pf" ] && FASTAPI_PORT=$(basename "$pf" .pid | sed 's/server-//')
     done
 
-    # Fallback: probe common ports if no pid file (fix #537 lesson)
+    # Method 2: find uvicorn process via lsof (dynamic port detection)
     if [ -z "$FASTAPI_PORT" ]; then
-        echo "No pid file found, probing common ports..."
-        for port in 10000 8000 8080 3000; do
-            if curl -sf "http://localhost:${port}/health" >/dev/null 2>&1; then
-                FASTAPI_PORT=$port
-                echo "Found FastAPI on port $port"
-                break
-            fi
-        done
+        # Find python/uvicorn listening port
+        FASTAPI_PORT=$(lsof -i -P -n 2>/dev/null | grep -E "python.*LISTEN|uvicorn.*LISTEN" | awk '{print $9}' | grep -oE '[0-9]+$' | head -1)
+        if [ -n "$FASTAPI_PORT" ]; then
+            echo "Found FastAPI on dynamic port $FASTAPI_PORT (via lsof)"
+        fi
     fi
 
     if [ -z "$FASTAPI_PORT" ]; then
-        echo "⚠️  FastAPI not running (no pid file and no response on common ports)"
+        echo "⚠️  FastAPI not running (no pid file and no uvicorn process found)"
         echo ""
         echo "Start the server first:"
         echo "  make up"
