@@ -19,5 +19,5 @@
 ## Test
 
 ```bash
-cd decision-engine-service && python3 -m pytest tests/unit/test_callback_data_validation.py -v --tb=short
+cd decision-engine-service && python3 -m pytest tests/unit/test_callback_data_validation.py -q
 ```
