@@ -551,7 +551,7 @@ async def run_all_workers():
         asyncio.create_task(graceful_shutdown(sig.name))
 
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))
+        loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))  # type: ignore[misc]
 
     logger.info("Signal handlers installed (SIGTERM, SIGINT)")
     logger.info("Press Ctrl+C to stop gracefully")

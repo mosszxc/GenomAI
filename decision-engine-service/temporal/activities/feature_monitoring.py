@@ -145,8 +145,8 @@ async def detect_feature_drift(input: DetectDriftInput) -> DetectDriftOutput:
     from src.services import feature_correlation
     from src.services import feature_registry
 
-    errors = []
-    drift_results = []
+    errors: list[str] = []
+    drift_results: list[DriftDetection] = []
 
     try:
         # Get active features count

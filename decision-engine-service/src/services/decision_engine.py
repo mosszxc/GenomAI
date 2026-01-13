@@ -2,6 +2,8 @@
 Decision Engine — Core decision logic
 """
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from src.services.supabase import (

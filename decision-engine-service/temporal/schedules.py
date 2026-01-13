@@ -72,7 +72,6 @@ SCHEDULES = {
         "workflow": MaintenanceWorkflow.run,
         "args": [
             MaintenanceInput(
-                buyer_state_timeout_hours=6,
                 recommendation_expiry_days=7,
                 run_integrity_checks=True,
                 run_cleanup=True,
