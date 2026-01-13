@@ -2476,11 +2476,15 @@ async def handle_callback_query(update: dict) -> None:
 
     # Answer callback to remove loading state
     client = get_http_client()
-    await client.post(
-        f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
-        json={"callback_query_id": callback_id},
-        timeout=10.0,
-    )
+    try:
+        await client.post(
+            f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+            json={"callback_query_id": callback_id},
+            timeout=10.0,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to answer callback query: {e}")
+        # Continue processing even if answerCallbackQuery fails
 
     # Check admin permission
     if not is_admin(user_id):
