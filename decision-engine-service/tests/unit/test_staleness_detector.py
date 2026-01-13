@@ -186,8 +186,12 @@ async def test_all_errors_fallback_warning_logged(caplog):
         # All 5 metrics failed
         assert len(metrics.error_sources) == 5
 
-        # Warning about fallback values
-        assert "5/5 fallback values due to errors" in caplog.text
+        # When >50% metrics fail, quality should be "low"
+        assert metrics.quality == "low"
+
+        # Warning about unreliable score (new behavior from issue #567)
+        assert "UNRELIABLE" in caplog.text
+        assert "5/5 metrics failed" in caplog.text
 
 
 @pytest.mark.asyncio
