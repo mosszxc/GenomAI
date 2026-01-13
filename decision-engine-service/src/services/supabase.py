@@ -345,6 +345,8 @@ async def save_decision_with_trace(decision: dict, trace: dict) -> dict:
             "apikey": supabase_key,
             "Authorization": f"Bearer {supabase_key}",
             "Content-Type": "application/json",
+            "Content-Profile": "genomai",
+            "Accept-Profile": "genomai",
         }
 
         payload = {
