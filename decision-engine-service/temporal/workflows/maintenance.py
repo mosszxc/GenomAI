@@ -30,6 +30,7 @@ with workflow.unsafe.imports_passed_through():
         cleanup_orphaned_hypotheses,
         emit_maintenance_event,
         check_staleness,
+        CheckStalenessInput,
         release_orphaned_agent_tasks,
         find_stuck_creatives,
         find_failed_creatives_for_retry,
@@ -243,7 +244,7 @@ class MaintenanceWorkflow:
             try:
                 staleness_result = await workflow.execute_activity(
                     check_staleness,
-                    args=[None, None],  # Global check (no avatar/geo filter)
+                    CheckStalenessInput(),  # Global check (no avatar/geo filter)
                     start_to_close_timeout=timedelta(seconds=120),
                     retry_policy=retry_policy,
                 )

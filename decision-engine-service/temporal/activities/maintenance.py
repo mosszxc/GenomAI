@@ -469,6 +469,17 @@ async def release_orphaned_agent_tasks(timeout_minutes: int = 10) -> int:
 
 
 @dataclass
+class CheckStalenessInput:
+    """Input for staleness check activity.
+
+    Issue #549: Replace positional args with typed dataclass for safety.
+    """
+
+    avatar_id: Optional[str] = None
+    geo: Optional[str] = None
+
+
+@dataclass
 class StuckCreative:
     """Creative stuck in pipeline."""
 
@@ -850,18 +861,14 @@ async def abandon_failed_creative(creative_id: str) -> bool:
 
 
 @activity.defn
-async def check_staleness(
-    avatar_id: Optional[str] = None,
-    geo: Optional[str] = None,
-) -> dict:
+async def check_staleness(input: CheckStalenessInput) -> dict:
     """
     Check system staleness and save snapshot.
 
     Part of Inspiration System - detects when system needs external inspiration.
 
     Args:
-        avatar_id: Optional avatar filter (None = global)
-        geo: Optional geo filter
+        input: CheckStalenessInput with optional avatar_id and geo filters
 
     Returns:
         dict with staleness metrics and is_stale flag
@@ -869,10 +876,10 @@ async def check_staleness(
     # Import here to avoid circular imports
     from src.services.staleness_detector import check_staleness_and_act
 
-    activity.logger.info(f"Checking staleness for avatar={avatar_id}, geo={geo}")
+    activity.logger.info(f"Checking staleness for avatar={input.avatar_id}, geo={input.geo}")
 
     try:
-        result = await check_staleness_and_act(avatar_id, geo)
+        result = await check_staleness_and_act(input.avatar_id, input.geo)
 
         # Safe access to staleness_score with default
         staleness_score = result.get("metrics", {}).get("staleness_score")
