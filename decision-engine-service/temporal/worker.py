@@ -597,10 +597,9 @@ async def run_all_workers():
         logger.info("Workers cancelled, waiting for shutdown...")
         await shutdown_event.wait()
     finally:
-        # Ensure client connection is closed
-        logger.info("Closing Temporal client connection...")
-        await client.service_client.close()
-        logger.info("Temporal client closed")
+        # Client cleanup - connection is handled automatically by garbage collector
+        # in newer temporalio versions. Just log for observability.
+        logger.info("Worker shutdown complete")
 
 
 def main():
