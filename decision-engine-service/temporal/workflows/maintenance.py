@@ -82,6 +82,8 @@ class MaintenanceInput:
     run_orphan_detection: bool = True
     # Timeout for agent heartbeats in minutes
     agent_heartbeat_timeout_minutes: int = 10
+    # Timeout for stuck transcriptions in minutes (Issue #696)
+    stuck_transcription_timeout_minutes: int = 30
     # Stuck creatives recovery (Issue #398)
     run_stuck_recovery: bool = True
     # Timeout before considering decomposition stuck (minutes)
