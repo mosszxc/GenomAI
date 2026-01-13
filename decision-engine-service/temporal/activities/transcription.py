@@ -218,7 +218,7 @@ async def transcribe_via_n8n(
             headers=headers,
             params={
                 "id": f"eq.{transcript_db_id}",
-                "select": "id,transcript_text,TranscribeStatus,assemblyai_transcript_id",
+                "select": "id,transcript_text,TranscribeStatus",
             },
         )
 
@@ -241,9 +241,7 @@ async def transcribe_via_n8n(
                     )
 
                     return {
-                        "transcript_id": record.get(
-                            "assemblyai_transcript_id", str(transcript_db_id)
-                        ),
+                        "transcript_id": str(transcript_db_id),
                         "text": record.get("transcript_text", ""),
                         "status": "completed",
                         "words": len(record.get("transcript_text", "").split()),
