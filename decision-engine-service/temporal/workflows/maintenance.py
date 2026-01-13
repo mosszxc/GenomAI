@@ -195,10 +195,12 @@ class MaintenanceWorkflow:
             result.integrity_issues.append(f"Recommendation expiry failed: {e}")
 
         # Step 2: Mark stuck transcriptions as failed
+        # Use getattr for backwards compatibility with schedules created before Issue #696
+        stuck_transcription_timeout = getattr(input, "stuck_transcription_timeout_minutes", 30)
         try:
             stuck_count = await workflow.execute_activity(
                 mark_stuck_transcriptions_failed,
-                input.stuck_transcription_timeout_minutes,
+                stuck_transcription_timeout,
                 start_to_close_timeout=timedelta(seconds=60),
                 retry_policy=retry_policy,
             )
@@ -365,13 +367,18 @@ class MaintenanceWorkflow:
         # Step 9: Recover stuck creatives (Issue #398, #481, #555)
         # Issue #555: Batch processing with continue-as-new to prevent timeout
         needs_continuation = False
+        # Use getattr for backwards compatibility with schedules created before Issue #696/#398/#481
+        stuck_decomposition_timeout = getattr(input, "stuck_decomposition_timeout_minutes", 30)
+        stuck_recovery_force_threshold = getattr(
+            input, "stuck_recovery_force_threshold_minutes", 120
+        )
         if input.run_stuck_recovery:
             try:
                 stuck_creatives = await workflow.execute_activity(
                     find_stuck_creatives,
                     args=[
-                        input.stuck_transcription_timeout_minutes,
-                        input.stuck_decomposition_timeout_minutes,
+                        stuck_transcription_timeout,  # Reuse from Step 2
+                        stuck_decomposition_timeout,
                     ],
                     start_to_close_timeout=timedelta(seconds=120),
                     retry_policy=retry_policy,
@@ -404,10 +411,10 @@ class MaintenanceWorkflow:
 
                             try:
                                 # Issue #481: If stuck for too long, force cancel + reset + restart
-                                if stuck_duration >= input.stuck_recovery_force_threshold_minutes:
+                                if stuck_duration >= stuck_recovery_force_threshold:
                                     workflow.logger.warning(
                                         f"Creative {creative_id[:8]} stuck for {stuck_duration}min "
-                                        f"(>{input.stuck_recovery_force_threshold_minutes}min), "
+                                        f"(>{stuck_recovery_force_threshold}min), "
                                         f"forcing recovery: cancel -> reset -> restart"
                                     )
 
