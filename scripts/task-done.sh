@@ -109,7 +109,7 @@ echo "✓ qa-notes found: $(basename "$QA_NOTE")"
 
 # Run tests unless skipped
 if [ "$SKIP_TESTS" != "true" ]; then
-    # Find dynamic FastAPI port from pid file
+    # Find dynamic FastAPI port from pid file or probe common ports
     echo ""
     echo "=== Pre-flight Checks ==="
     FASTAPI_PORT=""
@@ -118,8 +118,20 @@ if [ "$SKIP_TESTS" != "true" ]; then
         [ -f "$pf" ] && FASTAPI_PORT=$(basename "$pf" .pid | sed 's/server-//')
     done
 
+    # Fallback: probe common ports if no pid file (fix #537 lesson)
     if [ -z "$FASTAPI_PORT" ]; then
-        echo "⚠️  FastAPI not running (no pid file found)"
+        echo "No pid file found, probing common ports..."
+        for port in 10000 8000 8080 3000; do
+            if curl -sf "http://localhost:${port}/health" >/dev/null 2>&1; then
+                FASTAPI_PORT=$port
+                echo "Found FastAPI on port $port"
+                break
+            fi
+        done
+    fi
+
+    if [ -z "$FASTAPI_PORT" ]; then
+        echo "⚠️  FastAPI not running (no pid file and no response on common ports)"
         echo ""
         echo "Start the server first:"
         echo "  make up"
