@@ -64,6 +64,56 @@ WHERE table_schema = 'genomai' AND table_name = 'table_name';
 - Deploy: `develop → main` по требованию
 - Коммит делается автоматически, не спрашивать
 
+## Релизы (ОБЯЗАТЕЛЬНО при деплое)
+
+При каждом деплое создавать **и git tag, и GitHub Release**.
+
+**Версионирование:** semver `vMAJOR.MINOR.PATCH`
+- MAJOR: breaking changes
+- MINOR: новые фичи
+- PATCH: багфиксы
+
+**Git tag (аннотированный):**
+```bash
+git tag -a v1.2.3 -m "$(cat <<'EOF'
+v1.2.3
+
+## Что нового
+- feat: краткое описание (#issue)
+- fix: краткое описание (#issue)
+
+## Изменения
+- Затронутые компоненты
+EOF
+)"
+git push origin v1.2.3
+```
+
+**GitHub Release:**
+```bash
+gh release create v1.2.3 --title "v1.2.3 — Краткое название" --notes "$(cat <<'EOF'
+## 🚀 Что нового
+
+Краткое описание для пользователя — что улучшилось.
+
+## ✨ Features
+- Описание фичи (#123)
+
+## 🐛 Fixes
+- Описание фикса (#124)
+
+## 📦 Other
+- Рефакторинг, docs, тесты
+EOF
+)"
+```
+
+**Чеклист перед релизом:**
+1. `make test` — тесты проходят
+2. `develop` смержен в `main`
+3. Собраны все issues с последнего релиза
+4. Changelog сгруппирован по типам
+
 ## Env
 `SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `API_KEY`
 
