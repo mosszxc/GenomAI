@@ -59,11 +59,24 @@ fi
 WORKTREE_PATH=$(find "$WORKTREES_DIR" -maxdepth 1 -type d -name "issue-${ISSUE_NUM}-*" 2>/dev/null | head -1)
 
 if [ -z "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
-    echo "Error: No worktree found for issue #$ISSUE_NUM"
-    exit 1
+    # Fallback: use current directory if branch matches issue
+    CURRENT_BRANCH=$(git branch --show-current)
+    if [[ "$CURRENT_BRANCH" == *"$ISSUE_NUM"* ]] || [[ "$CURRENT_BRANCH" == *"issue-${ISSUE_NUM}"* ]]; then
+        echo "No worktree found, using current branch: $CURRENT_BRANCH"
+        WORKTREE_PATH="$CURRENT_ROOT"
+        BRANCH_NAME="$CURRENT_BRANCH"
+    else
+        echo "Error: No worktree found for issue #$ISSUE_NUM"
+        echo "Current branch '$CURRENT_BRANCH' doesn't match issue number."
+        echo ""
+        echo "Either:"
+        echo "  1. Run ./scripts/task-start.sh $ISSUE_NUM first"
+        echo "  2. Or switch to a branch containing '$ISSUE_NUM' in its name"
+        exit 1
+    fi
+else
+    BRANCH_NAME=$(basename "$WORKTREE_PATH")
 fi
-
-BRANCH_NAME=$(basename "$WORKTREE_PATH")
 
 echo "=== Finishing task ==="
 echo "Issue: #$ISSUE_NUM"
