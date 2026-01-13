@@ -10,11 +10,13 @@ Processes outcome_aggregates and applies learning to ideas:
 Based on LEARNING_MEMORY_POLICY.md and ARCHITECTURE_LOCK.md
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from src.core.http_client import get_http_client
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
@@ -44,14 +46,14 @@ class LearningResult:
 
     processed_count: int = 0
     skipped_count: int = 0  # Issue #473: idempotency - already processed outcomes
-    updated_ideas: list = None
-    new_deaths: list = None
+    updated_ideas: list[Any] | None = None
+    new_deaths: list[Any] | None = None
     component_updates: int = 0
     premise_updates: int = 0
     fatigue_updates: int = 0  # Issue #237: track fatigue versioning
-    errors: list = None
+    errors: list[Any] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.updated_ideas = self.updated_ideas or []
         self.new_deaths = self.new_deaths or []
         self.errors = self.errors or []

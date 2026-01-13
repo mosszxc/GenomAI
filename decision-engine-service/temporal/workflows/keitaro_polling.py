@@ -20,6 +20,8 @@ Circuit Breaker (Issue #474):
 - Does NOT trigger downstream workflows in degraded mode
 """
 
+from __future__ import annotations
+
 from datetime import timedelta
 from dataclasses import dataclass
 
@@ -72,7 +74,7 @@ class KeitaroPollerResult:
     metrics_collected: int
     metrics_failed: int
     snapshots_created: int
-    errors: list[str] = None
+    errors: list[str] | None = None
     metrics_processing_triggered: bool = False
     is_degraded: bool = False  # True when circuit breaker prevented API calls
     circuit_state: str = "closed"  # Current circuit breaker state

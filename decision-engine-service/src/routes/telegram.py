@@ -18,7 +18,7 @@ import logging
 import asyncio
 from datetime import datetime
 from html import escape as html_escape
-from typing import Optional
+from typing import Any, Optional
 import secrets
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -214,10 +214,10 @@ def _should_retry(status_code: int, error_code: int | None = None) -> bool:
 def _get_retry_delay(attempt: int, retry_after: int | None = None) -> float:
     """Calculate delay before next retry with exponential backoff."""
     if retry_after:
-        return min(float(retry_after), TELEGRAM_MAX_DELAY)
+        return float(min(float(retry_after), TELEGRAM_MAX_DELAY))
     # Exponential backoff: 1s, 2s, 4s, ...
     delay = TELEGRAM_BASE_DELAY * (2**attempt)
-    return min(delay, TELEGRAM_MAX_DELAY)
+    return float(min(delay, TELEGRAM_MAX_DELAY))
 
 
 async def send_telegram_message(chat_id: str, text: str, reply_markup: dict | None = None) -> bool:
@@ -236,7 +236,7 @@ async def send_telegram_message(chat_id: str, text: str, reply_markup: dict | No
         logger.error("TELEGRAM_BOT_TOKEN not configured")
         return False
 
-    payload = {
+    payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",

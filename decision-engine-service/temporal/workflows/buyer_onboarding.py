@@ -335,9 +335,9 @@ class BuyerOnboardingWorkflow:
         Returns:
             BuyerOnboardingResult with buyer_id and status
         """
-        self._telegram_id = input.telegram_id
+        self._telegram_id = str(input.telegram_id)
         self._telegram_username = input.telegram_username
-        self._chat_id = input.chat_id or input.telegram_id
+        self._chat_id = str(input.chat_id or input.telegram_id)
 
         # Default retry policy
         default_retry = RetryPolicy(
@@ -646,7 +646,7 @@ class BuyerOnboardingWorkflow:
                 HistoricalImportWorkflow.run,
                 HistoricalImportInput(
                     buyer_id=self._buyer_id,
-                    keitaro_source=self._keitaro_source,
+                    keitaro_source=self._keitaro_source or "",
                 ),
                 id=f"historical-import-{self._buyer_id}",
                 task_queue="telegram",

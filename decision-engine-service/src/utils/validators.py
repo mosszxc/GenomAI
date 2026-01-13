@@ -2,6 +2,8 @@
 Validation utilities
 """
 
+from __future__ import annotations
+
 
 def validate_decision_request(body: dict) -> str | None:
     """

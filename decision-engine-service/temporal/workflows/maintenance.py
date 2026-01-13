@@ -78,8 +78,6 @@ class MaintenanceInput:
     agent_heartbeat_timeout_minutes: int = 10
     # Stuck creatives recovery (Issue #398)
     run_stuck_recovery: bool = True
-    # Timeout before considering transcription stuck (minutes)
-    stuck_transcription_timeout_minutes: int = 5
     # Timeout before considering decomposition stuck (minutes)
     stuck_decomposition_timeout_minutes: int = 30
     # Orphaned hypotheses cleanup (Issue #475)

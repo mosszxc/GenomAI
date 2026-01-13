@@ -28,13 +28,49 @@ dev = [
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 check_untyped_defs = true
 # Gradual mode - не требуем типы везде сразу
 # disallow_untyped_defs = true  # включить позже для strict mode
 
 [[tool.mypy.overrides]]
 module = "temporal.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "temporalio.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "structlog.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "openai.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "supabase.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "assemblyai.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "scipy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pyrogram.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "services.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "src.services.event_log"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -64,3 +100,11 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B", "SIM"]  # более мягкие правила для тестов
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.14.11",
+]

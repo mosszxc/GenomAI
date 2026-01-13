@@ -15,7 +15,7 @@ Issue: Inspiration System
 
 import os
 from src.core.http_client import get_http_client
-from typing import Optional, List
+from typing import Any, Optional, List
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -142,7 +142,7 @@ async def update_external_inspiration(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    payload = {}
+    payload: dict[str, Any] = {}
     if extracted_components is not None:
         payload["extracted_components"] = extracted_components
         payload["processed_at"] = datetime.utcnow().isoformat()
@@ -304,7 +304,7 @@ async def get_inspiration_stats() -> dict:
     response.raise_for_status()
     data = response.json()
 
-    by_status = {}
+    by_status: dict[str, int] = {}
     for row in data:
         status = row.get("status", "unknown")
         by_status[status] = by_status.get(status, 0) + 1
@@ -317,7 +317,7 @@ async def get_inspiration_stats() -> dict:
     response.raise_for_status()
     data = response.json()
 
-    by_source = {}
+    by_source: dict[str, int] = {}
     for row in data:
         source = row.get("source_type", "unknown")
         by_source[source] = by_source.get(source, 0) + 1
