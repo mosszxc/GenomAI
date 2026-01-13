@@ -322,6 +322,8 @@ async def create_idea(
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Content-Type": "application/json",
+        "Content-Profile": SCHEMA,
+        "Accept-Profile": SCHEMA,
     }
 
     payload = {
@@ -388,6 +390,8 @@ async def upsert_idea(
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Content-Type": "application/json",
+        "Content-Profile": SCHEMA,
+        "Accept-Profile": SCHEMA,
     }
 
     payload = {
