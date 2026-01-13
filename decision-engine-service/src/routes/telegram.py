@@ -460,20 +460,31 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
     """
     try:
         client = await get_temporal_client()
-
-        # Try to query the workflow
         workflow_id = f"onboarding-{telegram_id}"
 
         try:
             handle = client.get_workflow_handle(workflow_id)
+
+            # First check if workflow is still running via describe()
+            # This avoids Nondeterminism errors when querying completed workflows
+            desc = await handle.describe()
+            status = desc.status
+
+            # WorkflowExecutionStatus enum: RUNNING=1, COMPLETED=2, FAILED=3, etc.
+            # Only query if workflow is still running
+            if status.name != "RUNNING":
+                return None
+
+            # Workflow is running - now safe to query state
             state = await handle.query("get_state")
 
             # If state is not completed/cancelled/timed_out, workflow is active
             if state not in ["COMPLETED", "CANCELLED", "TIMED_OUT"]:
                 return workflow_id
+
         except RPCError as e:
             if e.status == RPCStatusCode.NOT_FOUND:
-                # Expected - workflow doesn't exist or completed
+                # Expected - workflow doesn't exist
                 pass
             else:
                 # Fix #694: RPC error (likely nondeterminism) - terminate and continue
@@ -537,6 +548,7 @@ def extract_video_url(text: str) -> Optional[str]:
     patterns = [
         r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)/\S+",
         r"https?://(?:www\.)?vimeo\.com/\S+",
+        r"https?://drive\.google\.com/\S+",  # Google Drive links
         r"https?://\S+\.mp4",
         r"https?://\S+\.mov",
         r"https?://\S+\.webm",
@@ -2760,10 +2772,14 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
     """Handle video URL - start creative registration."""
     from temporal.workflows.historical_import import CreativeRegistrationWorkflow
 
+    # DEBUG: Log entry point (ERROR level to ensure visibility in Render)
+    logger.error(f"DEBUG handle_video_url: ENTRY user_id={message.user_id} url={video_url[:50]}")
+
     # Check if user is registered
     try:
         sb = get_supabase()
     except RuntimeError:
+        logger.error("DEBUG handle_video_url: Supabase not available")
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
@@ -2777,7 +2793,10 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
         )
         buyers = safe_json_response(buyer_resp, "Get buyer for creative", [])
 
+        logger.error(f"DEBUG handle_video_url: buyers={buyers}")
+
         if not buyers:
+            logger.error("DEBUG handle_video_url: No buyer found, sending registration message")
             await send_telegram_message(
                 message.chat_id,
                 "Сначала нужно зарегистрироваться. Отправьте /start.",
@@ -2785,13 +2804,16 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             return
 
         buyer_id = buyers[0]["id"]
+        logger.error(f"DEBUG handle_video_url: buyer_id={buyer_id}")
 
         # Start creative registration workflow
         client = await get_temporal_client()
+        logger.error("DEBUG handle_video_url: Got Temporal client")
 
         import uuid
 
         workflow_id = f"creative-reg-{uuid.uuid4().hex[:8]}"
+        logger.error(f"DEBUG handle_video_url: Starting workflow {workflow_id}")
 
         await client.start_workflow(
             CreativeRegistrationWorkflow.run,
@@ -2800,6 +2822,8 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             task_queue="telegram",
         )
 
+        logger.error(f"DEBUG handle_video_url: Workflow started successfully: {workflow_id}")
+
         await send_telegram_message(
             message.chat_id,
             f"Видео получено!\n\n"
@@ -2807,9 +2831,10 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             f"Обработка скоро начнётся. Уведомлю когда будет готово.",
         )
 
-        logger.info(f"Started creative registration: {workflow_id}")
+        logger.error("DEBUG handle_video_url: Telegram message sent")
 
     except Exception as e:
+        logger.error(f"DEBUG handle_video_url: EXCEPTION {type(e).__name__}: {e}")
         record_handler_error(e, "Failed to register creative")
         await send_telegram_message(
             message.chat_id, "Не удалось обработать видео. Попробуйте снова."
@@ -2820,8 +2845,11 @@ async def handle_user_message(message: TelegramMessage) -> None:
     """Handle regular user message - signal to active workflow."""
     from temporal.models.buyer import BuyerMessage
 
+    logger.info(f"handle_user_message: processing message from {message.user_id}")
+
     # Check for active onboarding workflow
     active_workflow = await check_active_onboarding(message.user_id)
+    logger.info(f"handle_user_message: active_workflow={active_workflow}")
 
     if active_workflow:
         try:
@@ -2846,8 +2874,10 @@ async def handle_user_message(message: TelegramMessage) -> None:
             record_handler_error(e, "Failed to signal workflow")
 
     # No active workflow - check if it's a video URL
+    logger.info("handle_user_message: checking for video URL in text")
     if message.text:
         video_url = extract_video_url(message.text)
+        logger.info(f"handle_user_message: extracted video_url={video_url}")
         if video_url:
             await handle_video_url(message, video_url)
             return
@@ -3035,3 +3065,117 @@ async def telegram_webhook_errors():
         - error_types: Breakdown by exception type
     """
     return webhook_error_stats.get_stats()
+
+
+@router.get("/webhook/telegram/debug/{telegram_id}")
+async def telegram_webhook_debug(telegram_id: str, text: str = "test") -> dict:
+    """
+    Debug endpoint to trace message processing flow.
+
+    Returns step-by-step what would happen for a given telegram_id and text.
+    """
+    steps: list[dict] = []
+    result: dict = {
+        "telegram_id": telegram_id,
+        "text": text,
+        "steps": steps,
+    }
+
+    # Step 1: Check active onboarding
+    try:
+        active_workflow = await check_active_onboarding(telegram_id)
+        steps.append(
+            {
+                "step": "check_active_onboarding",
+                "result": active_workflow,
+                "status": "ok",
+            }
+        )
+    except Exception as e:
+        steps.append(
+            {
+                "step": "check_active_onboarding",
+                "error": str(e),
+                "status": "error",
+            }
+        )
+        return result
+
+    if active_workflow:
+        steps.append(
+            {
+                "step": "route_decision",
+                "result": "signal_to_workflow",
+                "workflow_id": active_workflow,
+            }
+        )
+        return result
+
+    # Step 2: Extract video URL
+    video_url = extract_video_url(text)
+    steps.append(
+        {
+            "step": "extract_video_url",
+            "result": video_url,
+            "status": "ok" if video_url else "no_match",
+        }
+    )
+
+    if not video_url:
+        steps.append(
+            {
+                "step": "route_decision",
+                "result": "unknown_message",
+            }
+        )
+        return result
+
+    # Step 3: Check buyer exists
+    try:
+        sb = get_supabase()
+        headers = sb.get_headers()
+        http_client = get_http_client()
+
+        buyer_resp = await http_client.get(
+            f"{sb.rest_url}/buyers?telegram_id=eq.{telegram_id}&select=id",
+            headers=headers,
+        )
+        buyers = safe_json_response(buyer_resp, "Debug: Get buyer", [])
+
+        steps.append(
+            {
+                "step": "get_buyer",
+                "result": buyers,
+                "status": "ok" if buyers else "not_found",
+            }
+        )
+
+        if not buyers:
+            steps.append(
+                {
+                    "step": "route_decision",
+                    "result": "buyer_not_registered",
+                }
+            )
+            return result
+
+        buyer_id = buyers[0]["id"]
+        steps.append(
+            {
+                "step": "route_decision",
+                "result": "start_creative_registration",
+                "buyer_id": buyer_id,
+                "video_url": video_url,
+            }
+        )
+
+    except Exception as e:
+        steps.append(
+            {
+                "step": "get_buyer",
+                "error": str(e),
+                "status": "error",
+            }
+        )
+
+    return result

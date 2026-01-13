@@ -14,7 +14,7 @@ import logging
 import os
 import random
 from src.core.http_client import get_http_client
-from typing import Optional
+from typing import Any, Optional, cast
 from dataclasses import dataclass
 
 from src.services.exploration import (
@@ -144,10 +144,10 @@ async def get_avatar_name(avatar_id: str) -> Optional[str]:
         f"{rest_url}/avatars?id=eq.{avatar_id}&select=name", headers=headers
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
-        return data[0].get("name")
+        return cast(Optional[str], data[0].get("name"))
     return None
 
 
@@ -187,7 +187,7 @@ async def get_top_components(
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(list[dict[str, Any]], response.json())
 
 
 async def get_all_component_values(component_type: str) -> list[str]:
@@ -388,10 +388,10 @@ async def save_recommendation(recommendation: Recommendation) -> str:
     client = get_http_client()
     response = await client.post(f"{rest_url}/recommendations", headers=headers, json=payload)
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
-        return data[0]["id"]
+        return cast(str, data[0]["id"])
     raise SupabaseError("Failed to save recommendation")
 
 
@@ -539,7 +539,7 @@ async def get_recommendation(recommendation_id: str) -> Optional[dict]:
         f"{rest_url}/recommendations?id=eq.{recommendation_id}", headers=headers
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
         return data[0]
@@ -563,7 +563,7 @@ async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[di
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(list[dict[str, Any]], response.json())
 
 
 async def get_recommendation_stats() -> dict:

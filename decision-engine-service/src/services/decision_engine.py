@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 from src.services.supabase import (
     load_idea,
     load_system_state,
@@ -167,8 +168,8 @@ async def make_decision(input_data: dict) -> dict:
         system_state = await load_system_state()
 
     # Execute checks in fixed order
-    check_results = []
-    warnings = []
+    check_results: list[dict] = []
+    warnings: list[dict] = []
     is_advisory = mode == MODE_ADVISORY
 
     # CHECK 1: Schema Validity (always blocking)
@@ -280,7 +281,7 @@ async def _create_decision(
         decision_reason = "all_checks_passed"
 
     # Return response
-    response = {
+    response: dict[str, Any] = {
         "decision": {
             "decision_id": decision_id,
             "idea_id": idea["id"],

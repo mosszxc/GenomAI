@@ -46,6 +46,7 @@
 | A011 | Stop after PR without merging | After Post-Task Loop done, autonomously: `gh pr checks --watch` → `list_deploys` → `gh pr merge`. Do NOT wait for user. | incomplete task cycle |
 | A012 | ⚠️ Skip real API/Telegram test in Post-Task Loop | **ALWAYS** curl webhook + verify response in DB BEFORE saying "done". Syntax check ≠ test | broken feature deployed |
 | A013 | ⛔ **CRITICAL:** Consider pre-deploy data check as "production test" | Production test = **AFTER deploy of new code**. Sequence: PR merge → `sleep 180` → `list_deploys` status=live → THEN test new behavior. SQL check before deploy tests DATA, not CODE. | false confidence, untested code in prod |
+| A014 | ⛔ **CRITICAL:** Show "ISSUE CLOSED" report without actually closing issue | **VERIFY before report:** `gh issue view {N} --json state` must show `"state":"CLOSED"`. If task-done.sh warns "Could not auto-merge" → manually run `gh issue close {N}`. Report ≠ reality. | user thinks done, issue still open |
 
 ## Quick Lookup
 

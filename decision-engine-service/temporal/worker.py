@@ -191,6 +191,12 @@ from temporal.activities.maintenance import (
     check_staleness,
     release_orphaned_agent_tasks,
     find_stuck_creatives,
+    cleanup_orphaned_hypotheses,
+    find_failed_creatives_for_retry,
+    reset_creative_for_retry,
+    abandon_failed_creative,
+    cancel_stuck_creative_workflow,
+    reset_creative_for_recovery,
 )
 
 # Import activities - Feature Monitoring
@@ -453,6 +459,12 @@ async def run_all_workers():
             check_staleness,
             release_orphaned_agent_tasks,
             find_stuck_creatives,
+            cleanup_orphaned_hypotheses,
+            find_failed_creatives_for_retry,
+            reset_creative_for_retry,
+            abandon_failed_creative,
+            cancel_stuck_creative_workflow,
+            reset_creative_for_recovery,
             # Feature monitoring activities
             update_feature_correlations,
             detect_feature_drift,
@@ -585,10 +597,9 @@ async def run_all_workers():
         logger.info("Workers cancelled, waiting for shutdown...")
         await shutdown_event.wait()
     finally:
-        # Ensure client connection is closed
-        logger.info("Closing Temporal client connection...")
-        await client.service_client.close()
-        logger.info("Temporal client closed")
+        # Client cleanup - connection is handled automatically by garbage collector
+        # in newer temporalio versions. Just log for observability.
+        logger.info("Worker shutdown complete")
 
 
 def main():

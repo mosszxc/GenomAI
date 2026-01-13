@@ -9,7 +9,7 @@ Input validation added per issue #482.
 
 import os
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 from temporalio import activity
 from src.core.http_client import get_http_client
 
@@ -110,7 +110,7 @@ async def create_creative(
         json=creative,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         raise RuntimeError("Failed to create creative: no data returned")
@@ -178,7 +178,7 @@ async def create_historical_creative(
         json=creative,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         raise RuntimeError("Failed to create historical creative: no data returned")
@@ -322,6 +322,8 @@ async def create_idea(
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Content-Type": "application/json",
+        "Content-Profile": SCHEMA,
+        "Accept-Profile": SCHEMA,
     }
 
     payload = {
@@ -334,12 +336,12 @@ async def create_idea(
     client = get_http_client()
     response = await client.post(rpc_url, headers=headers, json=payload)
     response.raise_for_status()
-    result = response.json()
+    result = cast(Dict[str, Any], response.json())
 
     if not result or "idea" not in result:
         raise RuntimeError("Failed to create idea: no data returned from RPC")
 
-    created_idea = result["idea"]
+    created_idea = cast(Dict[str, Any], result["idea"])
     activity.logger.info(
         f"Created idea {created_idea['id']} with linked decomposed_creative {decomposed_creative_id}"
     )
@@ -388,6 +390,8 @@ async def upsert_idea(
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
         "Content-Type": "application/json",
+        "Content-Profile": SCHEMA,
+        "Accept-Profile": SCHEMA,
     }
 
     payload = {
@@ -400,12 +404,12 @@ async def upsert_idea(
     client = get_http_client()
     response = await client.post(rpc_url, headers=headers, json=payload)
     response.raise_for_status()
-    result = response.json()
+    result = cast(Dict[str, Any], response.json())
 
     if not result or "idea" not in result:
         raise RuntimeError("Failed to upsert idea: no data returned from RPC")
 
-    idea = result["idea"]
+    idea = cast(Dict[str, Any], result["idea"])
     upsert_status = result.get("upsert_status", "unknown")
     idea["upsert_status"] = upsert_status
 
@@ -443,7 +447,8 @@ async def save_decomposed_creative(
     # Input validation
     creative_id = validate_uuid(creative_id, "creative_id")
     canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
-    transcript_id = validate_optional_uuid(transcript_id, "transcript_id")
+    # Note: transcript_id is accepted but not stored in DB (see comment below)
+    # Skip UUID validation since transcripts.id is bigint, not UUID
     payload = validate_dict_payload(payload, "payload")
 
     rest_url, supabase_key = _get_credentials()
@@ -467,7 +472,7 @@ async def save_decomposed_creative(
         json=decomposed,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         raise RuntimeError("Failed to save decomposed creative")
@@ -572,7 +577,7 @@ async def emit_event(
         json=event,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     return data[0] if data else event
 
@@ -610,21 +615,8 @@ async def save_transcript(
     read_headers = _get_headers(supabase_key)
 
     client = get_http_client()
-    # Idempotency check: if same assemblyai_transcript_id exists, return it
-    if assemblyai_transcript_id:
-        response = await client.get(
-            f"{rest_url}/transcripts"
-            f"?assemblyai_transcript_id=eq.{assemblyai_transcript_id}"
-            f"&select=*&limit=1",
-            headers=read_headers,
-        )
-        response.raise_for_status()
-        existing = response.json()
-        if existing:
-            activity.logger.info(
-                f"Transcript already exists for assemblyai_id={assemblyai_transcript_id}"
-            )
-            return existing[0]
+    # Note: assemblyai_transcript_id column doesn't exist in DB
+    # Idempotency handled via UNIQUE(creative_id, version) constraint
 
     # Get current max version for creative
     response = await client.get(
@@ -650,9 +642,6 @@ async def save_transcript(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    if assemblyai_transcript_id:
-        transcript["assemblyai_transcript_id"] = assemblyai_transcript_id
-
     # Use on_conflict for idempotent retry handling (Issue #579)
     # UNIQUE constraint: (creative_id, version)
     upsert_headers = {
@@ -665,7 +654,7 @@ async def save_transcript(
         json=transcript,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         # Conflict occurred (retry case) - fetch existing transcript
@@ -677,7 +666,7 @@ async def save_transcript(
             headers=read_headers,
         )
         response.raise_for_status()
-        existing = response.json()
+        existing = cast(list[Dict[str, Any]], response.json())
         if existing:
             activity.logger.info(
                 f"Transcript already exists (retry case) creative={creative_id}, version={next_version}"

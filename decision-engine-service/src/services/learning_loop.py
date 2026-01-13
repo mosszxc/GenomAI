@@ -16,8 +16,8 @@ import logging
 import os
 from src.core.http_client import get_http_client
 from datetime import datetime
-from typing import Any, Optional
-from dataclasses import dataclass
+from typing import Any, Optional, cast
+from dataclasses import dataclass, field
 
 from src.utils.errors import SupabaseError
 from src.utils.time_decay import time_decay, days_since
@@ -46,17 +46,12 @@ class LearningResult:
 
     processed_count: int = 0
     skipped_count: int = 0  # Issue #473: idempotency - already processed outcomes
-    updated_ideas: list[Any] | None = None
-    new_deaths: list[Any] | None = None
+    updated_ideas: list[str] = field(default_factory=list)
+    new_deaths: list[dict[Any, Any]] = field(default_factory=list)
     component_updates: int = 0
     premise_updates: int = 0
     fatigue_updates: int = 0  # Issue #237: track fatigue versioning
-    errors: list[Any] | None = None
-
-    def __post_init__(self) -> None:
-        self.updated_ideas = self.updated_ideas or []
-        self.new_deaths = self.new_deaths or []
-        self.errors = self.errors or []
+    errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -120,7 +115,7 @@ async def fetch_unprocessed_outcomes(limit: int = 100) -> list:
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(list[Any], response.json())
 
 
 async def fetch_last_processed_at() -> Optional[str]:
@@ -174,7 +169,7 @@ async def resolve_idea_for_outcome(outcome: dict) -> Optional[str]:
     data = response.json()
 
     if data and data[0].get("idea_id"):
-        return data[0]["idea_id"]
+        return cast(str, data[0]["idea_id"])
 
     # Fallback: extract from payload
     response = await client.get(
@@ -187,7 +182,7 @@ async def resolve_idea_for_outcome(outcome: dict) -> Optional[str]:
     if data and data[0].get("payload"):
         payload = data[0]["payload"]
         if isinstance(payload, dict):
-            return payload.get("idea_id")
+            return cast(Optional[str], payload.get("idea_id"))
 
     return None
 
@@ -286,7 +281,7 @@ async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(list[Any], response.json())
 
 
 def calculate_confidence_delta(cpa: float, outcome_date: str, env_ctx: Optional[dict]) -> float:
@@ -375,7 +370,7 @@ async def insert_confidence_version(
         },
     )
     response.raise_for_status()
-    return response.json()[0]
+    return cast(dict[Any, Any], response.json()[0])
 
 
 async def insert_fatigue_version(
@@ -401,7 +396,7 @@ async def insert_fatigue_version(
         },
     )
     response.raise_for_status()
-    return response.json()[0]
+    return cast(dict[Any, Any], response.json()[0])
 
 
 async def update_idea_death_state(idea_id: str, death_state: str) -> dict:
@@ -558,7 +553,7 @@ async def apply_learning_atomic_rpc(
     client = get_http_client()
     response = await client.post(rpc_url, headers=headers, json=payload)
     response.raise_for_status()
-    return response.json()
+    return cast(dict[Any, Any], response.json())
 
 
 async def process_single_outcome(outcome: dict) -> dict:

@@ -487,8 +487,8 @@ async def full_validation_for_promotion(
     if correlation_history:
         stability_check = check_correlation_stability(
             correlation_history,
-            STATISTICAL_RULES["stability_std_threshold"],
-            STATISTICAL_RULES["stability_min_windows"],
+            float(STATISTICAL_RULES["stability_std_threshold"]),
+            int(STATISTICAL_RULES["stability_min_windows"]),
         )
         checks.append(stability_check)
         if not stability_check.valid:

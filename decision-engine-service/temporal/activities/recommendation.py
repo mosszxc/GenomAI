@@ -10,7 +10,7 @@ Replaces n8n workflows:
 import os
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any, cast
 from dataclasses import dataclass
 
 from temporalio import activity
@@ -92,7 +92,7 @@ async def get_active_buyers() -> List[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(List[dict[str, Any]], response.json())
 
     activity.logger.info(f"Found {len(data)} active buyers")
     return data
@@ -148,7 +148,7 @@ async def generate_recommendation_for_buyer(
             type="RECOMMENDATION_ERROR",
         )
 
-    data = response.json()
+    data = cast(dict[str, Any], response.json())
 
     if not data.get("success"):
         raise ApplicationError(
@@ -156,7 +156,7 @@ async def generate_recommendation_for_buyer(
             type="RECOMMENDATION_ERROR",
         )
 
-    result = data["data"]
+    result = cast(dict[str, Any], data["data"])
     activity.logger.info(
         f"Generated recommendation {result['id']} for buyer {buyer_id} "
         f"(mode={result['mode']}, confidence={result['avg_confidence']:.2f})"
@@ -457,8 +457,8 @@ async def check_existing_daily_recommendation(buyer_id: str) -> Optional[str]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(List[dict[str, Any]], response.json())
 
     if data:
-        return data[0]["id"]
+        return cast(str, data[0]["id"])
     return None

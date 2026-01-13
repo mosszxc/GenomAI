@@ -425,10 +425,10 @@ async def select_top_combinations(
     Returns:
         List of module combinations
     """
-    combinations = []
-    used_hooks = set()
-    used_promises = set()
-    used_proofs = set()
+    combinations: List[Dict[str, Any]] = []
+    used_hooks: set[str] = set()
+    used_promises: set[str] = set()
+    used_proofs: set[str] = set()
 
     for _ in range(count):
         # Get more hooks to find unused ones
@@ -508,6 +508,6 @@ async def select_top_combinations(
         )
 
     # Sort by combined score
-    combinations.sort(key=lambda x: x["combined_score"], reverse=True)
+    combinations.sort(key=lambda x: float(x["combined_score"]), reverse=True)
 
     return combinations

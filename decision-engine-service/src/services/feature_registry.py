@@ -8,7 +8,7 @@ Issues: #303, #306
 """
 
 import os
-from typing import Optional
+from typing import Any, Optional, cast
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from src.core.http_client import get_http_client
@@ -175,7 +175,7 @@ async def list_features(status: Optional[str] = None) -> list[dict]:
     client = get_http_client()
     response = await client.get(url, headers=headers)
     response.raise_for_status()
-    return response.json()
+    return cast(list[dict[str, Any]], response.json())
 
 
 async def count_features(status: str) -> int:
@@ -474,10 +474,10 @@ async def get_feature_value(feature_name: str, entity_type: str, entity_id: str)
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
-        return data[0].get("value")
+        return cast(Optional[float], data[0].get("value"))
     return None
 
 

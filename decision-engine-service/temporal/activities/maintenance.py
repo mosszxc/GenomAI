@@ -15,7 +15,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 
 from temporalio import activity
 from temporalio.client import Client as TemporalClient
@@ -394,7 +394,7 @@ async def emit_maintenance_event(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    payload = {
+    payload: dict[str, Any] = {
         "recommendations_expired": recommendations_expired,
         "integrity_issues": issues_count,
     }
@@ -463,7 +463,7 @@ async def release_orphaned_agent_tasks(timeout_minutes: int = 10) -> int:
         activity.logger.warning(f"Error releasing orphaned tasks: {response.text}")
         return 0
 
-    released_count = response.json()
+    released_count = cast(int, response.json())
     if released_count > 0:
         activity.logger.warning(f"Released {released_count} orphaned agent tasks")
     else:
@@ -773,7 +773,7 @@ async def find_failed_creatives_for_retry(
     else:
         activity.logger.info("No failed creatives eligible for retry")
 
-    return failed_creatives
+    return cast(List[dict[str, Any]], failed_creatives)
 
 
 @activity.defn
@@ -912,10 +912,14 @@ async def check_staleness(input: CheckStalenessInput) -> dict:
 
 
 async def _get_temporal_client() -> TemporalClient:
-    """Get Temporal client for workflow operations."""
-    temporal_host = os.getenv("TEMPORAL_HOST", "localhost:7233")
-    namespace = os.getenv("TEMPORAL_NAMESPACE", "default")
-    return await TemporalClient.connect(temporal_host, namespace=namespace)
+    """Get Temporal client for workflow operations.
+
+    Uses the shared client from temporal/client.py which properly handles
+    both Temporal Cloud (with TLS/API key) and local development.
+    """
+    from temporal.client import get_temporal_client
+
+    return await get_temporal_client()
 
 
 @activity.defn

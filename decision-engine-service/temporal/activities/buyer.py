@@ -11,7 +11,7 @@ Activities for buyer management:
 import os
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Optional, List, cast
 from dataclasses import dataclass
 
 from temporalio import activity
@@ -228,7 +228,7 @@ async def update_buyer(input: UpdateBuyerInput) -> BuyerRecord:
     headers = _get_supabase_headers()
     base_url = _get_supabase_url()
 
-    update_data = {"updated_at": datetime.utcnow().isoformat()}
+    update_data: dict[str, Any] = {"updated_at": datetime.utcnow().isoformat()}
 
     if input.name is not None:
         update_data["name"] = input.name
@@ -282,7 +282,7 @@ async def send_telegram_message(
 
     activity.logger.info(f"Sending message to chat: {chat_id}")
 
-    payload = {
+    payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": parse_mode,
@@ -465,7 +465,7 @@ async def get_pending_imports(buyer_id: str, limit: int = 10) -> List[dict]:
         timeout=30.0,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(List[dict[str, Any]], response.json())
 
     activity.logger.info(f"Found {len(data)} pending imports")
     return data
@@ -498,7 +498,7 @@ async def get_pending_video_campaigns(buyer_id: str) -> List[dict]:
         timeout=30.0,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(List[dict[str, Any]], response.json())
 
     activity.logger.info(f"Found {len(data)} campaigns waiting for video")
     return data

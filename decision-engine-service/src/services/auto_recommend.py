@@ -15,6 +15,7 @@ Different from DailyRecommendationWorkflow:
 
 import os
 from dataclasses import dataclass, field
+from typing import Any, cast
 from src.core.http_client import get_http_client
 
 from src.services.correlation_discovery import (
@@ -141,7 +142,7 @@ async def get_component_learnings(
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(list[dict[Any, Any]], response.json())
 
 
 async def get_recent_usage() -> dict[tuple[str, str], int]:
@@ -318,9 +319,14 @@ async def generate_best_bet() -> BestBetRecommendation:
             best = scored_candidates[0]
 
             # Track fatigued components that were skipped
-            for cand in scored_candidates[1:]:
-                if cand.freshness_score <= 0.5 and cand.base_win_rate > best.base_win_rate:
-                    fatigued_components.append(f"{cand.component_value} ({cand.component_type})")
+            for scored_cand in scored_candidates[1:]:
+                if (
+                    scored_cand.freshness_score <= 0.5
+                    and scored_cand.base_win_rate > best.base_win_rate
+                ):
+                    fatigued_components.append(
+                        f"{scored_cand.component_value} ({scored_cand.component_type})"
+                    )
 
             # Track synergies and conflicts
             for reason in best.reasoning:

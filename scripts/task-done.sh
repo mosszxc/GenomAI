@@ -304,6 +304,60 @@ if [ "$NO_PR" != "true" ] && [ "$NO_MERGE" != "true" ] && [ -n "$PR_NUMBER" ]; t
 fi
 
 cd "$PROJECT_ROOT"
+
+# Merge PR to develop
+if [ "$NO_PR" != "true" ] && [ -n "$PR_URL" ]; then
+    echo ""
+    echo "Waiting for CI checks..."
+
+    # Wait for checks (timeout 5 min)
+    if gh pr checks "$BRANCH_NAME" --watch --fail-fast 2>/dev/null; then
+        echo "✓ CI checks passed"
+    else
+        echo "⚠️  CI checks failed or timed out"
+        echo "Fix issues and re-run, or merge manually: $PR_URL"
+        exit 1
+    fi
+
+    # Check for merge conflicts
+    MERGEABLE=$(gh pr view "$BRANCH_NAME" --json mergeable -q '.mergeable' 2>/dev/null || echo "UNKNOWN")
+    if [ "$MERGEABLE" = "CONFLICTING" ]; then
+        echo "❌ Merge conflicts detected!"
+        echo "Resolve conflicts manually: $PR_URL"
+        exit 1
+    fi
+
+    echo "Merging PR..."
+    if gh pr merge "$BRANCH_NAME" --squash --delete-branch 2>/dev/null; then
+        echo "✓ PR merged"
+    else
+        echo "⚠️  Could not auto-merge. Merge manually: $PR_URL"
+    fi
+fi
+
+# CRITICAL: Verify issue is closed (A014)
+echo ""
+echo "=== Verifying issue closed ==="
+sleep 2  # Give GitHub time to process
+ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
+
+if [ "$ISSUE_STATE" = "CLOSED" ]; then
+    echo "✓ Issue #$ISSUE_NUM is CLOSED"
+else
+    echo "⚠️  Issue #$ISSUE_NUM is still $ISSUE_STATE"
+    echo "Closing issue..."
+    gh issue close "$ISSUE_NUM" --comment "Closed via task-done.sh" 2>/dev/null || true
+
+    # Verify again
+    ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
+    if [ "$ISSUE_STATE" = "CLOSED" ]; then
+        echo "✓ Issue #$ISSUE_NUM is now CLOSED"
+    else
+        echo "❌ FAILED to close issue #$ISSUE_NUM - close manually!"
+        exit 1
+    fi
+fi
+
 echo ""
 echo "=== Done ==="
 if [ "$NO_MERGE" = "true" ]; then

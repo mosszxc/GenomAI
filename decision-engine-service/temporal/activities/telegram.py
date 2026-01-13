@@ -9,7 +9,7 @@ import asyncio
 import os
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, List, Optional, cast
 
 import httpx
 from temporalio import activity
@@ -36,12 +36,12 @@ def _should_retry(status_code: int, error_code: Optional[int] = None) -> bool:
     return False
 
 
-def _get_retry_delay(attempt: int, retry_after: Optional[int] = None) -> float:
+def _get_retry_delay(attempt: int, retry_after: Optional[float] = None) -> float:
     """Calculate delay before next retry with exponential backoff."""
     if retry_after:
-        return min(float(retry_after), TELEGRAM_MAX_DELAY)
+        return min(retry_after, TELEGRAM_MAX_DELAY)
     # Exponential backoff: 1s, 2s, 4s, ...
-    delay = TELEGRAM_BASE_DELAY * (2**attempt)
+    delay: float = TELEGRAM_BASE_DELAY * (2**attempt)
     return min(delay, TELEGRAM_MAX_DELAY)
 
 
@@ -269,12 +269,12 @@ async def get_buyer_chat_id(buyer_id: str) -> Optional[str]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(List[dict[str, Any]], response.json())
 
     if not data:
         return None
 
-    return data[0].get("telegram_id")
+    return cast(Optional[str], data[0].get("telegram_id"))
 
 
 @activity.defn
@@ -314,7 +314,7 @@ async def update_hypothesis_delivery_status(
     }
 
     if message_id:
-        update_data["telegram_message_id"] = message_id
+        update_data["telegram_message_id"] = str(message_id)
 
     if error:
         update_data["delivery_error"] = error

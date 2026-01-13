@@ -146,12 +146,12 @@ async def list_schedules() -> ScheduleListResponse:
             cron_str = definition.get("cron")
 
             # Get timing info
-            last_run = None
-            if info.recent_actions:
+            last_run: Optional[str] = None
+            if info and info.recent_actions:
                 last_run = info.recent_actions[0].started_at.isoformat()
 
-            next_run = None
-            if info.next_action_times:
+            next_run: Optional[str] = None
+            if info and info.next_action_times:
                 next_run = info.next_action_times[0].isoformat()
 
             # Status: active if has next_run scheduled

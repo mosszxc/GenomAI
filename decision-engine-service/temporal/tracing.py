@@ -28,17 +28,29 @@ Usage in activities:
 
 import logging
 import sys
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import structlog
 from structlog.typing import EventDict, WrappedLogger
 
 
 def _add_timestamp(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
-    """Add ISO timestamp to log events."""
-    import datetime
+    """Add ISO timestamp to log events.
 
-    event_dict["timestamp"] = datetime.datetime.utcnow().isoformat() + "Z"
+    Note: In Temporal workflow context, we use workflow.now() for determinism.
+    Outside workflow context, we use datetime.now(timezone.utc).
+    """
+    try:
+        from temporalio import workflow
+
+        # Check if we're in a workflow context
+        workflow.info()  # Raises if not in workflow
+        event_dict["timestamp"] = workflow.now().isoformat() + "Z"
+    except Exception:
+        # Not in workflow context - use standard datetime
+        from datetime import datetime, timezone
+
+        event_dict["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     return event_dict
 
 
@@ -81,7 +93,7 @@ def configure_structlog(json_output: bool = True) -> None:
         processors.append(structlog.dev.ConsoleRenderer(colors=True))
 
     structlog.configure(
-        processors=processors,
+        processors=processors,  # type: ignore[arg-type]
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -124,7 +136,7 @@ def get_workflow_logger(**context: Any) -> structlog.stdlib.BoundLogger:
     }
     bound_context.update(context)
 
-    return structlog.get_logger().bind(**bound_context)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger().bind(**bound_context))
 
 
 def get_activity_logger(**context: Any) -> structlog.stdlib.BoundLogger:
@@ -161,7 +173,7 @@ def get_activity_logger(**context: Any) -> structlog.stdlib.BoundLogger:
 
     bound_context.update(context)
 
-    return structlog.get_logger().bind(**bound_context)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger().bind(**bound_context))
 
 
 def get_logger(name: Optional[str] = None, **context: Any) -> structlog.stdlib.BoundLogger:
@@ -183,8 +195,8 @@ def get_logger(name: Optional[str] = None, **context: Any) -> structlog.stdlib.B
     """
     logger = structlog.get_logger(name) if name else structlog.get_logger()
     if context:
-        return logger.bind(**context)
-    return logger
+        return cast(structlog.stdlib.BoundLogger, logger.bind(**context))
+    return cast(structlog.stdlib.BoundLogger, logger)
 
 
 class WorkflowLoggerMixin:
