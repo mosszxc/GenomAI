@@ -455,31 +455,44 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
     """
     Check if user has active onboarding workflow.
 
-    Returns workflow ID if found.
+    Returns workflow ID if found and workflow is still running.
+    Uses describe() first to check status, avoiding Nondeterminism errors
+    on completed workflows.
     """
     try:
         client = await get_temporal_client()
-
-        # Try to query the workflow
         workflow_id = f"onboarding-{telegram_id}"
 
         try:
             handle = client.get_workflow_handle(workflow_id)
+
+            # First check if workflow is still running via describe()
+            # This avoids Nondeterminism errors when querying completed workflows
+            desc = await handle.describe()
+            status = desc.status
+
+            # WorkflowExecutionStatus enum: RUNNING=1, COMPLETED=2, FAILED=3, etc.
+            # Only query if workflow is still running
+            if status.name != "RUNNING":
+                return None
+
+            # Workflow is running - now safe to query state
             state = await handle.query("get_state")
 
             # If state is not completed/cancelled/timed_out, workflow is active
             if state not in ["COMPLETED", "CANCELLED", "TIMED_OUT"]:
                 return workflow_id
+
         except RPCError as e:
             if e.status == RPCStatusCode.NOT_FOUND:
-                # Expected - workflow doesn't exist or completed
+                # Expected - workflow doesn't exist
                 pass
             else:
-                # Unexpected RPC error - log but assume workflow inactive to avoid deadlock
-                logger.warning(f"RPC error querying workflow {workflow_id}: {e}")
+                # Unexpected RPC error - log but assume workflow inactive
+                logger.warning(f"RPC error checking workflow {workflow_id}: {e}")
         except Exception as e:
             # Unexpected error - log but assume workflow inactive to avoid deadlock
-            logger.error(f"Unexpected error querying workflow {workflow_id}: {e}")
+            logger.error(f"Unexpected error checking workflow {workflow_id}: {e}")
 
         return None
     except Exception as e:
