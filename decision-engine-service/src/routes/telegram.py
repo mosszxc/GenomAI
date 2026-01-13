@@ -619,6 +619,65 @@ async def log_buyer_interaction(
         record_handler_error(e, "Failed to log buyer interaction")
 
 
+# Core variables from VISION.md for component analysis
+CORE_COMPONENT_VARS = [
+    "hook_mechanism",
+    "angle_type",
+    "message_structure",
+    "ump_type",
+    "promise_type",
+    "proof_type",
+    "cta_style",
+]
+
+
+async def _get_best_component(
+    client: Any,
+    headers: dict[str, str],
+    sb: Any,
+    creatives: list[dict[str, Any]],
+) -> str | None:
+    """Find the most common component in winning creatives.
+
+    Returns the component value (e.g., "fear", "curiosity") or None if no data.
+    """
+    # Get IDs of winning creatives
+    winning_ids = [c["id"] for c in creatives if c.get("test_result") == "win"]
+    if not winning_ids:
+        return None
+
+    # Get decomposed_creatives for winners
+    ids_str = ",".join(f'"{cid}"' for cid in winning_ids)
+    try:
+        resp = await client.get(
+            f"{sb.rest_url}/decomposed_creatives?creative_id=in.({ids_str})&select=payload",
+            headers=headers,
+        )
+        decomposed = safe_json_response(resp, "Get decomposed for best component", [])
+    except Exception as e:
+        logger.warning(f"Failed to get decomposed creatives: {e}")
+        return None
+
+    if not decomposed:
+        return None
+
+    # Count component occurrences across all winning creatives
+    component_counts: dict[str, int] = {}
+    for row in decomposed:
+        payload = row.get("payload") or {}
+        for var in CORE_COMPONENT_VARS:
+            value = payload.get(var)
+            if value and isinstance(value, str):
+                component_counts[value] = component_counts.get(value, 0) + 1
+
+    if not component_counts:
+        return None
+
+    # Return most common component
+    best = max(component_counts, key=lambda k: component_counts[k])
+    return best
+
+
 async def handle_stats_command(message: TelegramMessage) -> None:
     """Handle /stats command - show user stats."""
 
@@ -699,16 +758,37 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         roi = ((total_revenue - total_spend) / total_spend * 100) if total_spend > 0 else 0
         roi_sign = "+" if roi >= 0 else ""
 
-        stats_message = (
-            f"📊 <b>Твоя статистика:</b>\n\n"
-            f"Креативов: {total}\n"
-            f"✅ Побед: {wins} ({win_rate:.0f}%)\n"
-            f"❌ Поражений: {losses}\n"
-            f"⏳ Тестируется: {testing}\n\n"
-            f"ROI: {roi_sign}{roi:.1f}%\n"
-            f"Расход: ${total_spend:.0f}\n"
-            f"Доход: ${total_revenue:.0f}"
-        )
+        # Get best component from winning creatives
+        best_component = await _get_best_component(client, headers, sb, creatives)
+
+        # Build stats message with tree structure
+        stats_lines = [
+            "📊 <b>Твоя статистика</b>\n",
+            f"Креативов: {total}",
+            f"├─ ✅ Побед: {wins} ({win_rate:.0f}%)",
+            f"├─ ❌ Поражений: {losses}",
+            f"└─ ⏳ Тестируется: {testing}",
+        ]
+
+        # Add recommendation if we have winning creatives and best component
+        if best_component:
+            stats_lines.append("")
+            stats_lines.append(
+                f"💡 <b>Совет:</b> Твой лучший компонент — «{best_component}».\n"
+                "   Используй его чаще для повышения win rate."
+            )
+
+        # Add ROI with context
+        if total_spend > 0:
+            stats_lines.append("")
+            stats_lines.append(
+                f"ROI: {roi_sign}{roi:.1f}% (${total_revenue:.0f} / ${total_spend:.0f})"
+            )
+        else:
+            stats_lines.append("")
+            stats_lines.append("ROI: — (ещё нет данных о расходах)")
+
+        stats_message = "\n".join(stats_lines)
 
         await send_telegram_message(message.chat_id, stats_message)
 
