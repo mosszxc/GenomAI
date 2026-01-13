@@ -2791,8 +2791,11 @@ async def handle_user_message(message: TelegramMessage) -> None:
     """Handle regular user message - signal to active workflow."""
     from temporal.models.buyer import BuyerMessage
 
+    logger.info(f"handle_user_message: processing message from {message.user_id}")
+
     # Check for active onboarding workflow
     active_workflow = await check_active_onboarding(message.user_id)
+    logger.info(f"handle_user_message: active_workflow={active_workflow}")
 
     if active_workflow:
         try:
@@ -2817,8 +2820,10 @@ async def handle_user_message(message: TelegramMessage) -> None:
             record_handler_error(e, "Failed to signal workflow")
 
     # No active workflow - check if it's a video URL
+    logger.info("handle_user_message: checking for video URL in text")
     if message.text:
         video_url = extract_video_url(message.text)
+        logger.info(f"handle_user_message: extracted video_url={video_url}")
         if video_url:
             await handle_video_url(message, video_url)
             return
