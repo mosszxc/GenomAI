@@ -399,7 +399,7 @@ async def get_campaigns_by_source(
     metrics_payload = {
         "range": {"from": date_from, "to": date_to, "timezone": "UTC"},
         "dimensions": ["campaign_id"],
-        "measures": ["clicks", "sales", "revenue", "cost", "profit"],
+        "measures": ["clicks", "sales", "confirmed_revenue", "cost", "confirmed_profit"],
     }
 
     try:
@@ -426,7 +426,7 @@ async def get_campaigns_by_source(
                     metrics_by_id[cid] = {
                         "clicks": safe_int(row.get("clicks", 0)),
                         "conversions": safe_int(row.get("sales", 0)),  # Keitaro uses "sales"
-                        "revenue": safe_float(row.get("revenue", 0.0)),
+                        "revenue": safe_float(row.get("confirmed_revenue", 0.0)),
                         "cost": safe_float(row.get("cost", 0.0)),
                     }
 
