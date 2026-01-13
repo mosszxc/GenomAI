@@ -126,6 +126,20 @@ def safe_json_response(
         return default
 
 
+def record_handler_error(error: Exception, context: str) -> None:
+    """Log handler error and record in webhook stats for unified monitoring.
+
+    Use this instead of plain logger.error() in handler except blocks
+    to ensure all errors are tracked in webhook_error_stats.
+
+    Args:
+        error: The exception that occurred
+        context: Description of what failed (e.g., "Failed to get stats")
+    """
+    logger.error(f"{context}: {error}")
+    webhook_error_stats.record_error(error)
+
+
 # Callback data validation constants
 CALLBACK_DATA_MAX_LENGTH = 64  # Telegram limit
 CALLBACK_DATA_PATTERN = re.compile(r"^[a-z_]+_[a-zA-Z0-9\-]+$")
@@ -550,7 +564,7 @@ async def handle_start_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to start onboarding: {e}")
+        record_handler_error(e, "Failed to start onboarding")
         await send_telegram_message(
             message.chat_id,
             "Не удалось начать регистрацию. Попробуйте позже.",
@@ -602,7 +616,7 @@ async def log_buyer_interaction(
             timeout=10.0,
         )
     except Exception as e:
-        logger.error(f"Failed to log buyer interaction: {e}")
+        record_handler_error(e, "Failed to log buyer interaction")
 
 
 async def handle_stats_command(message: TelegramMessage) -> None:
@@ -716,7 +730,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to get stats: {e}")
+        record_handler_error(e, "Failed to get stats")
         await send_telegram_message(message.chat_id, "Не удалось загрузить статистику.")
 
 
@@ -898,7 +912,7 @@ async def handle_genome_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to generate genome heatmap: {e}")
+        record_handler_error(e, "Failed to generate genome heatmap")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось сгенерировать матрицу: {str(e)[:100]}",
@@ -962,7 +976,7 @@ async def handle_confidence_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось рассчитать доверительные интервалы: {e}")
+        record_handler_error(e, "Failed to calculate confidence intervals")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось рассчитать доверительные интервалы: {str(e)[:100]}",
@@ -1017,7 +1031,7 @@ async def handle_trends_command(message: TelegramMessage) -> None:
             )
 
     except Exception as e:
-        logger.error(f"Failed to generate trends chart: {e}")
+        record_handler_error(e, "Failed to generate trends chart")
         await send_telegram_message(message.chat_id, "Не удалось создать график.")
 
 
@@ -1109,7 +1123,7 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось запустить симуляцию: {e}")
+        record_handler_error(e, "Failed to run simulation")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось запустить симуляцию: {str(e)[:100]}",
@@ -1183,7 +1197,7 @@ async def handle_drift_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось обнаружить дрифт: {e}")
+        record_handler_error(e, "Failed to detect drift")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось обнаружить дрифт: {str(e)[:100]}",
@@ -1237,7 +1251,7 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось найти корреляции: {e}")
+        record_handler_error(e, "Failed to find correlations")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось найти корреляции: {str(e)[:100]}",
@@ -1298,7 +1312,7 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось сгенерировать рекомендацию: {e}")
+        record_handler_error(e, "Failed to generate recommendation")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось сгенерировать рекомендацию: {str(e)[:100]}",
@@ -1373,7 +1387,7 @@ async def handle_meta_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось сгенерировать Meta Dashboard: {e}")
+        record_handler_error(e, "Failed to generate Meta Dashboard")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось сгенерировать дашборд: {str(e)[:100]}",
@@ -1474,7 +1488,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines), keyboard)
 
     except Exception as e:
-        logger.error(f"Failed to get buyers: {e}")
+        record_handler_error(e, "Failed to get buyers")
         await send_telegram_message(message.chat_id, "Не удалось загрузить баеров.")
 
 
@@ -1543,7 +1557,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get activity: {e}")
+        record_handler_error(e, "Failed to get activity")
         await send_telegram_message(message.chat_id, "Не удалось загрузить активность.")
 
 
@@ -1626,7 +1640,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
         await send_telegram_message(chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get chat history: {e}")
+        record_handler_error(e, "Failed to get chat history")
         await send_telegram_message(chat_id, "Не удалось загрузить переписку.")
 
 
@@ -1687,7 +1701,7 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get decisions: {e}")
+        record_handler_error(e, "Failed to get decisions")
         await send_telegram_message(message.chat_id, "Не удалось загрузить решения.")
 
 
@@ -1750,7 +1764,7 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get creatives: {e}")
+        record_handler_error(e, "Failed to get creatives")
         await send_telegram_message(message.chat_id, "Не удалось загрузить креативы.")
 
 
@@ -1810,7 +1824,7 @@ async def handle_status_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, status_message)
 
     except Exception as e:
-        logger.error(f"Failed to get status: {e}")
+        record_handler_error(e, "Failed to get status")
         await send_telegram_message(message.chat_id, "Не удалось загрузить статус.")
 
 
@@ -1861,7 +1875,7 @@ async def handle_errors_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get errors: {e}")
+        record_handler_error(e, "Failed to get errors")
         await send_telegram_message(message.chat_id, "Не удалось загрузить ошибки.")
 
 
@@ -1980,7 +1994,7 @@ async def handle_pending_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get pending hypotheses: {e}")
+        record_handler_error(e, "Failed to get pending hypotheses")
         await send_telegram_message(message.chat_id, "Не удалось загрузить гипотезы на ревью.")
 
 
@@ -2046,7 +2060,7 @@ async def handle_approve_command(message: TelegramMessage) -> None:
             await send_telegram_message(message.chat_id, "Ошибка при обновлении статуса.")
 
     except Exception as e:
-        logger.error(f"Failed to approve hypothesis: {e}")
+        record_handler_error(e, "Failed to approve hypothesis")
         await send_telegram_message(message.chat_id, f"Ошибка: {str(e)[:100]}")
 
 
@@ -2111,7 +2125,7 @@ async def handle_reject_command(message: TelegramMessage) -> None:
             await send_telegram_message(message.chat_id, "Ошибка при обновлении статуса.")
 
     except Exception as e:
-        logger.error(f"Failed to reject hypothesis: {e}")
+        record_handler_error(e, "Failed to reject hypothesis")
         await send_telegram_message(message.chat_id, f"Ошибка: {str(e)[:100]}")
 
 
@@ -2139,7 +2153,7 @@ async def notify_admin(event_type: str, data: dict) -> None:
         try:
             await send_telegram_message(admin_id, message)
         except Exception as e:
-            logger.error(f"Failed to notify admin {admin_id}: {e}")
+            record_handler_error(e, f"Failed to notify admin {admin_id}")
 
 
 def format_admin_notification(event_type: str, data: dict) -> str:
@@ -2227,7 +2241,7 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
             )
 
     except Exception as e:
-        logger.error(f"Failed to get knowledge extractions: {e}")
+        record_handler_error(e, "Failed to get knowledge extractions")
         await send_telegram_message(message.chat_id, "Не удалось загрузить извлечения.")
 
 
@@ -2476,7 +2490,7 @@ async def handle_document_upload(message: TelegramMessage) -> None:
         logger.info(f"Started knowledge ingestion: {workflow_id}")
 
     except Exception as e:
-        logger.error(f"Failed to process document: {e}")
+        record_handler_error(e, "Failed to process document")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось обработать файл: {str(e)[:100]}",
@@ -2579,7 +2593,7 @@ async def handle_extraction_approve(
         logger.info(f"Started knowledge application: {workflow_id}")
 
     except Exception as e:
-        logger.error(f"Failed to approve extraction: {e}")
+        record_handler_error(e, "Failed to approve extraction")
         await send_telegram_message(chat_id, f"Не удалось одобрить: {str(e)[:100]}")
 
 
@@ -2628,7 +2642,7 @@ async def handle_extraction_reject(
         logger.info(f"Rejected extraction: {extraction_id}")
 
     except Exception as e:
-        logger.error(f"Failed to reject extraction: {e}")
+        record_handler_error(e, "Failed to reject extraction")
         await send_telegram_message(chat_id, f"Не удалось отклонить: {str(e)[:100]}")
 
 
@@ -2686,7 +2700,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
         logger.info(f"Started creative registration: {workflow_id}")
 
     except Exception as e:
-        logger.error(f"Failed to register creative: {e}")
+        record_handler_error(e, "Failed to register creative")
         await send_telegram_message(
             message.chat_id, "Не удалось обработать видео. Попробуйте снова."
         )
@@ -2719,7 +2733,7 @@ async def handle_user_message(message: TelegramMessage) -> None:
             return
 
         except Exception as e:
-            logger.error(f"Failed to signal workflow: {e}")
+            record_handler_error(e, "Failed to signal workflow")
 
     # No active workflow - check if it's a video URL
     if message.text:
