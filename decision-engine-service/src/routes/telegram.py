@@ -25,6 +25,7 @@ from src.utils.parsing import safe_float
 from temporal.models.buyer import VALID_GEOS
 from src.core.http_client import get_http_client
 from src.core.supabase import get_supabase
+from temporalio.service import RPCError, RPCStatusCode
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -387,9 +388,16 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
             # If state is not completed/cancelled/timed_out, workflow is active
             if state not in ["COMPLETED", "CANCELLED", "TIMED_OUT"]:
                 return workflow_id
-        except Exception:
-            # Workflow doesn't exist or completed
-            pass
+        except RPCError as e:
+            if e.status == RPCStatusCode.NOT_FOUND:
+                # Expected - workflow doesn't exist or completed
+                pass
+            else:
+                # Unexpected RPC error - log but assume workflow inactive to avoid deadlock
+                logger.warning(f"RPC error querying workflow {workflow_id}: {e}")
+        except Exception as e:
+            # Unexpected error - log but assume workflow inactive to avoid deadlock
+            logger.error(f"Unexpected error querying workflow {workflow_id}: {e}")
 
         return None
     except Exception as e:
