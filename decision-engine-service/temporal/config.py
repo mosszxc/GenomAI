@@ -168,7 +168,7 @@ def get_settings() -> Settings:
 
 
 def __getattr__(name: str):
-    """Lazy loading for backward compatibility with `from temporal.config import settings`."""
+    """Lazy attr access for backward compatibility with `from temporal.config import settings`."""
     if name == "settings":
         return get_settings()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
