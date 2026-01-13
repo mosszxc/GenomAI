@@ -455,7 +455,8 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
     """
     Check if user has active onboarding workflow.
 
-    Returns workflow ID if found.
+    Returns workflow ID if found, None if not found or workflow was terminated
+    due to nondeterminism error (fix #694).
     """
     try:
         client = await get_temporal_client()
@@ -475,16 +476,45 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
                 # Expected - workflow doesn't exist or completed
                 pass
             else:
-                # Unexpected RPC error - log but assume workflow inactive to avoid deadlock
-                logger.warning(f"RPC error querying workflow {workflow_id}: {e}")
+                # Fix #694: RPC error (likely nondeterminism) - terminate and continue
+                logger.warning(f"RPC error querying workflow {workflow_id}, terminating: {e}")
+                await _terminate_stale_workflow(client, workflow_id, str(e))
         except Exception as e:
-            # Unexpected error - log but assume workflow inactive to avoid deadlock
-            logger.error(f"Unexpected error querying workflow {workflow_id}: {e}")
+            # Fix #694: Unexpected error - terminate stale workflow to unblock user
+            error_msg = str(e)
+            if "nondeterminism" in error_msg.lower() or "does not handle" in error_msg.lower():
+                logger.warning(
+                    f"Nondeterminism detected in workflow {workflow_id}, terminating: {e}"
+                )
+                await _terminate_stale_workflow(client, workflow_id, error_msg)
+            else:
+                logger.error(f"Unexpected error querying workflow {workflow_id}: {e}")
 
         return None
     except Exception as e:
         logger.error(f"Error checking active onboarding: {e}")
         return None
+
+
+async def _terminate_stale_workflow(client, workflow_id: str, reason: str) -> None:
+    """
+    Terminate a stale workflow that has nondeterminism or other unrecoverable errors.
+
+    Fix #694: When workflow code changes after deploy, running workflows may become
+    incompatible and block user operations. Terminating them allows users to continue.
+    """
+    try:
+        handle = client.get_workflow_handle(workflow_id)
+        await handle.terminate(reason=f"Auto-terminated: {reason[:200]}")
+        logger.info(f"Terminated stale workflow {workflow_id}")
+    except RPCError as e:
+        if e.status == RPCStatusCode.NOT_FOUND:
+            # Already gone - that's fine
+            pass
+        else:
+            logger.error(f"Failed to terminate workflow {workflow_id}: {e}")
+    except Exception as e:
+        logger.error(f"Failed to terminate workflow {workflow_id}: {e}")
 
 
 # Maximum input length for regex operations (ReDoS protection)
