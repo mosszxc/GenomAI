@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 from src.utils.errors import SupabaseError
 from src.utils.time_decay import time_decay, days_since
 from src.utils.environment import apply_environment_weight
-from src.services.component_learning import process_component_learnings
-from src.services.premise_learning import process_premise_learning
+from src.services.component_learning import prepare_component_updates
+from src.services.premise_learning import prepare_premise_updates
 from src.services.features.component_pair_winrate import compute_and_store_for_idea
 
 
@@ -556,6 +556,83 @@ async def apply_learning_atomic_rpc(
     return cast(dict[Any, Any], response.json())
 
 
+async def apply_learning_complete_atomic_rpc(
+    idea_id: str,
+    outcome_id: str,
+    new_confidence: float,
+    confidence_version: int,
+    old_confidence: float,
+    delta: float,
+    new_fatigue: float,
+    fatigue_version: int,
+    death_state: Optional[str] = None,
+    component_updates: Optional[list[dict]] = None,
+    premise_updates: Optional[list[dict]] = None,
+) -> dict:
+    """
+    Apply all learning operations atomically using RPC.
+
+    Issue #732: Extends apply_learning_atomic to include component and premise
+    learnings in the same transaction. Either all succeed or all rollback.
+
+    Includes:
+    1. Core learning (confidence, fatigue, death_state, mark processed, event)
+    2. Component learnings batch upsert
+    3. Premise learnings upsert
+
+    Args:
+        idea_id: Idea UUID
+        outcome_id: Outcome UUID being processed
+        new_confidence: New confidence value
+        confidence_version: New version number
+        old_confidence: Previous confidence value
+        delta: Confidence change
+        new_fatigue: New fatigue value
+        fatigue_version: New fatigue version number
+        death_state: Optional death state to set
+        component_updates: List of component learning updates (JSONB)
+        premise_updates: List of premise learning updates (JSONB)
+
+    Returns:
+        RPC result dict
+
+    Raises:
+        SupabaseError: If RPC call fails
+    """
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise SupabaseError("Missing Supabase credentials")
+
+    rpc_url = f"{supabase_url}/rest/v1/rpc/apply_learning_complete_atomic"
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "p_idea_id": idea_id,
+        "p_outcome_id": outcome_id,
+        "p_new_confidence": float(new_confidence),
+        "p_confidence_version": confidence_version,
+        "p_old_confidence": float(old_confidence),
+        "p_delta": float(delta),
+        "p_new_fatigue": float(new_fatigue),
+        "p_fatigue_version": fatigue_version,
+        "p_death_state": death_state,
+        "p_component_updates": component_updates,
+        "p_premise_updates": premise_updates,
+    }
+
+    client = get_http_client()
+    response = await client.post(rpc_url, headers=headers, json=payload)
+    response.raise_for_status()
+    return cast(dict[Any, Any], response.json())
+
+
 async def process_single_outcome(outcome: dict) -> dict:
     """
     Process a single outcome and apply learning.
@@ -614,10 +691,41 @@ async def process_single_outcome(outcome: dict) -> dict:
     recent_outcomes = await get_recent_outcomes_for_idea(idea_id)
     death_state = check_death_condition(recent_outcomes)
 
-    # Issue #576: Apply all learning operations atomically via RPC
-    # This ensures: confidence + fatigue + death_state + mark_processed + event
-    # are all committed together or rolled back together
-    await apply_learning_atomic_rpc(
+    # Issue #732: Prepare component/premise updates BEFORE atomic RPC
+    # This ensures all learning operations are in same transaction
+    component_updates: list[dict] = []
+    premise_updates: list[dict] = []
+    component_result: Optional[dict] = None
+    premise_result: Optional[dict] = None
+
+    if creative_id:
+        try:
+            component_updates = await prepare_component_updates(
+                creative_id=creative_id,
+                cpa=cpa,
+                spend=spend,
+                revenue=0,  # Revenue not tracked in outcome_aggregates yet
+            )
+        except Exception as e:
+            logger.warning(f"Failed to prepare component updates: {e}")
+            component_result = {"error": str(e)}
+
+        try:
+            premise_updates = await prepare_premise_updates(
+                creative_id=creative_id,
+                cpa=cpa,
+                spend=spend,
+                revenue=0,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to prepare premise updates: {e}")
+            premise_result = {"error": str(e)}
+
+    # Issue #732: Apply ALL learning operations atomically via RPC
+    # This ensures: confidence + fatigue + death_state + component_learnings +
+    # premise_learnings + mark_processed + event are all committed together
+    # or rolled back together
+    rpc_result = await apply_learning_complete_atomic_rpc(
         idea_id=idea_id,
         outcome_id=outcome_id,
         new_confidence=new_confidence,
@@ -627,32 +735,24 @@ async def process_single_outcome(outcome: dict) -> dict:
         new_fatigue=new_fatigue,
         fatigue_version=new_fatigue_version,
         death_state=death_state,
+        component_updates=component_updates if component_updates else None,
+        premise_updates=premise_updates if premise_updates else None,
     )
 
-    # Process component learnings (issue #122)
-    component_result = None
-    if creative_id:
-        try:
-            component_result = await process_component_learnings(
-                creative_id=creative_id,
-                cpa=cpa,
-                spend=spend,
-                revenue=0,  # Revenue not tracked in outcome_aggregates yet
-            )
-        except Exception as e:
-            component_result = {"error": str(e)}
-
-    # Process premise learnings (issue #167)
-    premise_result = None
-    if creative_id:
-        try:
-            premise_result = await process_premise_learning(
-                creative_id=creative_id, cpa=cpa, spend=spend, revenue=0
-            )
-        except Exception as e:
-            premise_result = {"error": str(e)}
+    # Build component/premise result from RPC response
+    if component_result is None:
+        component_result = {
+            "components_updated": len(component_updates),
+            "rpc_result": rpc_result.get("component_learnings"),
+        }
+    if premise_result is None:
+        premise_result = {
+            "premises_updated": len(premise_updates),
+            "rpc_result": rpc_result.get("premise_learnings"),
+        }
 
     # Compute component pair winrate feature (issue #304)
+    # Note: This is a derived feature computation, not critical for data consistency
     pair_winrate_result = None
     try:
         pair_winrate_result = await compute_and_store_for_idea(idea_id)
