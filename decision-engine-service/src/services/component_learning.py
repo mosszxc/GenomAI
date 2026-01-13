@@ -13,10 +13,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
-from temporal.models.validators import (
-    validate_uuid,
-    validate_safe_string,
-)
+from temporal.models.validators import validate_uuid
 
 
 SCHEMA = "genomai"
@@ -207,9 +204,10 @@ async def batch_upsert_component_learnings(
     updates: list[ComponentUpdate],
 ) -> dict:
     """
-    Batch upsert multiple component learning records (O(1) instead of O(n)).
+    Batch upsert multiple component learning records atomically.
 
-    Issue #577: Replaces N individual upserts with batch operations.
+    Issue #546: Uses PostgreSQL ON CONFLICT DO UPDATE via RPC to fix TOCTOU race condition.
+    Issue #577: Batch operations (O(1) instead of O(n)).
 
     Args:
         updates: List of ComponentUpdate objects to process
@@ -224,8 +222,8 @@ async def batch_upsert_component_learnings(
     headers = _get_headers(supabase_key, for_write=True)
     client = get_http_client()
 
-    # Build unique keys for all updates
-    update_keys = {}
+    # Build unique keys and merge duplicates in same batch
+    update_keys: dict[str, ComponentUpdate] = {}
     for u in updates:
         key = _build_component_key(u.component_type, u.component_value, u.geo, u.avatar_id)
         if key not in update_keys:
@@ -243,104 +241,40 @@ async def batch_upsert_component_learnings(
                 revenue=existing.revenue + u.revenue,
             )
 
-    # Extract unique component_type/component_value pairs for batch lookup
-    type_value_pairs = list({(u.component_type, u.component_value) for u in update_keys.values()})
+    # Build payload for atomic RPC upsert
+    rpc_payload = []
+    for update in update_keys.values():
+        rpc_payload.append(
+            {
+                "component_type": update.component_type,
+                "component_value": update.component_value,
+                "geo": update.geo if update.geo else None,
+                "avatar_id": str(update.avatar_id) if update.avatar_id else None,
+                "sample_size": 1,
+                "win_count": 1 if update.was_win else 0,
+                "loss_count": 0 if update.was_win else 1,
+                "total_spend": float(update.spend),
+                "total_revenue": float(update.revenue),
+            }
+        )
 
-    # Batch fetch existing records (O(1) query)
-    # Use OR conditions for type/value pairs
-    # Validate all values before building query to prevent URL injection
-    or_conditions = []
-    for comp_type, comp_value in type_value_pairs:
-        # Validate component values before interpolation
-        safe_type = validate_safe_string(comp_type, "component_type")
-        safe_value = validate_safe_string(comp_value, "component_value")
-        or_conditions.append(f"and(component_type.eq.{safe_type},component_value.eq.{safe_value})")
-
-    response = await client.get(
-        f"{rest_url}/component_learnings"
-        f"?or=({','.join(or_conditions)})"
-        "&select=id,component_type,component_value,geo,avatar_id,"
-        "sample_size,win_count,loss_count,total_spend,total_revenue",
-        headers=_get_headers(supabase_key),
+    # Call atomic upsert RPC (fixes TOCTOU race condition)
+    response = await client.post(
+        f"{rest_url}/rpc/upsert_component_learnings_batch",
+        headers=headers,
+        json={"p_updates": rpc_payload},
     )
     response.raise_for_status()
-    existing_records = response.json()
+    data = response.json()
 
-    # Build lookup map for existing records
-    existing_map = {}
-    for rec in existing_records:
-        key = _build_component_key(
-            rec["component_type"],
-            rec["component_value"],
-            rec.get("geo"),
-            rec.get("avatar_id"),
-        )
-        existing_map[key] = rec
+    # RPC returns array with single row containing inserted/updated counts
+    if data and len(data) > 0:
+        return {
+            "inserted": data[0].get("inserted", 0),
+            "updated": data[0].get("updated", 0),
+        }
 
-    # Separate into inserts and updates
-    to_insert = []
-    updates_by_id = {}
-
-    for key, update in update_keys.items():
-        if key in existing_map:
-            # Prepare update
-            rec = existing_map[key]
-            updates_by_id[rec["id"]] = {
-                "sample_size": (rec.get("sample_size") or 0) + 1,
-                "win_count": (rec.get("win_count") or 0) + (1 if update.was_win else 0),
-                "loss_count": (rec.get("loss_count") or 0) + (0 if update.was_win else 1),
-                "total_spend": float(rec.get("total_spend") or 0) + update.spend,
-                "total_revenue": float(rec.get("total_revenue") or 0) + update.revenue,
-                "updated_at": "now()",
-            }
-        else:
-            # Prepare insert
-            to_insert.append(
-                {
-                    "component_type": update.component_type,
-                    "component_value": update.component_value,
-                    "geo": update.geo,
-                    "avatar_id": update.avatar_id,
-                    "sample_size": 1,
-                    "win_count": 1 if update.was_win else 0,
-                    "loss_count": 0 if update.was_win else 1,
-                    "total_spend": update.spend,
-                    "total_revenue": update.revenue,
-                }
-            )
-
-    result = {"inserted": 0, "updated": 0}
-
-    # Batch insert new records (single POST with array)
-    if to_insert:
-        response = await client.post(
-            f"{rest_url}/component_learnings",
-            headers=headers,
-            json=to_insert,
-        )
-        response.raise_for_status()
-        result["inserted"] = len(to_insert)
-
-    # Batch update existing records
-    # PostgREST doesn't support different values per row in single PATCH,
-    # so we need individual PATCHes, but we can parallelize with asyncio.gather
-    if updates_by_id:
-        import asyncio
-
-        async def update_one(record_id: str, data: dict):
-            # Validate record_id to prevent URL injection
-            safe_id = validate_uuid(record_id, "record_id")
-            resp = await client.patch(
-                f"{rest_url}/component_learnings?id=eq.{safe_id}",
-                headers=headers,
-                json=data,
-            )
-            resp.raise_for_status()
-
-        await asyncio.gather(*[update_one(rid, data) for rid, data in updates_by_id.items()])
-        result["updated"] = len(updates_by_id)
-
-    return result
+    return {"inserted": 0, "updated": 0}
 
 
 async def process_component_learnings(
