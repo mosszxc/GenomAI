@@ -218,6 +218,11 @@ class BuyerOnboardingWorkflow:
         self._videos_count: int = 0
         self._error: Optional[str] = None
 
+        # Message deduplication to prevent race conditions (fix #537)
+        # Tracks last processed message_id to avoid reprocessing signals
+        # that arrive after wait_condition timeout
+        self._last_processed_message_id: Optional[int] = None
+
         # Immutable snapshot for thread-safe query access (fixes race condition #483)
         self._snapshot = WorkflowStateSnapshot(state=OnboardingState.AWAITING_NAME.value)
 
@@ -252,6 +257,43 @@ class BuyerOnboardingWorkflow:
         """
         self._state = new_state
         self._update_snapshot()
+
+    def _consume_message(self) -> Optional[str]:
+        """
+        Consume pending message with deduplication (fix #537).
+
+        This method handles race conditions where a signal arrives
+        after wait_condition timeout. It checks:
+        1. If _pending_message is None → genuine timeout
+        2. If message_id matches _last_processed_message_id → duplicate
+        3. Otherwise → valid new message
+
+        Returns:
+            Message text if valid new message, None if timeout or duplicate.
+            Caller should continue waiting loop if None is returned.
+        """
+        if self._pending_message is None:
+            return None
+
+        # Check for duplicate message (race condition protection)
+        current_message_id = self._pending_message.message_id
+        if current_message_id is not None and current_message_id == self._last_processed_message_id:
+            # Duplicate message - signal arrived after timeout
+            workflow.logger.info(
+                f"Skipping duplicate message_id={current_message_id}, already processed"
+            )
+            self._pending_message = None
+            self._update_snapshot()
+            return None
+
+        # Valid new message - extract text and update tracking
+        message_text = self._pending_message.text
+        if current_message_id is not None:
+            self._last_processed_message_id = current_message_id
+
+        self._pending_message = None
+        self._update_snapshot()
+        return message_text
 
     async def _log_outgoing(self, message: str, step: str) -> None:
         """Log outgoing bot message."""
@@ -358,21 +400,22 @@ class BuyerOnboardingWorkflow:
             await self._log_outgoing(MESSAGES["welcome"], "welcome")
 
             # Wait for valid name (min 2 characters)
-            # Note: wait_condition may return None when signal arrives during wait,
-            # so we check the actual _pending_message state instead of the return value
+            # Uses _consume_message() for race condition protection (fix #537)
             while True:
                 await workflow.wait_condition(
                     lambda: self._pending_message is not None,
                     timeout=step_timeout,
                 )
 
-                if self._pending_message is None:
-                    # Genuine timeout - no message received
-                    return await self._handle_timeout()
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    # Genuine timeout or duplicate message
+                    if self._pending_message is None:
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
 
-                name_input = self._pending_message.text.strip()
+                name_input = msg_text.strip()
                 await self._log_incoming(name_input, "name_input")
-                self._pending_message = None
 
                 # Validate name length (min 2 characters)
                 if len(name_input) >= 2:
@@ -399,20 +442,22 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(ask_geo_msg, "ask_geo")
 
-            # Wait for valid GEOs
+            # Wait for valid GEOs (fix #537: race condition protection)
             while True:
                 await workflow.wait_condition(
                     lambda: self._pending_message is not None,
                     timeout=step_timeout,
                 )
-                if self._pending_message is None:
-                    return await self._handle_timeout()
 
-                raw_geo_input = self._pending_message.text
-                await self._log_incoming(raw_geo_input, "geo_input")
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    if self._pending_message is None:
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
+
+                await self._log_incoming(msg_text, "geo_input")
                 # Filter empty strings after split (fix #534)
-                geos_input = [g for g in raw_geo_input.upper().replace(" ", "").split(",") if g]
-                self._pending_message = None
+                geos_input = [g for g in msg_text.upper().replace(" ", "").split(",") if g]
 
                 # Validate GEOs
                 valid_geos = [g for g in geos_input if g in VALID_GEOS]
@@ -440,22 +485,22 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(ask_vertical_msg, "ask_vertical")
 
-            # Wait for valid verticals
+            # Wait for valid verticals (fix #537: race condition protection)
             while True:
                 await workflow.wait_condition(
                     lambda: self._pending_message is not None,
                     timeout=step_timeout,
                 )
-                if self._pending_message is None:
-                    return await self._handle_timeout()
 
-                raw_vertical_input = self._pending_message.text
-                await self._log_incoming(raw_vertical_input, "vertical_input")
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    if self._pending_message is None:
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
+
+                await self._log_incoming(msg_text, "vertical_input")
                 # Filter empty strings after split (fix #534)
-                verticals_input = [
-                    v for v in raw_vertical_input.lower().replace(" ", "").split(",") if v
-                ]
-                self._pending_message = None
+                verticals_input = [v for v in msg_text.lower().replace(" ", "").split(",") if v]
 
                 # Validate verticals
                 valid_verticals = [v for v in verticals_input if v in VALID_VERTICALS]
@@ -483,19 +528,22 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(ask_keitaro_msg, "ask_keitaro")
 
-            # Wait for valid Keitaro source (with retry)
+            # Wait for valid Keitaro source (with retry, fix #537)
             sub10_attempts = 0
             while sub10_attempts < MAX_SUB10_RETRY_ATTEMPTS:
                 await workflow.wait_condition(
                     lambda: self._pending_message is not None,
                     timeout=step_timeout,
                 )
-                if self._pending_message is None:
-                    return await self._handle_timeout()
 
-                sub10_input = self._pending_message.text.strip()
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    if self._pending_message is None:
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
+
+                sub10_input = msg_text.strip()
                 await self._log_incoming(sub10_input, "sub10_input")
-                self._pending_message = None
 
                 # Validate sub10 by checking campaigns in Keitaro
                 validating_msg = MESSAGES["validating_sub10"].format(sub10=sub10_input)
@@ -665,18 +713,21 @@ class BuyerOnboardingWorkflow:
                     )
                     await self._log_outgoing(ask_video_msg, f"ask_campaign_video_{i}")
 
-                    # Wait for valid video URL
+                    # Wait for valid video URL (fix #537: race condition protection)
                     while True:
                         await workflow.wait_condition(
                             lambda: self._pending_message is not None,
                             timeout=step_timeout,
                         )
-                        if self._pending_message is None:
-                            return await self._handle_timeout()
 
-                        text = self._pending_message.text.strip()
+                        msg_text = self._consume_message()
+                        if msg_text is None:
+                            if self._pending_message is None:
+                                return await self._handle_timeout()
+                            continue  # Duplicate, keep waiting
+
+                        text = msg_text.strip()
                         await self._log_incoming(text, f"video_input_{i}")
-                        self._pending_message = None
 
                         if is_video_url(text):
                             # Update import record with video URL
