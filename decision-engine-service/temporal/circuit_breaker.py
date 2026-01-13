@@ -235,8 +235,8 @@ async def get_metrics_staleness() -> dict:
     """
     Get metrics staleness information for health check.
 
-    Uses RPC function genomai.get_metrics_staleness() for reliable access.
-    Issue #706: Direct table access was returning 404 due to PostgREST cache.
+    Issue #706: Uses direct table access with Accept-Profile header
+    for genomai schema. RPC approach had type mismatch issues.
 
     Returns:
         dict with staleness info and circuit breaker state
@@ -245,21 +245,24 @@ async def get_metrics_staleness() -> dict:
         rest_url = _get_rest_url()
         headers = _get_headers()
 
-        # Use RPC function instead of direct table access (Issue #706)
+        # Direct table access with Accept-Profile header for genomai schema
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{rest_url}/rpc/get_metrics_staleness",
+            response = await client.get(
+                f"{rest_url}/raw_metrics_current?select=updated_at&order=updated_at.desc&limit=1",
                 headers=headers,
-                content="{}",
             )
             response.raise_for_status()
             data = response.json()
 
         cb_state = await get_circuit_state()
+        now = datetime.utcnow()
 
         if data:
-            staleness_minutes = float(data[0]["staleness_minutes"])
-            is_stale = data[0]["is_stale"]
+            latest_update = datetime.fromisoformat(
+                data[0]["updated_at"].replace("Z", "+00:00")
+            ).replace(tzinfo=None)
+            staleness_minutes = (now - latest_update).total_seconds() / 60
+            is_stale = staleness_minutes > 30
         else:
             staleness_minutes = None
             is_stale = True
