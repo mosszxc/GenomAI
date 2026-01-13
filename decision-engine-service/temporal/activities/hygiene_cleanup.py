@@ -11,14 +11,18 @@ Cleanup operations:
 - Old staleness_snapshots
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Dict
 
+import httpx
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
-import httpx
+
 from src.core.http_client import get_http_client
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -303,8 +307,8 @@ def _extract_delete_count(response: httpx.Response) -> int:
         data = response.json()
         if isinstance(data, list):
             return len(data)
-    except Exception:
-        pass
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Failed to parse delete response body: {e}")
 
     return 0
 

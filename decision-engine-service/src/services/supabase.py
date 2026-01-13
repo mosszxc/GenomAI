@@ -5,10 +5,13 @@ Uses direct HTTP requests with proper schema headers to ensure
 all operations use the genomai schema.
 """
 
+import logging
 import os
 import httpx
 from src.core.http_client import get_http_client
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 # Schema name for all operations
@@ -204,8 +207,15 @@ async def get_existing_decision(idea_id: str, decision_epoch: int) -> dict | Non
         if data and len(data) > 0:
             return data[0]
         return None
-    except Exception:
-        # On error, return None to allow new decision creation
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            f"HTTP error loading decision for idea_id={idea_id}, epoch={decision_epoch}: {e}"
+        )
+        return None
+    except Exception as e:
+        logger.warning(
+            f"Unexpected error loading decision for idea_id={idea_id}, epoch={decision_epoch}: {e}"
+        )
         return None
 
 
@@ -234,7 +244,13 @@ async def get_decision_trace(decision_id: str) -> dict | None:
         if data and len(data) > 0:
             return data[0]
         return None
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"HTTP error loading decision_trace for decision_id={decision_id}: {e}")
+        return None
+    except Exception as e:
+        logger.warning(
+            f"Unexpected error loading decision_trace for decision_id={decision_id}: {e}"
+        )
         return None
 
 
@@ -269,9 +285,10 @@ async def delete_decision(decision_id: str) -> None:
         client = get_http_client()
         response = await client.delete(f"{rest_url}/decisions?id=eq.{decision_id}", headers=headers)
         response.raise_for_status()
-    except Exception:
-        # Log but don't raise - this is cleanup
-        pass
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"HTTP error deleting decision {decision_id} (cleanup): {e}")
+    except Exception as e:
+        logger.warning(f"Unexpected error deleting decision {decision_id} (cleanup): {e}")
 
 
 async def save_decision_trace(trace: dict) -> dict:

@@ -2280,7 +2280,11 @@ async def get_buyer_name(telegram_id: str) -> str | None:
         )
         buyers = response.json()
         return buyers[0].get("name") if buyers else None
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        logger.debug(f"HTTP error getting buyer name for telegram_id={telegram_id}: {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"Unexpected error getting buyer name for telegram_id={telegram_id}: {e}")
         return None
 
 

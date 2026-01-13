@@ -10,6 +10,7 @@ Includes Cross-Segment Transfer (Inspiration System):
 Issue: #124
 """
 
+import logging
 import os
 import random
 from src.core.http_client import get_http_client
@@ -25,6 +26,8 @@ from src.services.exploration import (
 from src.services.component_learning import TRACKABLE_COMPONENTS
 from src.services.cross_transfer import find_transfer_candidates, execute_cross_transfer
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -282,8 +285,8 @@ async def generate_cross_transfer_recommendation(
             )
 
         return components, True
-    except Exception:
-        # On error, return empty to fallback to regular exploration
+    except Exception as e:
+        logger.warning(f"Cross-transfer recommendation failed, falling back to exploration: {e}")
         return [], False
 
 
