@@ -149,8 +149,15 @@ async def get_idea_avatar(idea_id: str) -> Optional[str]:
     return None
 
 
-async def get_creative_geo(creative_id: str) -> Optional[str]:
-    """Get geo for a creative via creatives -> buyer -> geos"""
+async def get_creative_geos(creative_id: str) -> list[str]:
+    """
+    Get all geos for a creative via creatives -> buyer -> geos.
+
+    Issue #564: Returns all geos instead of silently truncating to first one.
+
+    Returns:
+        List of geo codes (empty list if unavailable)
+    """
     # Validate input to prevent URL injection
     creative_id = validate_uuid(creative_id, "creative_id")
 
@@ -168,7 +175,7 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
         data = response.json()
 
         if not data or not data[0].get("buyer_id"):
-            return None
+            return []
 
         # Validate buyer_id from DB result before using in URL
         buyer_id = validate_uuid(data[0]["buyer_id"], "buyer_id")
@@ -181,13 +188,12 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
         data = response.json()
 
         if data and data[0].get("geos"):
-            # Return first geo if multiple
             geos = data[0]["geos"]
-            return geos[0] if geos else None
-        return None
+            return geos if isinstance(geos, list) else []
+        return []
     except Exception:
         # Geo is optional, don't fail if unavailable
-        return None
+        return []
 
 
 def _build_component_key(
@@ -317,47 +323,54 @@ async def process_component_learnings(
         return result
 
     # Get context
-    geo = await get_creative_geo(creative_id)
+    # Issue #564: Get all geos instead of silently truncating to first one
+    geos = await get_creative_geos(creative_id)
     avatar_id = await get_idea_avatar(idea_id) if idea_id else None
 
     # Determine win/loss
     was_win = is_win(cpa, spend)
 
     # Build batch updates (O(1) instead of O(n*2) - Issue #577)
+    # Issue #564: Create updates for each geo (or None if no geos)
     updates = []
-    for component_type, component_value in components:
-        # Global update (avatar_id = NULL)
-        updates.append(
-            ComponentUpdate(
-                component_type=component_type,
-                component_value=component_value,
-                geo=geo,
-                avatar_id=None,
-                was_win=was_win,
-                spend=spend,
-                revenue=revenue,
-            )
-        )
+    geos_to_process = geos if geos else [None]  # type: ignore[list-item]
 
-        # Per-avatar update (if avatar known)
-        if avatar_id:
+    for geo in geos_to_process:
+        for component_type, component_value in components:
+            # Global update (avatar_id = NULL)
             updates.append(
                 ComponentUpdate(
                     component_type=component_type,
                     component_value=component_value,
                     geo=geo,
-                    avatar_id=avatar_id,
+                    avatar_id=None,
                     was_win=was_win,
                     spend=spend,
                     revenue=revenue,
                 )
             )
 
+            # Per-avatar update (if avatar known)
+            if avatar_id:
+                updates.append(
+                    ComponentUpdate(
+                        component_type=component_type,
+                        component_value=component_value,
+                        geo=geo,
+                        avatar_id=avatar_id,
+                        was_win=was_win,
+                        spend=spend,
+                        revenue=revenue,
+                    )
+                )
+
     try:
         batch_result = await batch_upsert_component_learnings(updates)
-        result["global_updates"] = len(components)
-        result["avatar_updates"] = len(components) if avatar_id else 0
+        num_geos = len(geos_to_process)
+        result["global_updates"] = len(components) * num_geos
+        result["avatar_updates"] = len(components) * num_geos if avatar_id else 0
         result["components_updated"] = batch_result["inserted"] + batch_result["updated"]
+        result["geos_processed"] = len(geos) if geos else 0  # Issue #564: Track geos
     except Exception as e:
         result["errors"].append(f"Batch update error: {str(e)}")
 
