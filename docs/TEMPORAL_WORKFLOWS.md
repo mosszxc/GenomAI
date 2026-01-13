@@ -371,7 +371,6 @@ Multi-agent task distribution supervisor:
 ### Maintenance Activities
 | Activity | Description |
 |----------|-------------|
-| `reset_stale_buyer_states` | Reset stuck buyer states |
 | `expire_old_recommendations` | Expire old pending recommendations |
 | `check_data_integrity` | Run integrity checks |
 | `emit_maintenance_event` | Emit maintenance event |

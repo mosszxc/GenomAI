@@ -308,7 +308,6 @@
 
 ### Buyer System
 - `buyers` — Зарегистрированные buyers
-- `buyer_states` — State machine
 - `buyer_interactions` — Лог сообщений
 
 ### Multi-Agent

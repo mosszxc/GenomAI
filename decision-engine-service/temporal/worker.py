@@ -174,7 +174,6 @@ from temporal.activities.recommendation import (
 
 # Import activities - Maintenance
 from temporal.activities.maintenance import (
-    reset_stale_buyer_states,
     expire_old_recommendations,
     mark_stuck_transcriptions_failed,
     archive_failed_creatives,
@@ -433,7 +432,6 @@ async def run_all_workers():
             get_recommendation_by_id,
             check_existing_daily_recommendation,
             # Maintenance activities
-            reset_stale_buyer_states,
             expire_old_recommendations,
             mark_stuck_transcriptions_failed,
             archive_failed_creatives,

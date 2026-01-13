@@ -5,7 +5,6 @@ Periodic maintenance tasks for GenomAI.
 Replaces n8n workflow H1uuOanSy627H4kg (Pipeline Health Monitor).
 
 Tasks:
-- Reset stale buyer states (awaiting_* for > 6 hours)
 - Clean up expired recommendations
 - Verify data integrity
 - Staleness detection (Inspiration System)
@@ -23,7 +22,6 @@ from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
 
 with workflow.unsafe.imports_passed_through():
     from temporal.activities.maintenance import (
-        reset_stale_buyer_states,
         expire_old_recommendations,
         mark_stuck_transcriptions_failed,
         archive_failed_creatives,
@@ -52,8 +50,6 @@ with workflow.unsafe.imports_passed_through():
 class MaintenanceInput:
     """Input for maintenance workflow"""
 
-    # Buyer state timeout in hours
-    buyer_state_timeout_hours: int = 6
     # Recommendation expiry in days
     recommendation_expiry_days: int = 7
     # Stuck transcription timeout in minutes
@@ -69,7 +65,6 @@ class MaintenanceInput:
     # Cleanup retention periods
     import_queue_retention_days: int = 7
     knowledge_retention_days: int = 30
-    buyer_states_retention_days: int = 30
     staleness_archive_days: int = 90
     # Retry failed hypotheses (Issue #313)
     run_hypothesis_retry: bool = True
@@ -102,7 +97,6 @@ class MaintenanceInput:
 class MaintenanceResult:
     """Result of maintenance workflow"""
 
-    stale_buyers_reset: int
     recommendations_expired: int
     stuck_transcriptions_failed: int
     failed_creatives_archived: int
@@ -136,14 +130,13 @@ class MaintenanceWorkflow:
     Workflow for periodic maintenance tasks.
 
     Flow:
-    1. Reset stale buyer states (stuck in awaiting_* for > 6 hours)
-    2. Expire old recommendations
-    3. Mark stuck transcriptions as failed
-    4. Archive old failed creatives
-    5. Run data integrity checks
-    6. Check system staleness (Inspiration System)
-    7. Data cleanup (Hygiene Agent)
-    8. Emit maintenance event
+    1. Expire old recommendations
+    2. Mark stuck transcriptions as failed
+    3. Archive old failed creatives
+    4. Run data integrity checks
+    5. Check system staleness (Inspiration System)
+    6. Data cleanup (Hygiene Agent)
+    7. Emit maintenance event
     """
 
     @workflow.run
@@ -157,7 +150,6 @@ class MaintenanceWorkflow:
         )
 
         result = MaintenanceResult(
-            stale_buyers_reset=0,
             recommendations_expired=0,
             stuck_transcriptions_failed=0,
             failed_creatives_archived=0,
@@ -165,21 +157,7 @@ class MaintenanceWorkflow:
             completed_at="",
         )
 
-        # Step 1: Reset stale buyer states
-        try:
-            reset_count = await workflow.execute_activity(
-                reset_stale_buyer_states,
-                input.buyer_state_timeout_hours,
-                start_to_close_timeout=timedelta(seconds=60),
-                retry_policy=retry_policy,
-            )
-            result.stale_buyers_reset = reset_count
-            workflow.logger.info(f"Reset {reset_count} stale buyer states")
-        except Exception as e:
-            workflow.logger.error(f"Failed to reset buyer states: {e}")
-            result.integrity_issues.append(f"Buyer state reset failed: {e}")
-
-        # Step 2: Expire old recommendations
+        # Step 1: Expire old recommendations
         try:
             expired_count = await workflow.execute_activity(
                 expire_old_recommendations,
@@ -193,7 +171,7 @@ class MaintenanceWorkflow:
             workflow.logger.error(f"Failed to expire recommendations: {e}")
             result.integrity_issues.append(f"Recommendation expiry failed: {e}")
 
-        # Step 3: Mark stuck transcriptions as failed
+        # Step 2: Mark stuck transcriptions as failed
         try:
             stuck_count = await workflow.execute_activity(
                 mark_stuck_transcriptions_failed,
@@ -212,7 +190,7 @@ class MaintenanceWorkflow:
             workflow.logger.error(f"Failed to mark stuck transcriptions: {e}")
             result.integrity_issues.append(f"Stuck transcription check failed: {e}")
 
-        # Step 4: Archive old failed creatives
+        # Step 3: Archive old failed creatives
         try:
             archived_count = await workflow.execute_activity(
                 archive_failed_creatives,
@@ -229,7 +207,7 @@ class MaintenanceWorkflow:
             workflow.logger.error(f"Failed to archive failed creatives: {e}")
             result.integrity_issues.append(f"Failed creative archival failed: {e}")
 
-        # Step 5: Data integrity checks (optional)
+        # Step 4: Data integrity checks (optional)
         if input.run_integrity_checks:
             try:
                 issues = await workflow.execute_activity(
@@ -246,7 +224,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Integrity check failed: {e}")
                 result.integrity_issues.append(f"Integrity check error: {e}")
 
-        # Step 5b: Cleanup orphaned hypotheses (Issue #475)
+        # Step 4b: Cleanup orphaned hypotheses (Issue #475)
         if input.run_orphan_hypothesis_cleanup:
             try:
                 deleted_count = await workflow.execute_activity(
@@ -261,7 +239,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Orphan hypothesis cleanup failed: {e}")
                 result.integrity_issues.append(f"Orphan hypothesis cleanup error: {e}")
 
-        # Step 6: Staleness detection (Inspiration System)
+        # Step 5: Staleness detection (Inspiration System)
         if input.run_staleness_check:
             try:
                 staleness_result = await workflow.execute_activity(
@@ -289,7 +267,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Staleness check failed: {e}")
                 result.integrity_issues.append(f"Staleness check error: {e}")
 
-        # Step 7: Data cleanup (Hygiene Agent)
+        # Step 6: Data cleanup (Hygiene Agent)
         if input.run_cleanup:
             try:
                 cleanup_stats = await workflow.execute_activity(
@@ -297,7 +275,6 @@ class MaintenanceWorkflow:
                     args=[
                         input.import_queue_retention_days,
                         input.knowledge_retention_days,
-                        input.buyer_states_retention_days,
                         input.staleness_archive_days,
                     ],
                     start_to_close_timeout=timedelta(seconds=180),
@@ -315,7 +292,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Cleanup failed: {e}")
                 result.integrity_issues.append(f"Cleanup error: {e}")
 
-        # Step 8: Retry failed hypotheses (Issue #313)
+        # Step 7: Retry failed hypotheses (Issue #313)
         if input.run_hypothesis_retry:
             try:
                 retry_stats = await workflow.execute_activity(
@@ -352,7 +329,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Hypothesis cleanup failed: {e}")
                 result.integrity_issues.append(f"Hypothesis cleanup error: {e}")
 
-        # Step 9: Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
+        # Step 8: Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
         if input.run_orphan_detection:
             try:
                 released_count = await workflow.execute_activity(
@@ -370,7 +347,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Orphan detection failed: {e}")
                 result.integrity_issues.append(f"Orphan detection error: {e}")
 
-        # Step 10: Recover stuck creatives (Issue #398, #481)
+        # Step 9: Recover stuck creatives (Issue #398, #481)
         if input.run_stuck_recovery:
             try:
                 stuck_creatives = await workflow.execute_activity(
@@ -509,7 +486,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Stuck creatives recovery failed: {e}")
                 result.integrity_issues.append(f"Stuck recovery error: {e}")
 
-        # Step 11: Retry failed creatives (Issue #472)
+        # Step 10: Retry failed creatives (Issue #472)
         if input.run_failed_retry:
             try:
                 failed_creatives = await workflow.execute_activity(
@@ -564,13 +541,12 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Failed creatives retry failed: {e}")
                 result.integrity_issues.append(f"Failed retry error: {e}")
 
-        # Step 12: Emit maintenance event
+        # Step 11: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
             emit_maintenance_event,
             args=[
-                result.stale_buyers_reset,
                 result.recommendations_expired,
                 len(result.integrity_issues),
                 result.integrity_issues,  # Pass details for debugging
@@ -580,8 +556,8 @@ class MaintenanceWorkflow:
         )
 
         workflow.logger.info(
-            f"Maintenance complete: reset={result.stale_buyers_reset}, "
-            f"expired={result.recommendations_expired}, stuck_failed={result.stuck_transcriptions_failed}, "
+            f"Maintenance complete: expired={result.recommendations_expired}, "
+            f"stuck_failed={result.stuck_transcriptions_failed}, "
             f"archived={result.failed_creatives_archived}, "
             f"issues={len(result.integrity_issues)}, stale={result.is_stale}, "
             f"hypothesis_retried={result.hypotheses_retried}, "

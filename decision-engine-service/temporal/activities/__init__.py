@@ -79,7 +79,6 @@ from temporal.activities.recommendation import (
     check_existing_daily_recommendation,
 )
 from temporal.activities.maintenance import (
-    reset_stale_buyer_states,
     expire_old_recommendations,
     mark_stuck_transcriptions_failed,
     archive_failed_creatives,
@@ -171,7 +170,6 @@ __all__ = [
     "get_recommendation_by_id",
     "check_existing_daily_recommendation",
     # Maintenance activities
-    "reset_stale_buyer_states",
     "expire_old_recommendations",
     "mark_stuck_transcriptions_failed",
     "archive_failed_creatives",

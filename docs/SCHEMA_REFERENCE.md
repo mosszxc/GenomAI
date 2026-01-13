@@ -118,7 +118,6 @@ created_at  TIMESTAMP      -- When snapshot was created
 | Table | Purpose | Mutable | Writer |
 |-------|---------|---------|--------|
 | `buyers` | Зарегистрированные баеры | Yes | buyer_onboarding |
-| `buyer_states` | Временное состояние онбординга | Yes | buyer_onboarding |
 | `buyer_interactions` | Лог взаимодействий | No (append-only) | telegram_router |
 | `historical_import_queue` | Очередь импорта | Yes | historical_loader |
 

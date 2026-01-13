@@ -5,7 +5,6 @@ Temporal activities for periodic maintenance tasks.
 Replaces n8n workflow H1uuOanSy627H4kg (Pipeline Health Monitor).
 
 Includes:
-- Stale buyer state reset
 - Recommendation expiry
 - Data integrity checks
 - Staleness detection (Inspiration System)
@@ -49,69 +48,6 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
         headers["Content-Profile"] = SCHEMA
         headers["Prefer"] = "return=representation"
     return headers
-
-
-@activity.defn
-async def reset_stale_buyer_states(timeout_hours: int = 6) -> int:
-    """
-    Reset buyer states that have been stuck for too long.
-
-    Buyers with states like 'awaiting_name', 'awaiting_geo', etc.
-    for more than timeout_hours are reset to allow fresh onboarding.
-
-    Args:
-        timeout_hours: Hours after which a state is considered stale
-
-    Returns:
-        Number of buyer states reset
-    """
-    rest_url, supabase_key = _get_credentials()
-    headers = _get_headers(supabase_key, for_write=True)
-
-    # Calculate cutoff time
-    cutoff = datetime.utcnow() - timedelta(hours=timeout_hours)
-    cutoff_iso = cutoff.isoformat()
-
-    activity.logger.info(f"Looking for buyer states older than {cutoff_iso}")
-
-    client = get_http_client()
-    # Find stale buyer_states
-    # buyer_states uses telegram_id as primary key, not id
-
-    response = await client.get(
-        f"{rest_url}/buyer_states"
-        f"?updated_at=lt.{cutoff_iso}"
-        f"&state=neq.idle"
-        "&select=telegram_id,state",
-        headers=_get_headers(supabase_key),
-    )
-
-    if response.status_code == 404:
-        # buyer_states table doesn't exist, skip
-        activity.logger.info("No buyer_states table found, skipping reset")
-        return 0
-
-    if response.status_code != 200:
-        activity.logger.warning(f"Error checking buyer_states: {response.text}")
-        return 0
-
-    stale_states = response.json()
-
-    if not stale_states:
-        activity.logger.info("No stale buyer states found")
-        return 0
-
-    # Reset stale states to idle
-    telegram_ids = [s["telegram_id"] for s in stale_states]
-    for telegram_id in telegram_ids:
-        await client.patch(
-            f"{rest_url}/buyer_states?telegram_id=eq.{telegram_id}",
-            headers=headers,
-            json={"state": "idle", "context": {}},
-        )
-
-    activity.logger.info(f"Reset {len(telegram_ids)} stale buyer states")
-    return len(telegram_ids)
 
 
 @activity.defn
@@ -440,7 +376,6 @@ async def cleanup_orphaned_hypotheses() -> int:
 
 @activity.defn
 async def emit_maintenance_event(
-    buyers_reset: int,
     recommendations_expired: int,
     issues_count: int,
     issues_details: Optional[List[str]] = None,
@@ -449,7 +384,6 @@ async def emit_maintenance_event(
     Emit maintenance completed event.
 
     Args:
-        buyers_reset: Number of buyer states reset
         recommendations_expired: Number of recommendations expired
         issues_count: Number of integrity issues found
         issues_details: List of integrity issue descriptions (optional)
@@ -461,7 +395,6 @@ async def emit_maintenance_event(
     headers = _get_headers(supabase_key, for_write=True)
 
     payload = {
-        "buyers_reset": buyers_reset,
         "recommendations_expired": recommendations_expired,
         "integrity_issues": issues_count,
     }
