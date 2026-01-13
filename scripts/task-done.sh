@@ -94,7 +94,8 @@ if [ "$SKIP_TESTS" != "true" ]; then
     echo ""
     echo "=== Pre-flight Checks ==="
     FASTAPI_PORT=""
-    for pf in /tmp/genomai-dev/server-*.pid 2>/dev/null; do
+    shopt -s nullglob
+    for pf in /tmp/genomai-dev/server-*.pid; do
         [ -f "$pf" ] && FASTAPI_PORT=$(basename "$pf" .pid | sed 's/server-//')
     done
 
