@@ -23,7 +23,7 @@ import os
 from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.utils.errors import SupabaseError
 
@@ -167,7 +167,7 @@ async def calculate_win_rate_trend(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     date_7d = (now - timedelta(days=7)).isoformat()
     date_30d = (now - timedelta(days=30)).isoformat()
 
@@ -188,7 +188,7 @@ async def calculate_win_rate_trend(
         return 0.0  # No data = neutral
 
     # Split into 7d and 30d
-    date_7d_dt = datetime.fromisoformat(date_7d.replace("Z", "+00:00").replace("+00:00", ""))
+    date_7d_dt = datetime.fromisoformat(date_7d.replace("Z", "+00:00"))
 
     wins_7d = 0
     total_7d = 0
@@ -211,9 +211,7 @@ async def calculate_win_rate_trend(
 
         # Check if in 7d window
         try:
-            row_date = datetime.fromisoformat(
-                created_at.replace("Z", "+00:00").replace("+00:00", "")
-            )
+            row_date = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             if row_date >= date_7d_dt:
                 total_7d += 1
                 if is_win:
@@ -342,9 +340,12 @@ async def calculate_days_since_new_component(
         return DAYS_STALE_THRESHOLD * 2
 
     try:
-        last_dt = datetime.fromisoformat(last_created.replace("Z", "+00:00").replace("+00:00", ""))
-        now = datetime.utcnow()
-        delta = now - last_dt.replace(tzinfo=None)
+        last_dt = datetime.fromisoformat(last_created.replace("Z", "+00:00"))
+        # Ensure last_dt is timezone-aware (assume UTC if naive)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - last_dt
         return delta.days
     except (ValueError, TypeError):
         return DAYS_STALE_THRESHOLD
@@ -364,7 +365,7 @@ async def calculate_exploration_success_rate(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     date_30d = (now - timedelta(days=30)).isoformat()
 
     filters = [f"created_at=gte.{date_30d}"]
