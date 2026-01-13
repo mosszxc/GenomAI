@@ -339,11 +339,12 @@ async def create_idea(
     created_idea = data[0]
 
     # Link decomposed_creative to idea
-    await client.patch(
+    patch_response = await client.patch(
         f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
         headers=headers,
         json={"idea_id": created_idea["id"]},
     )
+    patch_response.raise_for_status()
 
     return created_idea
 
@@ -414,11 +415,12 @@ async def upsert_idea(
 
         # Link decomposed_creative to idea
         link_headers = _get_headers(supabase_key, for_write=True)
-        await client.patch(
+        patch_response = await client.patch(
             f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
             headers=link_headers,
             json={"idea_id": created_idea["id"]},
         )
+        patch_response.raise_for_status()
 
         activity.logger.info(
             f"Created new idea {created_idea['id']} for hash {canonical_hash[:16]}..."
@@ -440,11 +442,12 @@ async def upsert_idea(
 
         # Link decomposed_creative to existing idea
         link_headers = _get_headers(supabase_key, for_write=True)
-        await client.patch(
+        patch_response = await client.patch(
             f"{rest_url}/decomposed_creatives?id=eq.{decomposed_creative_id}",
             headers=link_headers,
             json={"idea_id": existing_idea["id"]},
         )
+        patch_response.raise_for_status()
 
         activity.logger.info(
             f"Found existing idea {existing_idea['id']} for hash {canonical_hash[:16]}..."
@@ -551,11 +554,12 @@ async def update_creative_status(
         update_data["failed_at"] = datetime.utcnow().isoformat()
 
     client = get_http_client()
-    await client.patch(
+    patch_response = await client.patch(
         f"{rest_url}/creatives?id=eq.{creative_id}",
         headers=headers,
         json=update_data,
     )
+    patch_response.raise_for_status()
 
 
 @activity.defn
