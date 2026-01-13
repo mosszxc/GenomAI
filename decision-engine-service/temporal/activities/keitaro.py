@@ -389,11 +389,11 @@ async def get_campaigns_by_source(
     campaign_ids = [c.campaign_id for c in campaigns]
     metrics_url = _get_keitaro_url("/report/build")
 
-    # Get metrics for last 30 days with campaign_id dimension
+    # Get metrics for last 30 days grouped by campaign_id
     metrics_payload = {
         "range": {"interval": "last_30_days"},
-        "metrics": ["clicks", "conversions", "revenue", "cost"],
-        "dimensions": ["campaign_id"],
+        "metrics": ["clicks", "sales", "revenue", "cost"],
+        "grouping": ["campaign_id"],
         "filters": [
             {
                 "name": "campaign_id",
@@ -412,13 +412,13 @@ async def get_campaigns_by_source(
             metrics_rows = metrics_data.get("rows", [])
 
             # Build lookup dict by campaign_id
-            metrics_by_id = {}
+            metrics_by_id: dict[str, dict[str, int | float]] = {}
             for row in metrics_rows:
                 cid = str(row.get("campaign_id", ""))
                 if cid:
                     metrics_by_id[cid] = {
                         "clicks": safe_int(row.get("clicks", 0)),
-                        "conversions": safe_int(row.get("conversions", 0)),
+                        "conversions": safe_int(row.get("sales", 0)),  # Keitaro uses "sales"
                         "revenue": safe_float(row.get("revenue", 0.0)),
                         "cost": safe_float(row.get("cost", 0.0)),
                     }
