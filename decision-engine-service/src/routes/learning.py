@@ -87,11 +87,13 @@ async def process_learning(_: bool = Depends(verify_api_key)):
 
 
 @router.get("/status")
-async def learning_status():
+async def learning_status(_: bool = Depends(verify_api_key)):
     """
-    GET /learning/status (public endpoint)
+    GET /learning/status
 
     Get count of pending outcomes to process and last processing time.
+
+    Requires: Authorization header with valid API key.
 
     Returns:
         dict: Status info
