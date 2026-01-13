@@ -25,6 +25,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+
+def get_required_env(key: str) -> str:
+    """Get required environment variable or raise ValueError.
+
+    Provides fail-fast behavior at startup instead of silent failures later.
+    """
+    value = os.getenv(key)
+    if not value:
+        raise ValueError(f"Required environment variable {key} is not set")
+    return value
+
+
 # Load .env from decision-engine-service directory (optional, for local development)
 try:
     from dotenv import load_dotenv
@@ -102,8 +114,8 @@ def load_settings() -> Settings:
             tls_enabled=os.getenv("TEMPORAL_TLS_ENABLED", str(is_cloud)).lower() == "true",
         ),
         supabase=SupabaseSettings(
-            url=os.getenv("SUPABASE_URL", ""),
-            service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+            url=get_required_env("SUPABASE_URL"),
+            service_role_key=get_required_env("SUPABASE_SERVICE_ROLE_KEY"),
             schema=os.getenv("SUPABASE_SCHEMA", "genomai"),
         ),
         external=ExternalAPISettings(
