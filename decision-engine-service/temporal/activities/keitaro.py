@@ -404,12 +404,20 @@ async def get_campaigns_by_source(
     }
 
     try:
+        activity.logger.info(
+            f"Requesting metrics for {len(campaign_ids)} campaigns: {campaign_ids[:5]}..."
+        )
         metrics_response = await client.post(
             metrics_url, headers=headers, json=metrics_payload, timeout=120.0
         )
+        activity.logger.info(f"Metrics response status: {metrics_response.status_code}")
         if metrics_response.is_success:
             metrics_data = metrics_response.json()
+            activity.logger.info(f"Metrics response keys: {list(metrics_data.keys())}")
             metrics_rows = metrics_data.get("rows", [])
+            activity.logger.info(f"Got {len(metrics_rows)} rows from Keitaro")
+            if metrics_rows:
+                activity.logger.info(f"First row sample: {metrics_rows[0]}")
 
             # Build lookup dict by campaign_id
             metrics_by_id: dict[str, dict[str, int | float]] = {}
