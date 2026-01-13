@@ -90,11 +90,16 @@ echo "✓ qa-notes found: $(basename "$QA_NOTE")"
 
 # Run tests unless skipped
 if [ "$SKIP_TESTS" != "true" ]; then
-    # Check if localhost:10000 is running (for functional tests)
+    # Find dynamic FastAPI port from pid file
     echo ""
     echo "=== Pre-flight Checks ==="
-    if ! curl -sf http://localhost:10000/health >/dev/null 2>&1; then
-        echo "⚠️  FastAPI not running on localhost:10000"
+    FASTAPI_PORT=""
+    for pf in /tmp/genomai-dev/server-*.pid 2>/dev/null; do
+        [ -f "$pf" ] && FASTAPI_PORT=$(basename "$pf" .pid | sed 's/server-//')
+    done
+
+    if [ -z "$FASTAPI_PORT" ]; then
+        echo "⚠️  FastAPI not running (no pid file found)"
         echo ""
         echo "Start the server first:"
         echo "  make up"
@@ -102,7 +107,18 @@ if [ "$SKIP_TESTS" != "true" ]; then
         echo "Or skip tests with --skip-tests flag"
         exit 1
     fi
-    echo "✓ localhost:10000 is healthy"
+
+    if ! curl -sf "http://localhost:${FASTAPI_PORT}/health" >/dev/null 2>&1; then
+        echo "⚠️  FastAPI not responding on localhost:${FASTAPI_PORT}"
+        echo ""
+        echo "Restart the server:"
+        echo "  make down && make up"
+        echo ""
+        echo "Or skip tests with --skip-tests flag"
+        exit 1
+    fi
+    echo "✓ localhost:${FASTAPI_PORT} is healthy"
+    export FASTAPI_PORT
 
     # Extract and run functional test from qa-notes
     echo ""
@@ -118,13 +134,17 @@ if [ "$SKIP_TESTS" != "true" ]; then
         echo "Expected format in $(basename "$QA_NOTE"):"
         echo "  ## Test"
         echo "  \`\`\`bash"
-        echo "  curl -sf localhost:10000/endpoint || echo 'OK'"
+        echo "  curl -sf localhost:\$FASTAPI_PORT/endpoint || echo 'OK'"
         echo "  \`\`\`"
         echo ""
         echo "Actual content:"
         cat "$QA_NOTE" | head -30
         exit 1
     fi
+
+    # Substitute port placeholder (supports both $FASTAPI_PORT and hardcoded 10000)
+    TEST_CMD=$(echo "$TEST_CMD" | sed "s/localhost:10000/localhost:${FASTAPI_PORT}/g")
+    TEST_CMD=$(echo "$TEST_CMD" | sed "s/\\\$FASTAPI_PORT/${FASTAPI_PORT}/g")
 
     echo "Command: $TEST_CMD"
     echo ""
