@@ -169,6 +169,66 @@ def validate_dict_payload(value: Any, field_name: str = "payload") -> dict:
     return value
 
 
+# Allowed characters for safe string interpolation in URLs
+# Alphanumeric, underscore, hyphen - safe for PostgREST query params
+SAFE_STRING_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def validate_safe_string(value: str, field_name: str = "value", max_length: int = 100) -> str:
+    """
+    Validate string is safe for URL interpolation (no injection risk).
+
+    Only allows alphanumeric characters, underscores, and hyphens.
+    This prevents PostgREST query manipulation and URL injection.
+
+    Args:
+        value: String to validate
+        field_name: Name of field for error messages
+        max_length: Maximum allowed length
+
+    Returns:
+        Validated string
+
+    Raises:
+        ValueError: If string contains unsafe characters
+    """
+    if not value:
+        raise ValueError(f"{field_name} cannot be empty")
+
+    if len(value) > max_length:
+        raise ValueError(f"{field_name} exceeds maximum length of {max_length}")
+
+    if not SAFE_STRING_PATTERN.match(value):
+        raise ValueError(
+            f"{field_name} contains unsafe characters, "
+            f"only alphanumeric, underscore and hyphen allowed: {value!r}"
+        )
+
+    return value
+
+
+def validate_optional_safe_string(
+    value: Optional[str], field_name: str = "value", max_length: int = 100
+) -> Optional[str]:
+    """
+    Validate optional string is safe for URL interpolation.
+
+    Args:
+        value: String to validate or None
+        field_name: Name of field for error messages
+        max_length: Maximum allowed length
+
+    Returns:
+        Validated string or None
+
+    Raises:
+        ValueError: If provided but contains unsafe characters
+    """
+    if value is None:
+        return None
+    return validate_safe_string(value, field_name, max_length)
+
+
 # Status enum values for validation
 CREATIVE_STATUSES = {"registered", "processing", "processed", "failed"}
 IDEA_STATUSES = {"active", "inactive", "archived"}
