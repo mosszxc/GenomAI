@@ -373,13 +373,19 @@ async def retry_failed_hypotheses(
     max_retries: int = MAX_HYPOTHESIS_RETRIES,
 ) -> Dict[str, int]:
     """
-    Retry delivery of failed or stuck pending hypotheses.
+    Retry delivery of failed or stuck pending hypotheses (idempotent).
 
     Finds hypotheses with status='failed' or 'pending' (stuck > 5 min) and
     retry_count < max_retries, attempts to resend via Telegram, and updates status.
 
+    Idempotency: Uses conditional update on retry_count to claim the retry
+    attempt BEFORE sending Telegram. If Temporal retries this activity,
+    the claim will fail (retry_count already incremented) and Telegram
+    send is skipped, preventing duplicate messages.
+
     Issue: #313 - Failed hypothesis retry mechanism
     Issue: #399 - Stuck pending hypotheses delivery
+    Issue: #578 - Non-idempotent retry fix
 
     Args:
         max_retries: Maximum retry attempts per hypothesis
@@ -468,9 +474,37 @@ async def retry_failed_hypotheses(
             continue
 
         chat_id = buyers[0]["telegram_id"]
+        current_retry_count = hypothesis["retry_count"]
+        target_retry_count = current_retry_count + 1
+
+        # IDEMPOTENCY FIX (#578): Claim retry attempt BEFORE Telegram send
+        # Uses conditional update: only succeeds if retry_count hasn't changed
+        # This prevents duplicate Telegram messages on Temporal activity retry
+        claim_response = await client.patch(
+            f"{rest_url}/hypotheses?id=eq.{hypothesis_id}&retry_count=eq.{current_retry_count}",
+            headers=write_headers,
+            json={
+                "retry_count": target_retry_count,
+                "last_retry_at": datetime.utcnow().isoformat(),
+            },
+        )
+
+        # Check if we claimed this retry (row was updated)
+        claimed_rows = (
+            claim_response.json() if claim_response.status_code == 200 else []
+        )
+        if not claimed_rows:
+            # Another attempt already incremented retry_count - this is a Temporal retry
+            # Skip Telegram to avoid duplicate message
+            activity.logger.info(
+                f"Hypothesis {hypothesis_id} retry already claimed, skipping (idempotency)"
+            )
+            stats["skipped"] += 1
+            continue
+
         stats["retried"] += 1
 
-        # Attempt delivery
+        # Now safe to send Telegram - retry_count is already incremented
         try:
             telegram_response = await client.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
@@ -485,28 +519,24 @@ async def retry_failed_hypotheses(
             tg_data = telegram_response.json()
 
             if tg_data.get("ok"):
-                # Success - update hypothesis
+                # Success - update status only (retry_count already set above)
                 await client.patch(
                     f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
                     headers=write_headers,
                     json={
                         "status": "delivered",
-                        "retry_count": hypothesis["retry_count"] + 1,
-                        "last_retry_at": datetime.utcnow().isoformat(),
                         "last_error": None,
                     },
                 )
                 stats["succeeded"] += 1
                 activity.logger.info(f"Retry succeeded for hypothesis {hypothesis_id}")
             else:
-                # Telegram error
+                # Telegram error - update error only (retry_count already set)
                 error_msg = tg_data.get("description", "Unknown Telegram error")
                 await client.patch(
                     f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
                     headers=write_headers,
                     json={
-                        "retry_count": hypothesis["retry_count"] + 1,
-                        "last_retry_at": datetime.utcnow().isoformat(),
                         "last_error": error_msg,
                     },
                 )
@@ -516,13 +546,11 @@ async def retry_failed_hypotheses(
                 )
 
         except Exception as e:
-            # Network error
+            # Network error - update error only (retry_count already set)
             await client.patch(
                 f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
                 headers=write_headers,
                 json={
-                    "retry_count": hypothesis["retry_count"] + 1,
-                    "last_retry_at": datetime.utcnow().isoformat(),
                     "last_error": str(e),
                 },
             )
