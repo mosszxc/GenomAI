@@ -17,6 +17,7 @@ import re
 import logging
 import asyncio
 from datetime import datetime
+from html import escape as html_escape
 from typing import Optional
 from fastapi import APIRouter, Request, BackgroundTasks
 from pydantic import BaseModel
@@ -2525,7 +2526,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
         await send_telegram_message(
             message.chat_id,
             f"Видео получено!\n\n"
-            f"<i>URL: {video_url[:50]}...</i>\n\n"
+            f"<i>URL: {html_escape(video_url[:50])}...</i>\n\n"
             f"Обработка скоро начнётся. Уведомлю когда будет готово.",
         )
 
@@ -2603,7 +2604,9 @@ async def _process_telegram_update_inner(update: dict) -> None:
     if not message:
         return
 
-    logger.info(f"Telegram message from {message.user_id}: {message.text or '[media]'}")
+    logger.info(
+        f"Telegram message from {message.user_id}: {repr(message.text)[:100] if message.text else '[media]'}"
+    )
 
     # Handle commands
     if message.text:
