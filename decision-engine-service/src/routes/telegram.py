@@ -1822,7 +1822,8 @@ async def handle_approve_command(message: TelegramMessage) -> None:
         return
 
     text = message.text or ""
-    parts = text.strip().split()
+    # Filter empty parts to handle multiple whitespace (issue #543)
+    parts = [p for p in text.strip().split() if p]
 
     if len(parts) < 2:
         await send_telegram_message(
@@ -1887,7 +1888,8 @@ async def handle_reject_command(message: TelegramMessage) -> None:
         return
 
     text = message.text or ""
-    parts = text.strip().split()
+    # Filter empty parts to handle multiple whitespace (issue #543)
+    parts = [p for p in text.strip().split() if p]
 
     if len(parts) < 2:
         await send_telegram_message(
