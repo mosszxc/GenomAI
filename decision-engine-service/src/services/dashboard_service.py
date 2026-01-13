@@ -8,7 +8,7 @@ Issue: #602
 
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional, cast
 
 from src.core.http_client import get_http_client
 from src.utils.errors import SupabaseError
@@ -142,7 +142,7 @@ async def get_component_learnings(
     response = await client.get(query, headers=headers)
     response.raise_for_status()
 
-    return response.json()
+    return cast(list[dict[str, Any]], response.json())
 
 
 def classify_components(

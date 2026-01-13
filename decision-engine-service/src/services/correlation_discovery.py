@@ -54,6 +54,17 @@ class Correlation:
         """Lift as percentage change."""
         return (self.прирост - 1.0) * 100
 
+    # Aliases for English code compatibility
+    @property
+    def lift(self) -> float:
+        """Alias for прирост."""
+        return self.прирост
+
+    @property
+    def lift_percent(self) -> float:
+        """Alias for прирост_percent."""
+        return self.прирост_percent
+
 
 def _get_credentials():
     """Get Supabase credentials from environment."""

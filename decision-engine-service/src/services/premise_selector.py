@@ -11,7 +11,7 @@ Pattern: recommendation.py, exploration.py
 import os
 import random
 from src.core.http_client import get_http_client
-from typing import Optional
+from typing import Any, Optional, cast
 from dataclasses import dataclass
 from numpy.random import beta as beta_sample
 
@@ -129,7 +129,7 @@ async def get_active_premises(
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(list[dict[str, Any]], response.json())
 
 
 async def get_premise_learnings(
@@ -161,7 +161,7 @@ async def get_premise_learnings(
     client = get_http_client()
     response = await client.get(f"{rest_url}/premise_learnings?{filter_str}", headers=headers)
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
         return data[0]
@@ -204,7 +204,7 @@ async def get_top_premises(
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(list[dict[str, Any]], response.json())
 
 
 async def get_undersampled_premises(
@@ -278,7 +278,7 @@ async def select_best_premise(
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
         return data[0]

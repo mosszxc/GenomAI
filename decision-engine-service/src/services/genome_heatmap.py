@@ -109,10 +109,10 @@ async def get_heatmap_data(
     data = response.json()
 
     # Process data into matrix format
-    geos = set()
-    components = set()
-    matrix = {}
-    sample_sizes = {}
+    geos: set[str] = set()
+    components: set[str] = set()
+    matrix: dict[str, dict[str, Optional[float]]] = {}
+    sample_sizes: dict[str, dict[str, int]] = {}
 
     for row in data:
         component_value = row.get("component_value")

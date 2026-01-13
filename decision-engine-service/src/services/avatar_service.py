@@ -7,7 +7,7 @@ Uses the same pattern as learning_loop.py for Supabase access.
 
 import os
 from src.core.http_client import get_http_client
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple, cast
 
 from src.utils.errors import SupabaseError
 from src.utils.hashing import compute_avatar_hash
@@ -66,7 +66,7 @@ async def find_avatar_by_hash(canonical_hash: str) -> Optional[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data and len(data) > 0:
         return data[0]
@@ -131,7 +131,7 @@ async def create_avatar(
         raise SupabaseError(f"Avatar with hash {canonical_hash} already exists but not found")
 
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data and len(data) > 0:
         return data[0]
@@ -181,13 +181,15 @@ async def find_or_create_avatar(
         return existing["id"], "existing"
 
     # Create new avatar
+    # Note: avatar_hash is only computed if required fields are present
+    # so these casts are safe
     new_avatar = await create_avatar(
         canonical_hash=avatar_hash,
         vertical=vertical,
         geo=geo,
-        deep_desire_type=deep_desire_type,
-        primary_trigger=primary_trigger,
-        awareness_level=awareness_level,
+        deep_desire_type=cast(str, deep_desire_type),
+        primary_trigger=cast(str, primary_trigger),
+        awareness_level=cast(str, awareness_level),
     )
 
     return new_avatar["id"], "new"

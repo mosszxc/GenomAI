@@ -12,7 +12,7 @@ import os
 import json
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, cast
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
@@ -145,7 +145,7 @@ async def check_modular_readiness(
     Returns:
         Readiness status dict
     """
-    return await check_modular_generation_ready(vertical, geo)
+    return cast(Dict[str, Any], await check_modular_generation_ready(vertical, geo))
 
 
 @activity.defn
@@ -165,7 +165,7 @@ async def select_module_combinations(
     Returns:
         List of module combinations
     """
-    return await select_top_combinations(count, vertical, geo)
+    return cast(List[Dict[str, Any]], await select_top_combinations(count, vertical, geo))
 
 
 @activity.defn
@@ -235,7 +235,7 @@ async def synthesize_hypothesis_text(
         if "text" not in result:
             raise ApplicationError("LLM response missing 'text' field", type="SCHEMA_ERROR")
 
-        synthesized_text = result["text"]
+        synthesized_text = cast(str, result["text"])
         activity.logger.info(f"Synthesized text length: {len(synthesized_text)}")
 
         return synthesized_text
@@ -304,7 +304,7 @@ async def save_modular_hypothesis(
         json=hypothesis,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(List[Dict[str, Any]], response.json())
 
     if not data:
         raise ApplicationError("Failed to insert hypothesis: no data returned")

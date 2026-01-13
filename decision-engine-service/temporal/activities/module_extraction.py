@@ -11,7 +11,7 @@ Part of Modular Creative System (Phase 2).
 import os
 import json
 import hashlib
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 from temporalio import activity
 from src.core.http_client import get_http_client
 
@@ -29,7 +29,7 @@ SCHEMA = "genomai"
 #   - related_fields: Additional context fields to store in content
 #   - key_fields: Fields used for deduplication hash
 #   - text_field: Optional field for human-readable text_content
-MODULE_FIELDS = {
+MODULE_FIELDS: Dict[str, Dict[str, Any]] = {
     "hook_mechanism": {
         "primary_field": "hook_mechanism",
         "fallback_field": "opening_type",
@@ -124,7 +124,7 @@ def compute_module_key(module_type: str, content: dict) -> str:
         SHA256 hex digest
     """
     config = MODULE_FIELDS[module_type]
-    primary_field = config["primary_field"]
+    primary_field = cast(str, config["primary_field"])
 
     # Build canonical dict with primary field only
     # Note: content already has value under primary_field (even if fallback was used)
@@ -136,7 +136,7 @@ def compute_module_key(module_type: str, content: dict) -> str:
     return hashlib.sha256(canonical_str.encode()).hexdigest()
 
 
-def extract_module_content(payload: dict, module_type: str) -> Dict[str, Any]:
+def extract_module_content(payload: dict[str, Any], module_type: str) -> Dict[str, Any]:
     """
     Extract module content from decomposed payload with fallback support.
 
@@ -151,10 +151,10 @@ def extract_module_content(payload: dict, module_type: str) -> Dict[str, Any]:
         Dict with extracted fields for this module type
     """
     config = MODULE_FIELDS[module_type]
-    primary_field = config["primary_field"]
-    fallback_field = config.get("fallback_field")
-    fallback_composite = config.get("fallback_composite", [])
-    related_fields = config.get("related_fields", [])
+    primary_field = cast(str, config["primary_field"])
+    fallback_field = cast(Optional[str], config.get("fallback_field"))
+    fallback_composite = cast(list[str], config.get("fallback_composite", []))
+    related_fields = cast(list[str], config.get("related_fields", []))
 
     content: Dict[str, Any] = {}
 
@@ -181,7 +181,7 @@ def extract_module_content(payload: dict, module_type: str) -> Dict[str, Any]:
     return content
 
 
-def get_text_content(payload: dict, module_type: str) -> Optional[str]:
+def get_text_content(payload: dict[str, Any], module_type: str) -> Optional[str]:
     """
     Extract human-readable text content for module.
 
@@ -192,7 +192,7 @@ def get_text_content(payload: dict, module_type: str) -> Optional[str]:
     Returns:
         Text content string or None
     """
-    text_field = MODULE_FIELDS[module_type].get("text_field")
+    text_field = cast(Optional[str], MODULE_FIELDS[module_type].get("text_field"))
     if not text_field:
         return None
 
@@ -315,7 +315,7 @@ async def upsert_module(
         headers=_get_headers(supabase_key),
     )
     response.raise_for_status()
-    existing = response.json()
+    existing = cast(list[Dict[str, Any]], response.json())
 
     if existing:
         # Module exists - only update if new creative has more data
@@ -381,7 +381,7 @@ async def upsert_module(
         json=module,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         # Conflict occurred (retry case) - fetch existing module
@@ -393,7 +393,7 @@ async def upsert_module(
             headers=_get_headers(supabase_key),
         )
         response.raise_for_status()
-        existing = response.json()
+        existing = cast(list[Dict[str, Any]], response.json())
         if existing:
             log = get_activity_logger(module_type=module_type)
             log.info("Module already exists (retry case)", module_id=existing[0]["id"])
@@ -485,7 +485,7 @@ async def extract_modules_from_decomposition(
         content = extract_module_content(payload, module_type)
 
         # Get primary field to check for meaningful content
-        primary_field = MODULE_FIELDS[module_type]["primary_field"]
+        primary_field = cast(str, MODULE_FIELDS[module_type]["primary_field"])
 
         # Skip if no primary field value extracted
         if not content.get(primary_field):

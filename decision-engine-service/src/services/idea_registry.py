@@ -18,7 +18,7 @@ Flow:
 import os
 import json
 from src.core.http_client import get_http_client
-from typing import Optional
+from typing import Any, Optional, cast
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
@@ -108,7 +108,7 @@ async def load_decomposed_creative(creative_id: str) -> Optional[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data and len(data) > 0:
         return data[0]
@@ -148,7 +148,7 @@ async def load_buyer_by_creative(creative_id: str) -> Optional[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    buyer_data = response.json()
+    buyer_data = cast(list[dict[str, Any]], response.json())
 
     if buyer_data and len(buyer_data) > 0:
         return buyer_data[0]
@@ -177,7 +177,7 @@ async def find_idea_by_hash(canonical_hash: str) -> Optional[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data and len(data) > 0:
         return data[0]
@@ -219,7 +219,7 @@ async def create_idea(
         raise SupabaseError(f"Idea with hash {canonical_hash} already exists but not found")
 
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data and len(data) > 0:
         return data[0]

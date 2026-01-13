@@ -9,7 +9,7 @@ Input validation added per issue #482.
 
 import os
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 from temporalio import activity
 from src.core.http_client import get_http_client
 
@@ -110,7 +110,7 @@ async def create_creative(
         json=creative,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         raise RuntimeError("Failed to create creative: no data returned")
@@ -178,7 +178,7 @@ async def create_historical_creative(
         json=creative,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         raise RuntimeError("Failed to create historical creative: no data returned")
@@ -336,12 +336,12 @@ async def create_idea(
     client = get_http_client()
     response = await client.post(rpc_url, headers=headers, json=payload)
     response.raise_for_status()
-    result = response.json()
+    result = cast(Dict[str, Any], response.json())
 
     if not result or "idea" not in result:
         raise RuntimeError("Failed to create idea: no data returned from RPC")
 
-    created_idea = result["idea"]
+    created_idea = cast(Dict[str, Any], result["idea"])
     activity.logger.info(
         f"Created idea {created_idea['id']} with linked decomposed_creative {decomposed_creative_id}"
     )
@@ -404,12 +404,12 @@ async def upsert_idea(
     client = get_http_client()
     response = await client.post(rpc_url, headers=headers, json=payload)
     response.raise_for_status()
-    result = response.json()
+    result = cast(Dict[str, Any], response.json())
 
     if not result or "idea" not in result:
         raise RuntimeError("Failed to upsert idea: no data returned from RPC")
 
-    idea = result["idea"]
+    idea = cast(Dict[str, Any], result["idea"])
     upsert_status = result.get("upsert_status", "unknown")
     idea["upsert_status"] = upsert_status
 
@@ -472,7 +472,7 @@ async def save_decomposed_creative(
         json=decomposed,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         raise RuntimeError("Failed to save decomposed creative")
@@ -577,7 +577,7 @@ async def emit_event(
         json=event,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     return data[0] if data else event
 
@@ -654,7 +654,7 @@ async def save_transcript(
         json=transcript,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[Dict[str, Any]], response.json())
 
     if not data:
         # Conflict occurred (retry case) - fetch existing transcript
@@ -666,7 +666,7 @@ async def save_transcript(
             headers=read_headers,
         )
         response.raise_for_status()
-        existing = response.json()
+        existing = cast(list[Dict[str, Any]], response.json())
         if existing:
             activity.logger.info(
                 f"Transcript already exists (retry case) creative={creative_id}, version={next_version}"

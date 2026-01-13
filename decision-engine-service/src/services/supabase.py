@@ -7,7 +7,7 @@ all operations use the genomai schema.
 
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional, cast
 
 import httpx
 from src.core.http_client import get_http_client
@@ -147,7 +147,7 @@ async def load_idea(idea_id: str) -> Optional[dict]:
         # Map cluster_id to active_cluster_id for backward compatibility
         idea["active_cluster_id"] = idea.get("cluster_id")
 
-        return idea
+        return cast(dict[str, Any], idea)
     except httpx.HTTPStatusError as e:
         raise SupabaseError(f"Failed to load idea: HTTP {e.response.status_code}") from e
     except Exception as e:
@@ -204,7 +204,7 @@ async def get_existing_decision(idea_id: str, decision_epoch: int) -> Optional[d
             headers=headers,
         )
         response.raise_for_status()
-        data = response.json()
+        data = cast(list[dict[str, Any]], response.json())
 
         if data and len(data) > 0:
             return data[0]
@@ -241,7 +241,7 @@ async def get_decision_trace(decision_id: str) -> Optional[dict]:
             headers=headers,
         )
         response.raise_for_status()
-        data = response.json()
+        data = cast(list[dict[str, Any]], response.json())
 
         if data and len(data) > 0:
             return data[0]
@@ -265,7 +265,7 @@ async def save_decision(decision: dict) -> dict:
         client = get_http_client()
         response = await client.post(f"{rest_url}/decisions", headers=headers, json=decision)
         response.raise_for_status()
-        data = response.json()
+        data = cast(list[dict[str, Any]], response.json())
 
         if not data or len(data) == 0:
             raise SupabaseError("Failed to save decision: no data returned")
@@ -302,7 +302,7 @@ async def save_decision_trace(trace: dict) -> dict:
         client = get_http_client()
         response = await client.post(f"{rest_url}/decision_traces", headers=headers, json=trace)
         response.raise_for_status()
-        data = response.json()
+        data = cast(list[dict[str, Any]], response.json())
 
         if not data or len(data) == 0:
             raise SupabaseError("Failed to save decision trace: no data returned")
@@ -364,7 +364,7 @@ async def save_decision_with_trace(decision: dict, trace: dict) -> dict:
         async with httpx.AsyncClient() as client:
             response = await client.post(rpc_url, headers=headers, json=payload)
             response.raise_for_status()
-            return response.json()
+            return cast(dict[str, Any], response.json())
 
     except httpx.HTTPStatusError as e:
         error_detail = e.response.text

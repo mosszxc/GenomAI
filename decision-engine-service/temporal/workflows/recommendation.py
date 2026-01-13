@@ -114,8 +114,10 @@ class DailyRecommendationWorkflow:
             telegram_id = buyer.get("telegram_id")
             buyer_name = buyer.get("name", "Buyer")
             # Use geos[]/verticals[] arrays (deprecated geo/vertical columns removed)
-            geos = buyer.get("geos", [])
-            verticals = buyer.get("verticals", [])
+            raw_geos: list[str] | str = buyer.get("geos", [])
+            raw_verticals: list[str] | str = buyer.get("verticals", [])
+            geos: list[str] = raw_geos if isinstance(raw_geos, list) else []
+            verticals: list[str] = raw_verticals if isinstance(raw_verticals, list) else []
             geo = geos[0] if geos else None
             vertical = verticals[0] if verticals else None
 

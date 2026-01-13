@@ -141,8 +141,8 @@ async def calculate_diversity_score(
     data = response.json()
 
     # Count unique values per type
-    types_seen = set()
-    values_per_type = {}
+    types_seen: set[str] = set()
+    values_per_type: dict[str, set[str]] = {}
     for row in data:
         ct = row["component_type"]
         cv = row["component_value"]
@@ -155,7 +155,7 @@ async def calculate_diversity_score(
         return 0.0  # No data = fully stale
 
     # Calculate diversity: average values per type / expected
-    total_values = sum(len(v) for v in values_per_type.values())
+    total_values: int = sum(len(v) for v in values_per_type.values())
     expected = len(types_seen) * EXPECTED_DIVERSITY_PER_TYPE
     diversity = min(1.0, total_values / expected)
 
@@ -454,7 +454,7 @@ async def calculate_staleness_metrics(
     """
     # Calculate individual metrics with error handling
     # Track which metrics failed to fetch from DB
-    error_sources: list[str] = []
+    error_sources_local: list[str] = []
 
     try:
         diversity = await calculate_diversity_score(avatar_id, geo)
@@ -465,7 +465,7 @@ async def calculate_staleness_metrics(
             avatar_id,
             geo,
         )
-        error_sources.append("diversity_score")
+        error_sources_local.append("diversity_score")
         diversity = 0.5  # Neutral fallback
 
     try:
@@ -477,7 +477,7 @@ async def calculate_staleness_metrics(
             avatar_id,
             geo,
         )
-        error_sources.append("win_rate_trend")
+        error_sources_local.append("win_rate_trend")
         win_rate_trend = 0.0  # Neutral fallback
 
     try:
@@ -489,7 +489,7 @@ async def calculate_staleness_metrics(
             avatar_id,
             geo,
         )
-        error_sources.append("fatigue_ratio")
+        error_sources_local.append("fatigue_ratio")
         fatigue = 0.0  # No fatigue assumed fallback
 
     try:
@@ -501,7 +501,7 @@ async def calculate_staleness_metrics(
             avatar_id,
             geo,
         )
-        error_sources.append("days_since_new_component")
+        error_sources_local.append("days_since_new_component")
         days_stale = DAYS_STALE_THRESHOLD  # Neutral fallback
 
     try:
@@ -513,11 +513,11 @@ async def calculate_staleness_metrics(
             avatar_id,
             geo,
         )
-        error_sources.append("exploration_success_rate")
+        error_sources_local.append("exploration_success_rate")
         exploration = 0.5  # Neutral fallback
 
     # Determine quality based on failure ratio
-    failed_count = len(error_sources)
+    failed_count = len(error_sources_local)
     failure_ratio = failed_count / TOTAL_METRICS
     quality = "low" if failure_ratio > QUALITY_FAILURE_THRESHOLD else "high"
 
@@ -528,14 +528,14 @@ async def calculate_staleness_metrics(
             "Failed metrics: %s. Score should not be used for decisions.",
             failed_count,
             TOTAL_METRICS,
-            error_sources,
+            error_sources_local,
         )
-    elif error_sources:
+    elif error_sources_local:
         logger.warning(
             "Staleness metrics calculated with %d/%d fallback values due to errors: %s",
             failed_count,
             TOTAL_METRICS,
-            error_sources,
+            error_sources_local,
         )
 
     # Create metrics object
@@ -550,7 +550,7 @@ async def calculate_staleness_metrics(
         avatar_id=avatar_id,
         geo=geo,
         vertical=vertical,
-        error_sources=error_sources,
+        error_sources=error_sources_local,
         quality=quality,
     )
 

@@ -16,7 +16,7 @@ Issue: Inspiration System
 import logging
 import os
 from src.core.http_client import get_http_client
-from typing import Any, Optional, List
+from typing import Any, Optional, List, cast
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -188,7 +188,7 @@ async def get_pending_inspirations(limit: int = 10) -> List[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(List[dict[str, Any]], response.json())
 
 
 async def get_extracted_inspirations(limit: int = 10) -> List[dict]:
@@ -207,7 +207,7 @@ async def get_extracted_inspirations(limit: int = 10) -> List[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    return response.json()
+    return cast(List[dict[str, Any]], response.json())
 
 
 async def inject_external_components(

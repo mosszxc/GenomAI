@@ -390,7 +390,7 @@ async def get_exploration_stats() -> dict:
         headers=headers,
     )
     data = response.json()
-    by_type = {}
+    by_type: dict[str, int] = {}
     for row in data:
         t = row["exploration_type"]
         by_type[t] = by_type.get(t, 0) + 1

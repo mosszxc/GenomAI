@@ -167,7 +167,7 @@ async def get_feature_cpa_pairs(feature_name: str, limit: int = 1000) -> list[Fe
         return []
 
     # Build decision_id -> cpa mapping (use latest/avg if multiple)
-    decision_to_cpa = {}
+    decision_to_cpa: dict[str, list[float]] = {}
     for outcome in all_outcomes:
         dec_id = outcome["decision_id"]
         cpa = float(outcome["cpa"])

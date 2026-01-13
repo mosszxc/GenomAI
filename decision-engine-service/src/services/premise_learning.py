@@ -10,7 +10,7 @@ Pattern: component_learning.py
 
 import os
 from src.core.http_client import get_http_client
-from typing import Optional
+from typing import Any, Optional, cast
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
@@ -140,7 +140,7 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
             headers=headers,
         )
         response.raise_for_status()
-        hypothesis_data = response.json()
+        hypothesis_data = cast(list[dict[str, Any]], response.json())
         if hypothesis_data:
             return hypothesis_data[0]
 
@@ -151,7 +151,7 @@ async def get_hypothesis_for_creative(creative_id: str) -> Optional[dict]:
             headers=headers,
         )
         response.raise_for_status()
-        hypothesis_data = response.json()
+        hypothesis_data = cast(list[dict[str, Any]], response.json())
         if hypothesis_data:
             return hypothesis_data[0]
 
@@ -169,10 +169,10 @@ async def get_premise_type(premise_id: str) -> Optional[str]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
-        return data[0].get("premise_type")
+        return cast(Optional[str], data[0].get("premise_type"))
     return None
 
 
@@ -283,18 +283,19 @@ async def process_premise_learning(
 
     Returns summary of updates.
     """
-    result = {
+    errors: list[str] = []
+    result: dict[str, Any] = {
         "creative_id": creative_id,
         "premise_updated": False,
         "premise_id": None,
         "was_win": None,
-        "errors": [],
+        "errors": errors,
     }
 
     # Get hypothesis for creative
     hypothesis = await get_hypothesis_for_creative(creative_id)
     if not hypothesis:
-        result["errors"].append(f"No hypothesis found for creative {creative_id}")
+        errors.append(f"No hypothesis found for creative {creative_id}")
         return result
 
     premise_id = hypothesis.get("premise_id")
@@ -307,7 +308,7 @@ async def process_premise_learning(
     # Get premise_type
     premise_type = await get_premise_type(premise_id)
     if not premise_type:
-        result["errors"].append(f"Could not get premise_type for premise {premise_id}")
+        errors.append(f"Could not get premise_type for premise {premise_id}")
         return result
 
     # Determine win/loss
@@ -340,6 +341,6 @@ async def process_premise_learning(
             )
 
     except Exception as e:
-        result["errors"].append(f"Error updating premise_learnings: {str(e)}")
+        errors.append(f"Error updating premise_learnings: {str(e)}")
 
     return result

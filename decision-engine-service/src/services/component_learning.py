@@ -11,7 +11,7 @@ Issue #600: Extended to support 7 independent variables from VISION.md
 import logging
 import os
 from src.core.http_client import get_http_client
-from typing import Optional
+from typing import Any, Optional, cast
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
@@ -137,7 +137,7 @@ async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
         headers=headers,
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data:
         return data[0]
@@ -157,10 +157,10 @@ async def get_idea_avatar(idea_id: str) -> Optional[str]:
         f"{rest_url}/ideas?id=eq.{idea_id}&select=avatar_id", headers=headers
     )
     response.raise_for_status()
-    data = response.json()
+    data = cast(list[dict[str, Any]], response.json())
 
     if data and data[0].get("avatar_id"):
-        return data[0]["avatar_id"]
+        return cast(str, data[0]["avatar_id"])
     return None
 
 
@@ -314,18 +314,19 @@ async def process_component_learnings(
     # Validate input upfront to prevent URL injection
     creative_id = validate_uuid(creative_id, "creative_id")
 
-    result = {
+    errors: list[str] = []
+    result: dict[str, Any] = {
         "creative_id": creative_id,
         "components_updated": 0,
         "global_updates": 0,
         "avatar_updates": 0,
-        "errors": [],
+        "errors": errors,
     }
 
     # Get decomposed creative
     dc = await get_decomposed_creative(creative_id)
     if not dc or not dc.get("payload"):
-        result["errors"].append(f"No decomposed_creative found for {creative_id}")
+        errors.append(f"No decomposed_creative found for {creative_id}")
         return result
 
     payload = dc["payload"]
@@ -334,7 +335,7 @@ async def process_component_learnings(
     # Extract components
     components = extract_components(payload)
     if not components:
-        result["errors"].append("No trackable components found in payload")
+        errors.append("No trackable components found in payload")
         return result
 
     # Get context
@@ -387,6 +388,6 @@ async def process_component_learnings(
         result["components_updated"] = batch_result["inserted"] + batch_result["updated"]
         result["geos_processed"] = len(geos) if geos else 0  # Issue #564: Track geos
     except Exception as e:
-        result["errors"].append(f"Batch update error: {str(e)}")
+        errors.append(f"Batch update error: {str(e)}")
 
     return result

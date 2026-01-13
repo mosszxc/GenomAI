@@ -93,7 +93,7 @@ def is_environment_degraded(env_ctx: Optional[dict]) -> bool:
     if env_ctx is None:
         return False
 
-    return (
+    return bool(
         env_ctx.get("degraded", False)
         or env_ctx.get("market_stress", False)
         or env_ctx.get("seasonality_impact", "normal") == "high"

@@ -31,8 +31,8 @@ class OutcomeAggregate:
     creative_id: str = ""
     decision_id: str = ""
     window_id: str = ""
-    window_start: date = None
-    window_end: date = None
+    window_start: Optional[date] = None
+    window_end: Optional[date] = None
     conversions: int = 0
     spend: Decimal = Decimal("0")
     cpa: Optional[Decimal] = None
@@ -432,15 +432,18 @@ class OutcomeService:
                     error_message=f"Snapshot {snapshot_id} not found",
                 )
 
-            tracker_id = snapshot.get("tracker_id")
+            tracker_id: str = snapshot.get("tracker_id", "")
             snapshot_date_str = snapshot.get("date")
             metrics = snapshot.get("metrics", {})
 
             # Parse snapshot date
+            snapshot_date: date
             if isinstance(snapshot_date_str, str):
                 snapshot_date = date.fromisoformat(snapshot_date_str)
-            else:
+            elif isinstance(snapshot_date_str, date):
                 snapshot_date = snapshot_date_str
+            else:
+                snapshot_date = date.today()
 
             # 2. Find idea via lookup
             idea_lookup = await self.get_idea_by_tracker(tracker_id)
@@ -455,7 +458,7 @@ class OutcomeService:
                 )
 
             idea_id = idea_lookup["idea_id"]
-            creative_id = idea_lookup.get("creative_id")
+            creative_id: str = idea_lookup.get("creative_id", "")
 
             # 3. Find APPROVE decision
             decision = await self.get_approve_decision(idea_id)
@@ -517,10 +520,11 @@ class OutcomeService:
 
             inserted = await self.upsert_outcome(outcome)
             outcome.id = inserted.get("id")
+            outcome_id: str = outcome.id or ""
 
             # 7. Emit event
             await self.emit_event(
-                outcome_id=outcome.id,
+                outcome_id=outcome_id,
                 decision_id=decision_id,
                 idea_id=idea_id,
                 conversions=conversions,
@@ -529,7 +533,7 @@ class OutcomeService:
 
             # 8. Trigger Learning Loop
             learning_triggered = await self.trigger_learning_loop(
-                outcome_id=outcome.id,
+                outcome_id=outcome_id,
                 decision_id=decision_id,
                 idea_id=idea_id,
                 conversions=conversions,
