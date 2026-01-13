@@ -227,12 +227,31 @@ fi
 if [ "$NO_PR" != "true" ] && [ "$NO_MERGE" != "true" ] && [ -n "$PR_NUMBER" ]; then
     echo ""
     echo "=== Waiting for CI ==="
-    if gh pr checks "$PR_NUMBER" --watch; then
-        echo "✓ CI checks passed"
-    else
-        echo "✗ CI checks failed"
-        exit 1
-    fi
+    # Wait for CI to start (GitHub needs a few seconds)
+    echo "Waiting for CI to start..."
+    sleep 5
+
+    # Retry up to 3 times if no checks yet
+    for i in 1 2 3; do
+        if gh pr checks "$PR_NUMBER" --watch 2>/dev/null; then
+            echo "✓ CI checks passed"
+            break
+        else
+            if [ $i -lt 3 ]; then
+                echo "CI not ready, retrying in 10s... ($i/3)"
+                sleep 10
+            else
+                echo "✗ CI checks failed or not available"
+                exit 1
+            fi
+        fi
+    done
+
+    # Close issue immediately after CI passes (before merge attempt)
+    echo ""
+    echo "=== Closing issue ==="
+    gh issue close "$ISSUE_NUM" --comment "Fixed in PR #$PR_NUMBER" 2>/dev/null || true
+    echo "✓ Issue #$ISSUE_NUM closed"
 
     echo ""
     echo "=== Merging PR ==="
@@ -241,20 +260,6 @@ if [ "$NO_PR" != "true" ] && [ "$NO_MERGE" != "true" ] && [ -n "$PR_NUMBER" ]; t
     else
         echo "Trying auto-merge..."
         gh pr merge "$PR_NUMBER" --squash --delete-branch --auto || true
-    fi
-
-    # Verify issue is closed
-    echo ""
-    echo "=== Verifying issue closure ==="
-    sleep 2
-    ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
-
-    if [ "$ISSUE_STATE" = "CLOSED" ]; then
-        echo "✓ Issue #$ISSUE_NUM closed automatically"
-    else
-        echo "Issue still open, closing manually..."
-        gh issue close "$ISSUE_NUM" --comment "Fixed in PR #$PR_NUMBER (merged to develop)" || true
-        echo "✓ Issue #$ISSUE_NUM closed"
     fi
 fi
 
