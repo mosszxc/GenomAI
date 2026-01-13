@@ -181,91 +181,157 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
         return None
 
 
-async def upsert_component_learning(
+def _build_component_key(
     component_type: str,
     component_value: str,
     geo: Optional[str],
     avatar_id: Optional[str],
-    was_win: bool,
-    spend: float,
-    revenue: float,
+) -> str:
+    """Build unique key for component lookup."""
+    return f"{component_type}|{component_value}|{geo or ''}|{avatar_id or ''}"
+
+
+async def batch_upsert_component_learnings(
+    updates: list[ComponentUpdate],
 ) -> dict:
     """
-    Upsert component learning record.
+    Batch upsert multiple component learning records (O(1) instead of O(n)).
 
-    Updates sample_size, win_count/loss_count, totals, and recalculates metrics.
+    Issue #577: Replaces N individual upserts with batch operations.
+
+    Args:
+        updates: List of ComponentUpdate objects to process
+
+    Returns:
+        Dict with counts of inserts and updates
     """
+    if not updates:
+        return {"inserted": 0, "updated": 0}
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
-
-    # Build filter for existing record
-    filters = [
-        f"component_type=eq.{component_type}",
-        f"component_value=eq.{component_value}",
-    ]
-    if geo:
-        filters.append(f"geo=eq.{geo}")
-    else:
-        filters.append("geo=is.null")
-    if avatar_id:
-        filters.append(f"avatar_id=eq.{avatar_id}")
-    else:
-        filters.append("avatar_id=is.null")
-
-    filter_str = "&".join(filters)
-
     client = get_http_client()
-    # Check if record exists
+
+    # Build unique keys for all updates
+    update_keys = {}
+    for u in updates:
+        key = _build_component_key(
+            u.component_type, u.component_value, u.geo, u.avatar_id
+        )
+        if key not in update_keys:
+            update_keys[key] = u
+        else:
+            # Merge duplicates (same component in same batch)
+            existing = update_keys[key]
+            update_keys[key] = ComponentUpdate(
+                component_type=existing.component_type,
+                component_value=existing.component_value,
+                geo=existing.geo,
+                avatar_id=existing.avatar_id,
+                was_win=existing.was_win or u.was_win,  # Count as win if any was win
+                spend=existing.spend + u.spend,
+                revenue=existing.revenue + u.revenue,
+            )
+
+    # Extract unique component_type/component_value pairs for batch lookup
+    type_value_pairs = list(
+        {(u.component_type, u.component_value) for u in update_keys.values()}
+    )
+
+    # Batch fetch existing records (O(1) query)
+    # Use OR conditions for type/value pairs
+    or_conditions = []
+    for comp_type, comp_value in type_value_pairs:
+        or_conditions.append(
+            f"and(component_type.eq.{comp_type},component_value.eq.{comp_value})"
+        )
+
     response = await client.get(
-        f"{rest_url}/component_learnings?{filter_str}",
+        f"{rest_url}/component_learnings"
+        f"?or=({','.join(or_conditions)})"
+        "&select=id,component_type,component_value,geo,avatar_id,"
+        "sample_size,win_count,loss_count,total_spend,total_revenue",
         headers=_get_headers(supabase_key),
     )
     response.raise_for_status()
-    existing = response.json()
+    existing_records = response.json()
 
-    if existing:
-        # Update existing record
-        record = existing[0]
-        new_sample = (record.get("sample_size") or 0) + 1
-        new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
-        new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
-        new_spend = float(record.get("total_spend") or 0) + spend
-        new_revenue = float(record.get("total_revenue") or 0) + revenue
-
-        # win_rate and avg_roi are generated columns, don't update them
-        response = await client.patch(
-            f"{rest_url}/component_learnings?id=eq.{record['id']}",
-            headers=headers,
-            json={
-                "sample_size": new_sample,
-                "win_count": new_wins,
-                "loss_count": new_losses,
-                "total_spend": new_spend,
-                "total_revenue": new_revenue,
-                "updated_at": "now()",
-            },
+    # Build lookup map for existing records
+    existing_map = {}
+    for rec in existing_records:
+        key = _build_component_key(
+            rec["component_type"],
+            rec["component_value"],
+            rec.get("geo"),
+            rec.get("avatar_id"),
         )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
-    else:
-        # Insert new record (win_rate and avg_roi are generated columns)
+        existing_map[key] = rec
+
+    # Separate into inserts and updates
+    to_insert = []
+    updates_by_id = {}
+
+    for key, update in update_keys.items():
+        if key in existing_map:
+            # Prepare update
+            rec = existing_map[key]
+            updates_by_id[rec["id"]] = {
+                "sample_size": (rec.get("sample_size") or 0) + 1,
+                "win_count": (rec.get("win_count") or 0) + (1 if update.was_win else 0),
+                "loss_count": (rec.get("loss_count") or 0)
+                + (0 if update.was_win else 1),
+                "total_spend": float(rec.get("total_spend") or 0) + update.spend,
+                "total_revenue": float(rec.get("total_revenue") or 0) + update.revenue,
+                "updated_at": "now()",
+            }
+        else:
+            # Prepare insert
+            to_insert.append(
+                {
+                    "component_type": update.component_type,
+                    "component_value": update.component_value,
+                    "geo": update.geo,
+                    "avatar_id": update.avatar_id,
+                    "sample_size": 1,
+                    "win_count": 1 if update.was_win else 0,
+                    "loss_count": 0 if update.was_win else 1,
+                    "total_spend": update.spend,
+                    "total_revenue": update.revenue,
+                }
+            )
+
+    result = {"inserted": 0, "updated": 0}
+
+    # Batch insert new records (single POST with array)
+    if to_insert:
         response = await client.post(
             f"{rest_url}/component_learnings",
             headers=headers,
-            json={
-                "component_type": component_type,
-                "component_value": component_value,
-                "geo": geo,
-                "avatar_id": avatar_id,
-                "sample_size": 1,
-                "win_count": 1 if was_win else 0,
-                "loss_count": 0 if was_win else 1,
-                "total_spend": spend,
-                "total_revenue": revenue,
-            },
+            json=to_insert,
         )
         response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+        result["inserted"] = len(to_insert)
+
+    # Batch update existing records
+    # PostgREST doesn't support different values per row in single PATCH,
+    # so we need individual PATCHes, but we can parallelize with asyncio.gather
+    if updates_by_id:
+        import asyncio
+
+        async def update_one(record_id: str, data: dict):
+            resp = await client.patch(
+                f"{rest_url}/component_learnings?id=eq.{record_id}",
+                headers=headers,
+                json=data,
+            )
+            resp.raise_for_status()
+
+        await asyncio.gather(
+            *[update_one(rid, data) for rid, data in updates_by_id.items()]
+        )
+        result["updated"] = len(updates_by_id)
+
+    return result
 
 
 async def process_component_learnings(
@@ -311,11 +377,12 @@ async def process_component_learnings(
     # Determine win/loss
     was_win = is_win(cpa, spend)
 
-    # Update for each component
+    # Build batch updates (O(1) instead of O(n*2) - Issue #577)
+    updates = []
     for component_type, component_value in components:
-        try:
-            # Global update (avatar_id = NULL)
-            await upsert_component_learning(
+        # Global update (avatar_id = NULL)
+        updates.append(
+            ComponentUpdate(
                 component_type=component_type,
                 component_value=component_value,
                 geo=geo,
@@ -324,12 +391,12 @@ async def process_component_learnings(
                 spend=spend,
                 revenue=revenue,
             )
-            result["global_updates"] += 1
-            result["components_updated"] += 1
+        )
 
-            # Per-avatar update (if avatar known)
-            if avatar_id:
-                await upsert_component_learning(
+        # Per-avatar update (if avatar known)
+        if avatar_id:
+            updates.append(
+                ComponentUpdate(
                     component_type=component_type,
                     component_value=component_value,
                     geo=geo,
@@ -338,12 +405,16 @@ async def process_component_learnings(
                     spend=spend,
                     revenue=revenue,
                 )
-                result["avatar_updates"] += 1
-                result["components_updated"] += 1
-
-        except Exception as e:
-            result["errors"].append(
-                f"Error updating {component_type}={component_value}: {str(e)}"
             )
+
+    try:
+        batch_result = await batch_upsert_component_learnings(updates)
+        result["global_updates"] = len(components)
+        result["avatar_updates"] = len(components) if avatar_id else 0
+        result["components_updated"] = (
+            batch_result["inserted"] + batch_result["updated"]
+        )
+    except Exception as e:
+        result["errors"].append(f"Batch update error: {str(e)}")
 
     return result
