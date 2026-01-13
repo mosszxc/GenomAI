@@ -253,7 +253,7 @@ class CreativeRegistrationWorkflow:
 
             creative = await workflow.execute_activity(
                 create_creative,
-                args=[video_url, "telegram", buyer_id, target_geo, target_vertical],
+                args=[video_url, "user", buyer_id, target_geo, target_vertical],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -270,7 +270,7 @@ class CreativeRegistrationWorkflow:
                         "creative_id": self._creative_id,
                         "buyer_id": buyer_id,
                         "video_url": video_url,
-                        "source": "telegram",
+                        "source": "user",
                     },
                 ],
                 start_to_close_timeout=timedelta(seconds=10),
