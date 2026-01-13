@@ -24,9 +24,7 @@ from src.utils.parsing import safe_int, safe_float
 _TEMPORARY_ERROR_CODES = {502, 503, 504, 429}
 
 
-def _handle_http_response(
-    response: httpx.Response, context: str = "Keitaro API"
-) -> None:
+def _handle_http_response(response: httpx.Response, context: str = "Keitaro API") -> None:
     """
     Handle HTTP response with proper error classification for Temporal retry.
 
@@ -55,9 +53,7 @@ def _handle_http_response(
         )
     else:
         # Permanent error - no point in retrying
-        activity.logger.error(
-            f"{context} permanent error: status={status_code}, body={error_body}"
-        )
+        activity.logger.error(f"{context} permanent error: status={status_code}, body={error_body}")
         raise ApplicationError(
             f"{context} error: HTTP {status_code} - {error_body}",
             non_retryable=True,
