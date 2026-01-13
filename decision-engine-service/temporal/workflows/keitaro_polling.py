@@ -217,6 +217,7 @@ class KeitaroPollerWorkflow:
                 metrics_failed=0,
                 snapshots_created=0,
                 errors=[],
+                circuit_state=circuit_state,  # Issue #548: propagate circuit state
             )
 
         # Step 2: Batch fetch metrics (more efficient than individual calls)
@@ -233,6 +234,7 @@ class KeitaroPollerWorkflow:
             errors.append(f"Batch metrics error: {str(e)}")
             batch_result = BatchMetricsOutput(metrics=[], failed_ids=tracker_ids)
             api_success = False
+            is_degraded = True  # Issue #548: explicitly mark as degraded on API failure
 
             # Record failure to circuit breaker
             try:
@@ -365,11 +367,18 @@ class KeitaroPollerWorkflow:
         except Exception:
             pass  # Event emission is best-effort
 
-        workflow.logger.info(
-            f"Keitaro Poller complete: "
-            f"{metrics_collected} metrics, {snapshots_created} snapshots, "
-            f"circuit: {circuit_state}"
-        )
+        # Issue #548: Log degraded state for monitoring visibility
+        if is_degraded:
+            workflow.logger.warning(
+                f"Keitaro Poller completed in DEGRADED mode: "
+                f"{metrics_collected} metrics, {len(errors)} errors, circuit: {circuit_state}"
+            )
+        else:
+            workflow.logger.info(
+                f"Keitaro Poller complete: "
+                f"{metrics_collected} metrics, {snapshots_created} snapshots, "
+                f"circuit: {circuit_state}"
+            )
 
         # Step 5: Trigger MetricsProcessingWorkflow as child workflow
         # This creates the chain: keitaro → metrics-processor → learning-loop
