@@ -391,3 +391,84 @@ async def process_component_learnings(
         errors.append(f"Batch update error: {str(e)}")
 
     return result
+
+
+async def prepare_component_updates(
+    creative_id: str, cpa: float, spend: float, revenue: float
+) -> list[dict]:
+    """
+    Prepare component learning updates for atomic RPC.
+
+    Issue #732: Returns list of dicts ready for apply_learning_complete_atomic RPC.
+    Does NOT execute the updates - caller passes to RPC for atomic execution.
+
+    Args:
+        creative_id: Creative UUID
+        cpa: Cost per action
+        spend: Total spend
+        revenue: Total revenue
+
+    Returns:
+        List of update dicts, empty list if no components to update
+    """
+    # Validate input
+    creative_id = validate_uuid(creative_id, "creative_id")
+
+    # Get decomposed creative
+    dc = await get_decomposed_creative(creative_id)
+    if not dc or not dc.get("payload"):
+        return []
+
+    payload = dc["payload"]
+    idea_id = dc.get("idea_id")
+
+    # Extract components
+    components = extract_components(payload)
+    if not components:
+        return []
+
+    # Get context
+    geos = await get_creative_geos(creative_id)
+    avatar_id = await get_idea_avatar(idea_id) if idea_id else None
+
+    # Determine win/loss
+    was_win = is_win(cpa, spend)
+
+    # Build updates list
+    updates = []
+    geos_to_process = geos if geos else [None]  # type: ignore[list-item]
+
+    for geo in geos_to_process:
+        for component_type, component_value in components:
+            # Global update (avatar_id = NULL)
+            updates.append(
+                {
+                    "component_type": component_type,
+                    "component_value": component_value,
+                    "geo": geo,
+                    "avatar_id": None,
+                    "sample_size": 1,
+                    "win_count": 1 if was_win else 0,
+                    "loss_count": 0 if was_win else 1,
+                    "total_spend": spend,
+                    "total_revenue": revenue,
+                }
+            )
+
+            # Per-avatar update (if avatar known)
+            if avatar_id:
+                updates.append(
+                    {
+                        "component_type": component_type,
+                        "component_value": component_value,
+                        "geo": geo,
+                        "avatar_id": avatar_id,
+                        "sample_size": 1,
+                        "win_count": 1 if was_win else 0,
+                        "loss_count": 0 if was_win else 1,
+                        "total_spend": spend,
+                        "total_revenue": revenue,
+                    }
+                )
+
+    return updates
