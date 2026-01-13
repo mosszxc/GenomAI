@@ -2521,6 +2521,7 @@ async def handle_user_message(message: TelegramMessage) -> None:
                 "user_message",
                 BuyerMessage(
                     text=message.text or "",
+                    telegram_id=str(message.user_id),
                     message_id=message.message_id,
                     timestamp=datetime.utcnow(),
                 ),

@@ -793,6 +793,13 @@ class BuyerOnboardingWorkflow:
         Args:
             message: BuyerMessage with text and metadata
         """
+        # Security: validate telegram_id matches workflow owner
+        if message.telegram_id != self._telegram_id:
+            workflow.logger.warning(
+                f"Ignoring message from wrong user: {message.telegram_id}, "
+                f"expected: {self._telegram_id}"
+            )
+            return
         self._pending_message = message
         self._update_snapshot()  # Atomic snapshot update
 
