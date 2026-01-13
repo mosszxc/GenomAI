@@ -610,21 +610,8 @@ async def save_transcript(
     read_headers = _get_headers(supabase_key)
 
     client = get_http_client()
-    # Idempotency check: if same assemblyai_transcript_id exists, return it
-    if assemblyai_transcript_id:
-        response = await client.get(
-            f"{rest_url}/transcripts"
-            f"?assemblyai_transcript_id=eq.{assemblyai_transcript_id}"
-            f"&select=*&limit=1",
-            headers=read_headers,
-        )
-        response.raise_for_status()
-        existing = response.json()
-        if existing:
-            activity.logger.info(
-                f"Transcript already exists for assemblyai_id={assemblyai_transcript_id}"
-            )
-            return existing[0]
+    # Note: assemblyai_transcript_id column doesn't exist in DB
+    # Idempotency handled via UNIQUE(creative_id, version) constraint
 
     # Get current max version for creative
     response = await client.get(
@@ -649,9 +636,6 @@ async def save_transcript(
         "transcript_text": transcript_text,
         "created_at": datetime.utcnow().isoformat(),
     }
-
-    if assemblyai_transcript_id:
-        transcript["assemblyai_transcript_id"] = assemblyai_transcript_id
 
     # Use on_conflict for idempotent retry handling (Issue #579)
     # UNIQUE constraint: (creative_id, version)
