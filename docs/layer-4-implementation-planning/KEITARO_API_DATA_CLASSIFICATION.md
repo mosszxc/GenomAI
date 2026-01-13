@@ -1,20 +1,23 @@
 # Keitaro API Data Classification
 
-**Последнее обновление:** 2025-12-22  
+**Последнее обновление:** 2026-01-13
 **Версия API:** v1
 
 ## Endpoints
 
 ### 1. POST /admin_api/v1/report/build
 
-#### 1.1 Get Trackers (dimensions: sub_id_1)
+#### 1.1 Get Trackers (dimensions: campaign_id)
+
+> **Issue #705:** Изменено с `sub_id_1` на `campaign_id` для соответствия `creatives.tracker_id`.
+> `campaign_id` работает для всех кампаний, включая те, где `sub_id_1` не настроен.
 
 **Request:**
 ```json
 {
   "range": {"interval": "yesterday"},
   "metrics": ["clicks"],
-  "dimensions": ["sub_id_1"]
+  "dimensions": ["campaign_id"]
 }
 ```
 
@@ -23,7 +26,7 @@
 {
   "rows": [
     {
-      "sub_id_1": "KT-123456",
+      "campaign_id": 10228,
       "clicks": 1000
     }
   ],
@@ -34,7 +37,7 @@
 
 **Classification:**
 - `rows`: Array<Object> - массив объектов с dimension и metrics
-- `rows[].sub_id_1`: String - уникальный идентификатор tracker
+- `rows[].campaign_id`: Number - ID кампании в Keitaro (используется как tracker_id)
 - `rows[].clicks`: Number - количество кликов
 - `total`: Number - общее количество записей
 - `meta`: Array - метаданные (опционально)
@@ -42,7 +45,7 @@
 **Examples:**
 - [Примеры реальных ответов будут добавлены после первого выполнения workflow]
 
-#### 1.2 Get Campaign Metrics (filter: sub_id_1 = tracker_id)
+#### 1.2 Get Campaign Metrics (filter: campaign_id = tracker_id)
 
 **Request:**
 ```json
@@ -51,9 +54,9 @@
   "metrics": ["clicks", "conversions", "revenue", "cost"],
   "filters": [
     {
-      "name": "sub_id_1",
+      "name": "campaign_id",
       "operator": "EQUALS",
-      "expression": "KT-123456"
+      "expression": "10228"
     }
   ]
 }

@@ -136,13 +136,14 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
     """
     Get all active tracker IDs from Keitaro.
 
-    Uses report/build with dimensions: ["sub_id_1"] to get unique tracker IDs.
+    Uses report/build with dimensions: ["campaign_id"] to get unique tracker IDs.
+    Issue #705: Changed from sub_id_1 to campaign_id to match creatives.tracker_id.
 
     Args:
         input: Contains interval (yesterday, today, etc.)
 
     Returns:
-        GetAllTrackersOutput with list of tracker_ids
+        GetAllTrackersOutput with list of tracker_ids (campaign_id values)
     """
     activity.logger.info(f"Fetching all trackers for interval: {input.interval}")
 
@@ -152,7 +153,7 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
     payload = {
         "range": {"interval": input.interval},
         "metrics": ["clicks"],
-        "dimensions": ["sub_id_1"],
+        "dimensions": ["campaign_id"],
     }
 
     client = get_http_client()
@@ -161,9 +162,10 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
     data = response.json()
 
     rows = data.get("rows", [])
-    tracker_ids = [row.get("sub_id_1") for row in rows if row.get("sub_id_1")]
+    # Issue #705: Use campaign_id instead of sub_id_1
+    tracker_ids = [str(row.get("campaign_id")) for row in rows if row.get("campaign_id")]
 
-    activity.logger.info(f"Found {len(tracker_ids)} trackers")
+    activity.logger.info(f"Found {len(tracker_ids)} trackers (campaign_ids)")
 
     return GetAllTrackersOutput(tracker_ids=tracker_ids, total=len(tracker_ids))
 
@@ -173,10 +175,11 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
     """
     Get metrics for a specific tracker from Keitaro.
 
-    Uses report/build with filter on sub_id_1.
+    Uses report/build with filter on campaign_id.
+    Issue #705: Changed from sub_id_1 to campaign_id to match creatives.tracker_id.
 
     Args:
-        input: Contains tracker_id and interval
+        input: Contains tracker_id (campaign_id) and interval
 
     Returns:
         GetTrackerMetricsOutput with metrics or not found
@@ -186,10 +189,11 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
     url = _get_keitaro_url("/report/build")
     headers = _get_keitaro_headers()
 
+    # Issue #705: Filter by campaign_id instead of sub_id_1
     payload = {
         "range": {"interval": input.interval},
         "metrics": ["clicks", "conversions", "revenue", "cost", "profit_confirmed"],
-        "filters": [{"name": "sub_id_1", "operator": "EQUALS", "expression": input.tracker_id}],
+        "filters": [{"name": "campaign_id", "operator": "EQUALS", "expression": input.tracker_id}],
     }
 
     client = get_http_client()
@@ -475,9 +479,10 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
 
     More efficient than calling get_tracker_metrics for each tracker.
     Uses report/build with dimensions to get all metrics at once.
+    Issue #705: Changed from sub_id_1 to campaign_id to match creatives.tracker_id.
 
     Args:
-        input: Contains list of tracker_ids and interval
+        input: Contains list of tracker_ids (campaign_ids) and interval
 
     Returns:
         BatchMetricsOutput with all metrics and any failed IDs
@@ -487,11 +492,11 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     url = _get_keitaro_url("/report/build")
     headers = _get_keitaro_headers()
 
-    # Get all metrics with sub_id_1 dimension
+    # Issue #705: Get all metrics with campaign_id dimension (not sub_id_1)
     payload = {
         "range": {"interval": input.interval},
         "metrics": ["clicks", "conversions", "revenue", "cost", "profit_confirmed"],
-        "dimensions": ["sub_id_1"],
+        "dimensions": ["campaign_id"],
     }
 
     client = get_http_client()
@@ -507,9 +512,11 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     else:
         metrics_date = datetime.now().date().isoformat()
 
-    # Build lookup from response
+    # Build lookup from response - Issue #705: use campaign_id
     rows = data.get("rows", [])
-    metrics_by_tracker = {row.get("sub_id_1"): row for row in rows if row.get("sub_id_1")}
+    metrics_by_tracker = {
+        str(row.get("campaign_id")): row for row in rows if row.get("campaign_id")
+    }
 
     # Match with requested tracker IDs
     results = []
