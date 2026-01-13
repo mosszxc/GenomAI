@@ -241,7 +241,7 @@ async def transcribe_via_n8n(
                     )
 
                     return {
-                        "transcript_id": str(transcript_db_id),
+                        "transcript_id": None,  # n8n path has no AssemblyAI ID
                         "text": record.get("transcript_text", ""),
                         "status": "completed",
                         "words": len(record.get("transcript_text", "").split()),
