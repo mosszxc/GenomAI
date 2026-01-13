@@ -12,11 +12,56 @@ from datetime import datetime, timedelta
 from typing import Optional
 from dataclasses import dataclass
 
+import httpx
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from temporal.config import settings
 from src.utils.parsing import safe_int, safe_float
+
+
+# HTTP status codes that indicate temporary errors (should retry)
+_TEMPORARY_ERROR_CODES = {502, 503, 504, 429}
+
+
+def _handle_http_response(
+    response: httpx.Response, context: str = "Keitaro API"
+) -> None:
+    """
+    Handle HTTP response with proper error classification for Temporal retry.
+
+    Args:
+        response: The HTTP response to check
+        context: Description for error messages
+
+    Raises:
+        ApplicationError: With non_retryable=False for temporary errors (will retry)
+        ApplicationError: With non_retryable=True for permanent errors (won't retry)
+    """
+    if response.is_success:
+        return
+
+    status_code = response.status_code
+    error_body = response.text[:500] if response.text else "No response body"
+
+    if status_code in _TEMPORARY_ERROR_CODES:
+        # Temporary error - Temporal should retry
+        activity.logger.warning(
+            f"{context} temporary error: status={status_code}, body={error_body}"
+        )
+        raise ApplicationError(
+            f"{context} temporarily unavailable: HTTP {status_code}",
+            non_retryable=False,
+        )
+    else:
+        # Permanent error - no point in retrying
+        activity.logger.error(
+            f"{context} permanent error: status={status_code}, body={error_body}"
+        )
+        raise ApplicationError(
+            f"{context} error: HTTP {status_code} - {error_body}",
+            non_retryable=True,
+        )
 
 
 @dataclass
@@ -116,7 +161,7 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=60.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     rows = data.get("rows", [])
@@ -153,7 +198,7 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=30.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     rows = data.get("rows", [])
@@ -276,7 +321,7 @@ async def get_campaigns_by_source(
 
     client = get_http_client()
     response = await client.get(url, headers=headers, timeout=120.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     all_campaigns = response.json()
 
     # Step 2: Calculate date cutoff (last 30 days by default)
@@ -400,7 +445,7 @@ async def get_campaign_creatives(
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=60.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     rows = data.get("rows", [])
@@ -455,7 +500,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=120.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     # Calculate date based on interval
