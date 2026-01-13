@@ -132,6 +132,8 @@ def parse_callback_data(data: str) -> tuple[str, str]:
     Raises:
         CallbackDataError: If validation fails
     """
+    import uuid as uuid_module
+
     if not data:
         raise CallbackDataError("Empty callback data")
 
@@ -151,6 +153,18 @@ def parse_callback_data(data: str) -> tuple[str, str]:
 
     if not action or not identifier:
         raise CallbackDataError("Empty action or identifier")
+
+    # Type-specific validation to prevent injection attacks
+    if action in ("ke_approve", "ke_reject", "ke_skip"):
+        # extraction_id must be a valid UUID
+        try:
+            uuid_module.UUID(identifier)
+        except ValueError:
+            raise CallbackDataError(f"Invalid UUID for {action}: {identifier[:20]}") from None
+    elif action == "chat":
+        # buyer_telegram_id must be numeric
+        if not identifier.isdigit():
+            raise CallbackDataError(f"Invalid telegram_id: {identifier[:20]}")
 
     return action, identifier
 
