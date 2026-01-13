@@ -147,14 +147,14 @@ class MetricsProcessingWorkflow:
         learning_triggered = False
         if input.trigger_learning and outcomes_created > 0:
             try:
-                # Start child workflow for learning
-                learning_triggered = await workflow.start_child_workflow(
+                # Start child workflow for learning (fire-and-forget)
+                await workflow.start_child_workflow(
                     "LearningLoopWorkflow",
                     LearningLoopInput(batch_limit=100),
                     id=f"learning-{workflow.info().workflow_id}",
                     task_queue="metrics",
                 )
-                learning_triggered = True
+                learning_triggered = True  # Set only after successful start
                 workflow.logger.info("Learning loop triggered")
             except Exception as e:
                 # Learning trigger is best-effort
