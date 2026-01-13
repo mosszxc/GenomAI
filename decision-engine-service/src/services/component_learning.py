@@ -13,6 +13,10 @@ from typing import Optional
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
+from temporal.models.validators import (
+    validate_uuid,
+    validate_safe_string,
+)
 
 
 SCHEMA = "genomai"
@@ -109,6 +113,9 @@ def extract_components(payload: dict) -> list[tuple[str, str]]:
 
 async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
     """Fetch decomposed_creative payload for a creative_id"""
+    # Validate input to prevent URL injection
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -127,6 +134,9 @@ async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
 
 async def get_idea_avatar(idea_id: str) -> Optional[str]:
     """Get avatar_id for an idea"""
+    # Validate input to prevent URL injection
+    idea_id = validate_uuid(idea_id, "idea_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -144,6 +154,9 @@ async def get_idea_avatar(idea_id: str) -> Optional[str]:
 
 async def get_creative_geo(creative_id: str) -> Optional[str]:
     """Get geo for a creative via creatives -> buyer -> geos"""
+    # Validate input to prevent URL injection
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -160,7 +173,8 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
         if not data or not data[0].get("buyer_id"):
             return None
 
-        buyer_id = data[0]["buyer_id"]
+        # Validate buyer_id from DB result before using in URL
+        buyer_id = validate_uuid(data[0]["buyer_id"], "buyer_id")
 
         # Get geos from buyer
         response = await client.get(
@@ -234,9 +248,13 @@ async def batch_upsert_component_learnings(
 
     # Batch fetch existing records (O(1) query)
     # Use OR conditions for type/value pairs
+    # Validate all values before building query to prevent URL injection
     or_conditions = []
     for comp_type, comp_value in type_value_pairs:
-        or_conditions.append(f"and(component_type.eq.{comp_type},component_value.eq.{comp_value})")
+        # Validate component values before interpolation
+        safe_type = validate_safe_string(comp_type, "component_type")
+        safe_value = validate_safe_string(comp_value, "component_value")
+        or_conditions.append(f"and(component_type.eq.{safe_type},component_value.eq.{safe_value})")
 
     response = await client.get(
         f"{rest_url}/component_learnings"
@@ -310,8 +328,10 @@ async def batch_upsert_component_learnings(
         import asyncio
 
         async def update_one(record_id: str, data: dict):
+            # Validate record_id to prevent URL injection
+            safe_id = validate_uuid(record_id, "record_id")
             resp = await client.patch(
-                f"{rest_url}/component_learnings?id=eq.{record_id}",
+                f"{rest_url}/component_learnings?id=eq.{safe_id}",
                 headers=headers,
                 json=data,
             )
@@ -336,6 +356,9 @@ async def process_component_learnings(
 
     Returns summary of updates.
     """
+    # Validate input upfront to prevent URL injection
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     result = {
         "creative_id": creative_id,
         "components_updated": 0,
