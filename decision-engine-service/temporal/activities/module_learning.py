@@ -7,6 +7,15 @@ Activities for updating module statistics based on creative test outcomes:
 
 Part of the Modular Creative System.
 Note: win_rate, avg_roi, compatibility_score are GENERATED columns - DO NOT update directly.
+
+Issue #600: Extended to support 7 independent variables (VISION.md):
+1. hook_mechanism
+2. angle_type
+3. message_structure
+4. ump_type
+5. promise_type
+6. proof_type
+7. cta_style
 """
 
 from datetime import datetime
@@ -38,6 +47,7 @@ class UpdateModuleStatsInput:
     is_win: bool
     spend: float = 0.0
     revenue: float = 0.0
+    conversions: int = 0  # For CPA tracking (#601)
 
 
 @dataclass
@@ -80,7 +90,7 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
     # First get current stats
     get_url = (
         f"{sb.rest_url}/module_bank"
-        f"?id=eq.{input.module_id}&select=sample_size,win_count,loss_count,total_spend,total_revenue"
+        f"?id=eq.{input.module_id}&select=sample_size,win_count,loss_count,total_spend,total_revenue,total_conversions"
     )
 
     try:
@@ -103,8 +113,9 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
         loss_count = (current.get("loss_count") or 0) + (0 if input.is_win else 1)
         total_spend = float(current.get("total_spend") or 0) + input.spend
         total_revenue = float(current.get("total_revenue") or 0) + input.revenue
+        total_conversions = (current.get("total_conversions") or 0) + input.conversions
 
-        # Update stats
+        # Update stats (avg_cpa is generated column - not updated directly)
         update_url = f"{sb.rest_url}/module_bank?id=eq.{input.module_id}"
         update_payload = {
             "sample_size": sample_size,
@@ -112,6 +123,7 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
             "loss_count": loss_count,
             "total_spend": total_spend,
             "total_revenue": total_revenue,
+            "total_conversions": total_conversions,
             "updated_at": datetime.utcnow().isoformat(),
         }
 
@@ -280,16 +292,49 @@ class GetModulesForCreativeInput:
     creative_id: str
 
 
+# 7 independent variables (VISION.md) - Issue #600
+MODULE_VARIABLE_COLUMNS = [
+    "hook_mechanism_module_id",
+    "angle_type_module_id",
+    "message_structure_module_id",
+    "ump_type_module_id",
+    "promise_type_module_id",
+    "proof_type_module_id",
+    "cta_style_module_id",
+]
+
+# Legacy columns for backward compatibility
+LEGACY_MODULE_COLUMNS = [
+    "hook_module_id",
+    "promise_module_id",
+    "proof_module_id",
+]
+
+
 @dataclass
 class GetModulesForCreativeOutput:
-    """Output from get_modules_for_creative activity"""
+    """Output from get_modules_for_creative activity
+
+    Issue #600: Extended to support 7 independent variables.
+    """
 
     creative_id: str
     module_ids: list[str]
+    generation_mode: Optional[str] = None
+
+    # 7 Independent Variables (Issue #600)
+    hook_mechanism_module_id: Optional[str] = None
+    angle_type_module_id: Optional[str] = None
+    message_structure_module_id: Optional[str] = None
+    ump_type_module_id: Optional[str] = None
+    promise_type_module_id: Optional[str] = None
+    proof_type_module_id: Optional[str] = None
+    cta_style_module_id: Optional[str] = None
+
+    # Legacy (backward compatibility)
     hook_module_id: Optional[str] = None
     promise_module_id: Optional[str] = None
     proof_module_id: Optional[str] = None
-    generation_mode: Optional[str] = None
 
 
 @activity.defn
@@ -299,13 +344,16 @@ async def get_modules_for_creative(
     """
     Get module IDs associated with a creative via hypothesis.
 
-    Flow: creative_id → decisions → hypothesis_id → hypothesis.module_ids
+    Flow: creative_id → decomposed_creatives → idea_id → hypotheses
+
+    Issue #600: Extended to fetch all 7 independent variables.
+    Maintains backward compatibility with legacy 3-module columns.
 
     Args:
         input: creative_id to look up
 
     Returns:
-        GetModulesForCreativeOutput with module IDs
+        GetModulesForCreativeOutput with module IDs for all 7 variables
     """
 
     activity.logger.info(f"Getting modules for creative: {input.creative_id}")
@@ -316,7 +364,6 @@ async def get_modules_for_creative(
     try:
         client = get_http_client()
         # Get idea_id from decomposed_creatives
-        # Flow: creative_id → decomposed_creatives → idea_id
         decomposed_url = (
             f"{sb.rest_url}/decomposed_creatives"
             f"?creative_id=eq.{input.creative_id}"
@@ -338,11 +385,15 @@ async def get_modules_for_creative(
 
         idea_id = decomposed[0]["idea_id"]
 
+        # Build select with all 7 variable columns + legacy columns
+        all_columns = MODULE_VARIABLE_COLUMNS + LEGACY_MODULE_COLUMNS + ["generation_mode"]
+        select_clause = ",".join(all_columns)
+
         # Get hypothesis with module IDs via idea_id
         hypothesis_url = (
             f"{sb.rest_url}/hypotheses"
             f"?idea_id=eq.{idea_id}"
-            f"&select=hook_module_id,promise_module_id,proof_module_id,generation_mode"
+            f"&select={select_clause}"
             f"&order=created_at.desc"
             f"&limit=1"
         )
@@ -358,13 +409,41 @@ async def get_modules_for_creative(
             )
 
         hypothesis = hypotheses[0]
-        hook_id = hypothesis.get("hook_module_id")
-        promise_id = hypothesis.get("promise_module_id")
-        proof_id = hypothesis.get("proof_module_id")
         generation_mode = hypothesis.get("generation_mode")
 
-        # Collect non-null module IDs
-        module_ids = [mid for mid in [hook_id, promise_id, proof_id] if mid is not None]
+        # Extract 7 variable modules (Issue #600)
+        hook_mechanism_id = hypothesis.get("hook_mechanism_module_id")
+        angle_type_id = hypothesis.get("angle_type_module_id")
+        message_structure_id = hypothesis.get("message_structure_module_id")
+        ump_type_id = hypothesis.get("ump_type_module_id")
+        promise_type_id = hypothesis.get("promise_type_module_id")
+        proof_type_id = hypothesis.get("proof_type_module_id")
+        cta_style_id = hypothesis.get("cta_style_module_id")
+
+        # Extract legacy modules (backward compatibility)
+        legacy_hook_id = hypothesis.get("hook_module_id")
+        legacy_promise_id = hypothesis.get("promise_module_id")
+        legacy_proof_id = hypothesis.get("proof_module_id")
+
+        # Collect all non-null module IDs (7 variables + legacy)
+        all_module_ids = [
+            # 7 variables (priority)
+            hook_mechanism_id,
+            angle_type_id,
+            message_structure_id,
+            ump_type_id,
+            promise_type_id,
+            proof_type_id,
+            cta_style_id,
+            # Legacy (if new columns are empty)
+            legacy_hook_id,
+            legacy_promise_id,
+            legacy_proof_id,
+        ]
+        module_ids = [mid for mid in all_module_ids if mid is not None]
+
+        # Deduplicate (in case legacy and new overlap)
+        module_ids = list(dict.fromkeys(module_ids))
 
         activity.logger.info(
             f"Found {len(module_ids)} modules for creative {input.creative_id}: "
@@ -374,10 +453,19 @@ async def get_modules_for_creative(
         return GetModulesForCreativeOutput(
             creative_id=input.creative_id,
             module_ids=module_ids,
-            hook_module_id=hook_id,
-            promise_module_id=promise_id,
-            proof_module_id=proof_id,
             generation_mode=generation_mode,
+            # 7 variables
+            hook_mechanism_module_id=hook_mechanism_id,
+            angle_type_module_id=angle_type_id,
+            message_structure_module_id=message_structure_id,
+            ump_type_module_id=ump_type_id,
+            promise_type_module_id=promise_type_id,
+            proof_type_module_id=proof_type_id,
+            cta_style_module_id=cta_style_id,
+            # Legacy
+            hook_module_id=legacy_hook_id,
+            promise_module_id=legacy_promise_id,
+            proof_module_id=legacy_proof_id,
         )
 
     except httpx.HTTPStatusError as e:
@@ -413,6 +501,7 @@ class ProcessModuleLearningInput:
     is_win: bool
     spend: float = 0.0
     revenue: float = 0.0
+    conversions: int = 0  # For CPA tracking (#601)
 
 
 @dataclass
@@ -465,36 +554,42 @@ async def process_module_learning(
 
     spend_per_module = input.spend / module_count
     revenue_per_module = input.revenue / module_count
+    # Split conversions evenly across modules (rounded down, remainder distributed to first modules)
+    conversions_per_module = input.conversions // module_count
+    conversions_remainder = input.conversions % module_count
 
     # Update each module
-    for module_id in input.module_ids:
-        result = await update_module_stats(
+    for idx, module_id in enumerate(input.module_ids):
+        # Distribute remainder conversions to first N modules
+        module_conversions = conversions_per_module + (1 if idx < conversions_remainder else 0)
+        module_result = await update_module_stats(
             UpdateModuleStatsInput(
                 module_id=module_id,
                 is_win=input.is_win,
                 spend=spend_per_module,
                 revenue=revenue_per_module,
+                conversions=module_conversions,
             )
         )
-        if result.success:
+        if module_result.success:
             modules_updated += 1
-        elif result.error:
-            errors.append(f"Module {module_id}: {result.error}")
+        elif module_result.error:
+            errors.append(f"Module {module_id}: {module_result.error}")
 
     # Update compatibility for all pairs
     for i, module_a in enumerate(input.module_ids):
         for module_b in input.module_ids[i + 1 :]:
-            result = await update_compatibility_stats(
+            compat_result = await update_compatibility_stats(
                 UpdateCompatibilityInput(
                     module_a_id=module_a,
                     module_b_id=module_b,
                     is_win=input.is_win,
                 )
             )
-            if result.success:
+            if compat_result.success:
                 compatibilities_updated += 1
-            elif result.error:
-                errors.append(f"Compatibility {module_a}<->{module_b}: {result.error}")
+            elif compat_result.error:
+                errors.append(f"Compatibility {module_a}<->{module_b}: {compat_result.error}")
 
     success = len(errors) == 0
     activity.logger.info(
@@ -569,7 +664,7 @@ async def process_module_learning_batch(
             f"{sb.rest_url}/outcome_aggregates"
             f"?learning_applied=eq.true"
             f"&created_at=gte.{cutoff_iso}"
-            f"&select=creative_id,cpa,spend"
+            f"&select=creative_id,cpa,spend,conversions"
             f"&limit=100"
         )
         response = await client.get(outcomes_url, headers=headers, timeout=30.0)
@@ -599,6 +694,7 @@ async def process_module_learning_batch(
                 # Determine win/loss based on CPA
                 cpa = float(outcome.get("cpa") or 0)
                 spend = float(outcome.get("spend") or 0)
+                conversions = int(outcome.get("conversions") or 0)
                 is_win = cpa > 0 and cpa < TARGET_CPA
 
                 # Process module learning
@@ -609,6 +705,7 @@ async def process_module_learning_batch(
                         is_win=is_win,
                         spend=spend,
                         revenue=spend / cpa if cpa > 0 else 0,  # Estimate revenue
+                        conversions=conversions,
                     )
                 )
 

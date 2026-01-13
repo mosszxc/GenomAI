@@ -5,6 +5,7 @@ Extracts components from decomposed_creatives and updates component_learnings
 based on outcome results (win/loss).
 
 Issue: #122
+Issue #600: Extended to support 7 independent variables from VISION.md
 """
 
 import logging
@@ -21,21 +22,32 @@ logger = logging.getLogger(__name__)
 
 SCHEMA = "genomai"
 
-# Components to track from decomposed_creative payload
-TRACKABLE_COMPONENTS = [
-    "angle_type",
-    "hook_mechanism",
-    "proof_type",
+# 7 Independent Variables (VISION.md) - Issue #600
+# These are the core variables used for Learning Loop statistics
+CORE_VARIABLES = [
+    "hook_mechanism",  # 1. How to grab attention
+    "angle_type",  # 2. Emotional angle
+    "message_structure",  # 3. Narrative structure
+    "ump_type",  # 4. Unique mechanism promise
+    "promise_type",  # 5. Type of promise
+    "proof_type",  # 6. Type of proof
+    "cta_style",  # 7. Call to action style
+]
+
+# Additional components tracked for analysis (preserved from Canonical Schema v2)
+# These correlate with CORE_VARIABLES but provide more granular data
+ADDITIONAL_COMPONENTS = [
     "source_type",
     "emotion_primary",
-    "message_structure",
     "opening_type",
-    "promise_type",
     "core_belief",
     "context_frame",
     "horizon",
     "risk_level",
 ]
+
+# Combined list for full tracking
+TRACKABLE_COMPONENTS = CORE_VARIABLES + ADDITIONAL_COMPONENTS
 
 # Win thresholds per issue #122
 WIN_THRESHOLD_LOW_SPEND = {"max_spend": 50, "max_cpa": 4}

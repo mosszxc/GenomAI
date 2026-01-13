@@ -293,11 +293,13 @@ if [ "$NO_PR" != "true" ] && [ "$NO_MERGE" != "true" ] && [ -n "$PR_NUMBER" ]; t
 
     echo ""
     echo "=== Merging PR ==="
-    if gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+    # Note: --delete-branch removed to avoid conflicts with git worktrees
+    # GitHub auto-deletes remote branch. Local cleanup: git fetch --prune
+    if gh pr merge "$PR_NUMBER" --squash; then
         echo "✓ PR #$PR_NUMBER merged"
     else
         echo "Trying auto-merge..."
-        gh pr merge "$PR_NUMBER" --squash --delete-branch --auto || true
+        gh pr merge "$PR_NUMBER" --squash --auto || true
     fi
 fi
 

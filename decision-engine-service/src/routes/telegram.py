@@ -1280,6 +1280,81 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
         )
 
 
+async def handle_meta_command(message: TelegramMessage) -> None:
+    """
+    Handle /meta command - show Meta Dashboard with HOT/COLD/GAPS analysis.
+
+    Usage:
+        /meta - Show global meta dashboard
+        /meta US - Show meta dashboard for specific geo
+
+    Shows component performance summary:
+    - HOT: High-performing components (>30% win rate)
+    - COLD: Fatigued components (overused, declining)
+    - GAPS: Components needing more testing
+    """
+    from src.services.meta_dashboard import (
+        generate_meta_dashboard,
+        format_meta_dashboard_telegram,
+    )
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
+        return
+
+    # Parse optional geo filter
+    text = message.text or "/meta"
+    parts = text.split(maxsplit=1)
+    geo = parts[1].upper() if len(parts) > 1 else None
+
+    # Validate geo if provided
+    if geo and geo not in VALID_GEOS:
+        await send_telegram_message(
+            message.chat_id,
+            f"Неизвестный гео: {geo}\nДоступные: {', '.join(sorted(VALID_GEOS))}",
+        )
+        return
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Generate meta dashboard
+        dashboard = await generate_meta_dashboard(geo=geo)
+
+        # Format for Telegram
+        result_text = format_meta_dashboard_telegram(dashboard)
+
+        await send_telegram_message(message.chat_id, result_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=result_text,
+            context={
+                "geo": geo,
+                "hot_count": len(dashboard.hot_components),
+                "cold_count": len(dashboard.cold_components),
+                "gaps_count": len(dashboard.gap_components),
+                "week_num": dashboard.week_num,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Не удалось сгенерировать Meta Dashboard: {e}")
+        await send_telegram_message(
+            message.chat_id,
+            f"Не удалось сгенерировать дашборд: {str(e)[:100]}",
+        )
+
+
 # =============================================================================
 # ADMIN MONITORING COMMANDS
 # =============================================================================
@@ -2680,6 +2755,8 @@ async def _process_telegram_update_inner(update: dict) -> None:
             await handle_correlations_command(message)
         elif text.startswith("/recommend"):
             await handle_recommend_command(message)
+        elif text.startswith("/meta"):
+            await handle_meta_command(message)
         elif text.startswith("/simulate"):
             await handle_simulate_command(message)
         elif text.startswith("/feedback"):
