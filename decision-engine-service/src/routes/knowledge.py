@@ -8,7 +8,7 @@ import os
 import httpx
 from src.core.http_client import get_http_client
 from src.core.supabase import get_supabase
-from fastapi import APIRouter, Header, HTTPException, Depends
+from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List, Literal
 
@@ -135,7 +135,7 @@ async def upload_source(request: UploadSourceRequest, _: bool = Depends(verify_a
 async def list_extractions(
     status: Optional[str] = "pending",
     knowledge_type: Optional[str] = None,
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=1000),
     _: bool = Depends(verify_api_key),
 ):
     """

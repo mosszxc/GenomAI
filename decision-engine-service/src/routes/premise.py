@@ -7,7 +7,7 @@ Issue: #169
 import os
 from src.core.http_client import get_http_client
 from src.core.supabase import get_supabase
-from fastapi import APIRouter, Header, HTTPException, Depends
+from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional
 from dataclasses import asdict
@@ -145,7 +145,7 @@ async def get_top(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
     avatar_id: Optional[str] = None,
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=1000),
     _: bool = Depends(verify_api_key),
 ):
     """
@@ -177,7 +177,7 @@ async def get_top(
 async def get_active(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=1000),
     _: bool = Depends(verify_api_key),
 ):
     """
