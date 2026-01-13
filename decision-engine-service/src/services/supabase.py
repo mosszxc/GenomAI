@@ -7,6 +7,7 @@ all operations use the genomai schema.
 
 import logging
 import os
+from typing import Optional
 import httpx
 from src.core.http_client import get_http_client
 from src.utils.errors import SupabaseError
