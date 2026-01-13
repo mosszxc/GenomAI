@@ -21,9 +21,31 @@ External APIs:
 """
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+
+def _is_test_environment() -> bool:
+    """Check if running in test environment (pytest)."""
+    return "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
+
+
+def get_required_env(key: str, default: str = "") -> str:
+    """Get required environment variable or raise ValueError.
+
+    Provides fail-fast behavior at startup instead of silent failures later.
+    In test environment (pytest), returns default to allow tests to run.
+    """
+    value = os.getenv(key)
+    if not value:
+        # Skip validation during pytest runs
+        if _is_test_environment():
+            return default
+        raise ValueError(f"Required environment variable {key} is not set")
+    return value
+
 
 # Load .env from decision-engine-service directory (optional, for local development)
 try:
@@ -99,12 +121,11 @@ def load_settings() -> Settings:
             address=temporal_address,
             namespace=os.getenv("TEMPORAL_NAMESPACE", "default"),
             api_key=os.getenv("TEMPORAL_API_KEY"),
-            tls_enabled=os.getenv("TEMPORAL_TLS_ENABLED", str(is_cloud)).lower()
-            == "true",
+            tls_enabled=os.getenv("TEMPORAL_TLS_ENABLED", str(is_cloud)).lower() == "true",
         ),
         supabase=SupabaseSettings(
-            url=os.getenv("SUPABASE_URL", ""),
-            service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+            url=get_required_env("SUPABASE_URL"),
+            service_role_key=get_required_env("SUPABASE_SERVICE_ROLE_KEY"),
             schema=os.getenv("SUPABASE_SCHEMA", "genomai"),
         ),
         external=ExternalAPISettings(
@@ -116,16 +137,27 @@ def load_settings() -> Settings:
             github_token=os.getenv("GITHUB_TOKEN"),
         ),
         # Feature flags (default off during migration)
-        use_temporal_creative_pipeline=os.getenv(
-            "USE_TEMPORAL_CREATIVE_PIPELINE", "false"
-        ).lower()
+        use_temporal_creative_pipeline=os.getenv("USE_TEMPORAL_CREATIVE_PIPELINE", "false").lower()
         == "true",
-        use_temporal_telegram=os.getenv("USE_TEMPORAL_TELEGRAM", "false").lower()
-        == "true",
-        use_temporal_metrics=os.getenv("USE_TEMPORAL_METRICS", "false").lower()
-        == "true",
+        use_temporal_telegram=os.getenv("USE_TEMPORAL_TELEGRAM", "false").lower() == "true",
+        use_temporal_metrics=os.getenv("USE_TEMPORAL_METRICS", "false").lower() == "true",
     )
 
 
-# Singleton settings instance
-settings = load_settings()
+# Lazy singleton - validated on first access, not on import
+_settings: Optional[Settings] = None
+
+
+def get_settings() -> Settings:
+    """Get settings singleton. Validates required env vars on first call."""
+    global _settings
+    if _settings is None:
+        _settings = load_settings()
+    return _settings
+
+
+def __getattr__(name: str):
+    """Lazy attr access for backward compatibility with `from temporal.config import settings`."""
+    if name == "settings":
+        return get_settings()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

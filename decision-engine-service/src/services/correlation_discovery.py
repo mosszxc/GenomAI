@@ -212,9 +212,7 @@ async def discover_correlations(
 
     # Filter components with enough samples
     valid_components = {
-        key: ids
-        for key, ids in component_creatives.items()
-        if len(ids) >= MIN_SINGLE_SAMPLES
+        key: ids for key, ids in component_creatives.items() if len(ids) >= MIN_SINGLE_SAMPLES
     }
 
     # Step 5: Calculate pair correlations
@@ -319,24 +317,16 @@ def format_correlations_telegram(
 
     # Separate positive and negative
     strong_positive = [
-        c
-        for c in correlations
-        if c.correlation_type == "positive" and c.strength == "strong"
+        c for c in correlations if c.correlation_type == "positive" and c.strength == "strong"
     ]
     weak_positive = [
-        c
-        for c in correlations
-        if c.correlation_type == "positive" and c.strength == "weak"
+        c for c in correlations if c.correlation_type == "positive" and c.strength == "weak"
     ]
     strong_negative = [
-        c
-        for c in correlations
-        if c.correlation_type == "negative" and c.strength == "strong"
+        c for c in correlations if c.correlation_type == "negative" and c.strength == "strong"
     ]
     weak_negative = [
-        c
-        for c in correlations
-        if c.correlation_type == "negative" and c.strength == "weak"
+        c for c in correlations if c.correlation_type == "negative" and c.strength == "weak"
     ]
 
     lines = ["🔗 <b>Найденные корреляции</b>", ""]
@@ -396,9 +386,7 @@ def format_correlations_telegram(
         lines.append(
             f"💡 <b>Рекомендация:</b> Тестировать {best.component_a_value} + {best.component_b_value} комбо"
         )
-        lines.append(
-            f"   (n={best.pair_sample_size}, win rate {best.pair_win_rate:.0%})"
-        )
+        lines.append(f"   (n={best.pair_sample_size}, win rate {best.pair_win_rate:.0%})")
 
     # Stats footer
     total_corr = len(correlations)

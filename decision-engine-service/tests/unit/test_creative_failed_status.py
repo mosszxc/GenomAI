@@ -28,9 +28,7 @@ class TestUpdateCreativeStatus:
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch(
-                "temporal.activities.supabase.get_http_client"
-            ) as mock_get_client:
+            with patch("temporal.activities.supabase.get_http_client") as mock_get_client:
                 mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
@@ -57,9 +55,7 @@ class TestUpdateCreativeStatus:
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch(
-                "temporal.activities.supabase.get_http_client"
-            ) as mock_get_client:
+            with patch("temporal.activities.supabase.get_http_client") as mock_get_client:
                 mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
@@ -87,9 +83,7 @@ class TestUpdateCreativeStatus:
         with patch("temporal.activities.supabase._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch(
-                "temporal.activities.supabase.get_http_client"
-            ) as mock_get_client:
+            with patch("temporal.activities.supabase.get_http_client") as mock_get_client:
                 mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
@@ -159,9 +153,7 @@ class TestAbandonFailedCreative:
         with patch("temporal.activities.maintenance._get_credentials") as mock_creds:
             mock_creds.return_value = ("http://test.supabase.co/rest/v1", "test-key")
 
-            with patch(
-                "temporal.activities.maintenance.get_http_client"
-            ) as mock_get_client:
+            with patch("temporal.activities.maintenance.get_http_client") as mock_get_client:
                 mock_client = AsyncMock()
                 mock_response = AsyncMock()
                 mock_response.status_code = 200
@@ -200,6 +192,4 @@ class TestCreativeStatusMachine:
 
         # This is a documentation test - verifies the expected state machine
         for from_status, to_statuses in valid_transitions.items():
-            assert isinstance(to_statuses, list), (
-                f"Invalid transitions for {from_status}"
-            )
+            assert isinstance(to_statuses, list), f"Invalid transitions for {from_status}"

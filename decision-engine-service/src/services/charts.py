@@ -248,14 +248,10 @@ async def generate_win_rate_chart_url(
         QuickChart URL or None if no data
     """
     if chart_type == "emotions":
-        labels, datasets = await get_emotion_win_rate_trends(
-            supabase_url, supabase_key, days
-        )
+        labels, datasets = await get_emotion_win_rate_trends(supabase_url, supabase_key, days)
         title = f"Emotion Win Rates ({days} days)"
     else:
-        labels, datasets = await get_component_win_rate_trends(
-            supabase_url, supabase_key, days
-        )
+        labels, datasets = await get_component_win_rate_trends(supabase_url, supabase_key, days)
         title = f"Top Component Win Rates ({days} days)"
 
     if not datasets:

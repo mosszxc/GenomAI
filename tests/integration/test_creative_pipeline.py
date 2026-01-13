@@ -25,7 +25,9 @@ from tests.integration.assertions.db_assertions import DbAssertions, wait_for_co
 # Test configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://ftrerelppsnbdcmtcwya.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-N8N_WEBHOOK_BASE = os.getenv("N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook")
+N8N_WEBHOOK_BASE = os.getenv(
+    "N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook"
+)
 DE_API_URL = os.getenv("DE_API_URL", "https://genomai.onrender.com")
 
 # Webhook paths from dependency_manifest
@@ -74,7 +76,9 @@ class TestCreativePipeline:
             assert data.get("status") == "ok"
 
     @pytest.mark.integration
-    async def test_creative_creation_in_database(self, db: DbAssertions, test_tracker_id: str):
+    async def test_creative_creation_in_database(
+        self, db: DbAssertions, test_tracker_id: str
+    ):
         """
         Test that creative is properly created in database.
 
@@ -158,7 +162,7 @@ class TestCreativePipeline:
                 headers={
                     "Authorization": f"Bearer {os.getenv('API_KEY', '')}",
                     "Content-Type": "application/json",
-                }
+                },
             )
 
             # Should return error for non-existent idea
@@ -175,7 +179,7 @@ class TestCreativePipeline:
         # Query last 10 events
         events = await db._query(
             "event_log",
-            "select=event_type,entity_id,occurred_at&order=occurred_at.desc&limit=10"
+            "select=event_type,entity_id,occurred_at&order=occurred_at.desc&limit=10",
         )
 
         # Verify events have required fields
@@ -194,7 +198,7 @@ class TestCreativePipeline:
         # Query decomposed_creatives where idea_id is null
         orphans = await db._query(
             "decomposed_creatives",
-            "idea_id=is.null&select=id,creative_id,created_at&limit=10"
+            "idea_id=is.null&select=id,creative_id,created_at&limit=10",
         )
 
         # In a healthy system, there should be no orphans
@@ -214,7 +218,7 @@ class TestCreativePipeline:
         for status in stuck_statuses:
             stuck = await db._query(
                 "creatives",
-                f"status=eq.{status}&select=id,tracker_id,status,created_at&limit=10"
+                f"status=eq.{status}&select=id,tracker_id,status,created_at&limit=10",
             )
 
             # Allow some for in-progress, but warn if many
@@ -236,7 +240,7 @@ class TestCreativePipelineContracts:
         # Get a recent idea
         ideas = await db._query(
             "ideas",
-            "select=id,canonical_hash,status,death_state&order=created_at.desc&limit=1"
+            "select=id,canonical_hash,status,death_state&order=created_at.desc&limit=1",
         )
 
         if not ideas:
@@ -250,6 +254,7 @@ class TestCreativePipelineContracts:
 
         # Verify UUID format
         import uuid
+
         try:
             uuid.UUID(idea["id"])
         except ValueError:
@@ -266,7 +271,7 @@ class TestCreativePipelineContracts:
         # Get a recent APPROVE decision
         decisions = await db._query(
             "decisions",
-            "decision=eq.approve&select=id,idea_id,decision&order=created_at.desc&limit=1"
+            "decision=eq.approve&select=id,idea_id,decision&order=created_at.desc&limit=1",
         )
 
         if not decisions:

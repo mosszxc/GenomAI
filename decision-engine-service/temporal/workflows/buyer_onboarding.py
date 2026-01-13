@@ -14,9 +14,10 @@ Replaces n8n workflows:
 """
 
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Optional, List
+from typing import Optional, List, Deque
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
@@ -97,10 +98,9 @@ MESSAGES = {
         "• /help — список команд"
     ),
     "timeout": ("⏰ Сессия истекла.\n\nОтправь /start чтобы начать заново."),
+    "invalid_name": ("❌ Имя должно быть не менее 2 символов.\n\n<i>Попробуй ещё раз:</i>"),
     "invalid_geo": (
-        "❌ Неверные коды стран.\n"
-        "Примеры: US, UK, DE, FR, IT, ES\n\n"
-        "<i>Попробуй ещё раз:</i>"
+        "❌ Неверные коды стран.\nПримеры: US, UK, DE, FR, IT, ES\n\n<i>Попробуй ещё раз:</i>"
     ),
     "invalid_vertical": (
         "❌ Неверные вертикали.\n"
@@ -122,9 +122,7 @@ MESSAGES = {
         "📭 Кампаний для привязки видео не найдено.\n"
         "Можешь скидывать видео позже через обычные сообщения."
     ),
-    "invalid_video_url": (
-        "❌ Не распознал ссылку на видео.\nОтправь URL (YouTube, .mp4 и т.д.)"
-    ),
+    "invalid_video_url": ("❌ Не распознал ссылку на видео.\nОтправь URL (YouTube, .mp4 и т.д.)"),
     "validating_sub10": ("🔍 Проверяю sub10 <code>{sub10}</code> в Keitaro..."),
     "sub10_found": (
         "✅ Найдено <b>{count}</b> кампаний с sub10='{sub10}'\n\nПродолжаю настройку..."
@@ -182,7 +180,7 @@ class WorkflowStateSnapshot:
     campaigns_count: int = 0
     videos_count: int = 0
     error: Optional[str] = None
-    pending_message_exists: bool = False
+    message_queue_size: int = 0  # Number of pending messages in queue (fix #554)
 
 
 @workflow.defn
@@ -207,16 +205,20 @@ class BuyerOnboardingWorkflow:
         self._verticals: List[str] = []
         self._keitaro_source: Optional[str] = None
 
-        # Message queue for user input
-        self._pending_message: Optional[BuyerMessage] = None
+        # Message queue for user input (fix #554: FIFO queue eliminates TOCTOU race)
+        # deque provides atomic append/popleft operations
+        self._message_queue: Deque[BuyerMessage] = deque()
         self._campaigns_count: int = 0
         self._videos_count: int = 0
         self._error: Optional[str] = None
 
+        # Message deduplication to prevent race conditions (fix #537)
+        # Tracks last processed message_id to avoid reprocessing signals
+        # that arrive after wait_condition timeout
+        self._last_processed_message_id: Optional[int] = None
+
         # Immutable snapshot for thread-safe query access (fixes race condition #483)
-        self._snapshot = WorkflowStateSnapshot(
-            state=OnboardingState.AWAITING_NAME.value
-        )
+        self._snapshot = WorkflowStateSnapshot(state=OnboardingState.AWAITING_NAME.value)
 
     def _update_snapshot(self) -> None:
         """
@@ -237,7 +239,7 @@ class BuyerOnboardingWorkflow:
             campaigns_count=self._campaigns_count,
             videos_count=self._videos_count,
             error=self._error,
-            pending_message_exists=self._pending_message is not None,
+            message_queue_size=len(self._message_queue),  # fix #554: queue size
         )
 
     def _set_state(self, new_state: OnboardingState) -> None:
@@ -249,6 +251,48 @@ class BuyerOnboardingWorkflow:
         """
         self._state = new_state
         self._update_snapshot()
+
+    def _consume_message(self) -> Optional[str]:
+        """
+        Consume message from queue with deduplication (fix #537, #554).
+
+        Uses FIFO queue to eliminate TOCTOU race condition:
+        - Signal handler appends to queue (atomic)
+        - This method pops from queue front (atomic)
+        - No race between wait_condition check and consume
+
+        Deduplication (fix #537) still applies:
+        1. If queue empty → genuine timeout
+        2. If message_id matches _last_processed_message_id → duplicate
+        3. Otherwise → valid new message
+
+        Returns:
+            Message text if valid new message, None if timeout or duplicate.
+            Caller should continue waiting loop if None is returned.
+        """
+        if not self._message_queue:
+            return None
+
+        # Pop first message from queue (FIFO - fixes #554 TOCTOU race)
+        message = self._message_queue.popleft()
+
+        # Check for duplicate message (race condition protection - fix #537)
+        current_message_id = message.message_id
+        if current_message_id is not None and current_message_id == self._last_processed_message_id:
+            # Duplicate message - signal arrived after timeout
+            workflow.logger.info(
+                f"Skipping duplicate message_id={current_message_id}, already processed"
+            )
+            self._update_snapshot()
+            return None
+
+        # Valid new message - extract text and update tracking
+        message_text = message.text
+        if current_message_id is not None:
+            self._last_processed_message_id = current_message_id
+
+        self._update_snapshot()
+        return message_text
 
     async def _log_outgoing(self, message: str, step: str) -> None:
         """Log outgoing bot message."""
@@ -291,9 +335,9 @@ class BuyerOnboardingWorkflow:
         Returns:
             BuyerOnboardingResult with buyer_id and status
         """
-        self._telegram_id = input.telegram_id
+        self._telegram_id = str(input.telegram_id)
         self._telegram_username = input.telegram_username
-        self._chat_id = input.chat_id or input.telegram_id
+        self._chat_id = str(input.chat_id or input.telegram_id)
 
         # Default retry policy
         default_retry = RetryPolicy(
@@ -331,7 +375,17 @@ class BuyerOnboardingWorkflow:
                     self._keitaro_source = existing_buyer.keitaro_source
                 self._set_state(OnboardingState.COMPLETED)
 
-                welcome_back_msg = f"Welcome back, <b>{self._name}</b>!\n\nYour account is already set up."
+                welcome_back_msg = (
+                    f"👋 <b>Добро пожаловать в GenomAI, {self._name}!</b>\n\n"
+                    "<b>Как это работает:</b>\n"
+                    "1. Отправь ссылку на креатив\n"
+                    "2. Система проанализирует и создаст гипотезы\n"
+                    "3. Получай инсайты по win rate\n\n"
+                    "<b>Команды:</b>\n"
+                    "/stats — твоя статистика\n"
+                    "/help — справка\n\n"
+                    "Отправь первый креатив!"
+                )
                 await workflow.execute_activity(
                     send_telegram_message,
                     args=[self._chat_id, welcome_back_msg],
@@ -352,21 +406,37 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(MESSAGES["welcome"], "welcome")
 
-            # Wait for name
-            # Note: wait_condition may return None when signal arrives during wait,
-            # so we check the actual _pending_message state instead of the return value
-            await workflow.wait_condition(
-                lambda: self._pending_message is not None,
-                timeout=step_timeout,
-            )
+            # Wait for valid name (min 2 characters)
+            # Uses _consume_message() for race condition protection (fix #537)
+            while True:
+                await workflow.wait_condition(
+                    lambda: len(self._message_queue) > 0,
+                    timeout=step_timeout,
+                )
 
-            if self._pending_message is None:
-                # Genuine timeout - no message received
-                return await self._handle_timeout()
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    # Genuine timeout or duplicate message (fix #554: queue check)
+                    if not self._message_queue:
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
 
-            self._name = self._pending_message.text.strip()
-            await self._log_incoming(self._name, "name_input")
-            self._pending_message = None
+                name_input = msg_text.strip()
+                await self._log_incoming(name_input, "name_input")
+
+                # Validate name length (min 2 characters)
+                if len(name_input) >= 2:
+                    self._name = name_input
+                    break
+
+                # Invalid name, ask again
+                await workflow.execute_activity(
+                    send_telegram_message,
+                    args=[self._chat_id, MESSAGES["invalid_name"]],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=default_retry,
+                )
+                await self._log_outgoing(MESSAGES["invalid_name"], "invalid_name")
 
             # Step 2: Ask for GEOs
             self._set_state(OnboardingState.AWAITING_GEO)
@@ -379,19 +449,22 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(ask_geo_msg, "ask_geo")
 
-            # Wait for valid GEOs
+            # Wait for valid GEOs (fix #537: race condition protection)
             while True:
                 await workflow.wait_condition(
-                    lambda: self._pending_message is not None,
+                    lambda: len(self._message_queue) > 0,
                     timeout=step_timeout,
                 )
-                if self._pending_message is None:
-                    return await self._handle_timeout()
 
-                raw_geo_input = self._pending_message.text
-                await self._log_incoming(raw_geo_input, "geo_input")
-                geos_input = raw_geo_input.upper().replace(" ", "").split(",")
-                self._pending_message = None
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    if not self._message_queue:  # fix #554: queue check
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
+
+                await self._log_incoming(msg_text, "geo_input")
+                # Filter empty strings after split (fix #534)
+                geos_input = [g for g in msg_text.upper().replace(" ", "").split(",") if g]
 
                 # Validate GEOs
                 valid_geos = [g for g in geos_input if g in VALID_GEOS]
@@ -410,9 +483,7 @@ class BuyerOnboardingWorkflow:
 
             # Step 3: Ask for verticals
             self._set_state(OnboardingState.AWAITING_VERTICAL)
-            ask_vertical_msg = MESSAGES["ask_vertical"].format(
-                geos=", ".join(self._geos)
-            )
+            ask_vertical_msg = MESSAGES["ask_vertical"].format(geos=", ".join(self._geos))
             await workflow.execute_activity(
                 send_telegram_message,
                 args=[self._chat_id, ask_vertical_msg],
@@ -421,19 +492,22 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(ask_vertical_msg, "ask_vertical")
 
-            # Wait for valid verticals
+            # Wait for valid verticals (fix #537: race condition protection)
             while True:
                 await workflow.wait_condition(
-                    lambda: self._pending_message is not None,
+                    lambda: len(self._message_queue) > 0,
                     timeout=step_timeout,
                 )
-                if self._pending_message is None:
-                    return await self._handle_timeout()
 
-                raw_vertical_input = self._pending_message.text
-                await self._log_incoming(raw_vertical_input, "vertical_input")
-                verticals_input = raw_vertical_input.lower().replace(" ", "").split(",")
-                self._pending_message = None
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    if not self._message_queue:  # fix #554: queue check
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
+
+                await self._log_incoming(msg_text, "vertical_input")
+                # Filter empty strings after split (fix #534)
+                verticals_input = [v for v in msg_text.lower().replace(" ", "").split(",") if v]
 
                 # Validate verticals
                 valid_verticals = [v for v in verticals_input if v in VALID_VERTICALS]
@@ -448,15 +522,11 @@ class BuyerOnboardingWorkflow:
                     start_to_close_timeout=timedelta(seconds=30),
                     retry_policy=default_retry,
                 )
-                await self._log_outgoing(
-                    MESSAGES["invalid_vertical"], "invalid_vertical"
-                )
+                await self._log_outgoing(MESSAGES["invalid_vertical"], "invalid_vertical")
 
             # Step 4: Ask for Keitaro source with validation
             self._set_state(OnboardingState.AWAITING_KEITARO)
-            ask_keitaro_msg = MESSAGES["ask_keitaro"].format(
-                verticals=", ".join(self._verticals)
-            )
+            ask_keitaro_msg = MESSAGES["ask_keitaro"].format(verticals=", ".join(self._verticals))
             await workflow.execute_activity(
                 send_telegram_message,
                 args=[self._chat_id, ask_keitaro_msg],
@@ -465,19 +535,22 @@ class BuyerOnboardingWorkflow:
             )
             await self._log_outgoing(ask_keitaro_msg, "ask_keitaro")
 
-            # Wait for valid Keitaro source (with retry)
+            # Wait for valid Keitaro source (with retry, fix #537)
             sub10_attempts = 0
             while sub10_attempts < MAX_SUB10_RETRY_ATTEMPTS:
                 await workflow.wait_condition(
-                    lambda: self._pending_message is not None,
+                    lambda: len(self._message_queue) > 0,
                     timeout=step_timeout,
                 )
-                if self._pending_message is None:
-                    return await self._handle_timeout()
 
-                sub10_input = self._pending_message.text.strip()
+                msg_text = self._consume_message()
+                if msg_text is None:
+                    if not self._message_queue:  # fix #554: queue check
+                        return await self._handle_timeout()
+                    continue  # Duplicate, keep waiting
+
+                sub10_input = msg_text.strip()
                 await self._log_incoming(sub10_input, "sub10_input")
-                self._pending_message = None
 
                 # Validate sub10 by checking campaigns in Keitaro
                 validating_msg = MESSAGES["validating_sub10"].format(sub10=sub10_input)
@@ -545,9 +618,7 @@ class BuyerOnboardingWorkflow:
 
             # Step 5: Create buyer and load history
             self._set_state(OnboardingState.LOADING_HISTORY)
-            loading_msg = MESSAGES["loading_history"].format(
-                keitaro_source=self._keitaro_source
-            )
+            loading_msg = MESSAGES["loading_history"].format(keitaro_source=self._keitaro_source)
             await workflow.execute_activity(
                 send_telegram_message,
                 args=[self._chat_id, loading_msg],
@@ -583,7 +654,7 @@ class BuyerOnboardingWorkflow:
                 HistoricalImportWorkflow.run,
                 HistoricalImportInput(
                     buyer_id=self._buyer_id,
-                    keitaro_source=self._keitaro_source,
+                    keitaro_source=self._keitaro_source or "",
                 ),
                 id=f"historical-import-{self._buyer_id}",
                 task_queue="telegram",
@@ -611,9 +682,7 @@ class BuyerOnboardingWorkflow:
                 total_campaigns = len(pending_campaigns)
 
                 # Send intro message
-                ask_videos_intro_msg = MESSAGES["ask_videos_intro"].format(
-                    total=total_campaigns
-                )
+                ask_videos_intro_msg = MESSAGES["ask_videos_intro"].format(total=total_campaigns)
                 await workflow.execute_activity(
                     send_telegram_message,
                     args=[self._chat_id, ask_videos_intro_msg],
@@ -631,9 +700,7 @@ class BuyerOnboardingWorkflow:
                 # Iterate through each campaign
                 for i, campaign in enumerate(pending_campaigns, 1):
                     metrics = campaign.get("metrics", {})
-                    campaign_name = metrics.get(
-                        "name", f"Campaign {campaign['campaign_id']}"
-                    )
+                    campaign_name = metrics.get("name", f"Campaign {campaign['campaign_id']}")
                     clicks = metrics.get("clicks", 0)
                     conversions = metrics.get("conversions", 0)
 
@@ -653,18 +720,21 @@ class BuyerOnboardingWorkflow:
                     )
                     await self._log_outgoing(ask_video_msg, f"ask_campaign_video_{i}")
 
-                    # Wait for valid video URL
+                    # Wait for valid video URL (fix #537: race condition protection)
                     while True:
                         await workflow.wait_condition(
-                            lambda: self._pending_message is not None,
+                            lambda: len(self._message_queue) > 0,
                             timeout=step_timeout,
                         )
-                        if self._pending_message is None:
-                            return await self._handle_timeout()
 
-                        text = self._pending_message.text.strip()
+                        msg_text = self._consume_message()
+                        if msg_text is None:
+                            if not self._message_queue:  # fix #554: queue check
+                                return await self._handle_timeout()
+                            continue  # Duplicate, keep waiting
+
+                        text = msg_text.strip()
                         await self._log_incoming(text, f"video_input_{i}")
-                        self._pending_message = None
 
                         if is_video_url(text):
                             # Update import record with video URL
@@ -781,16 +851,16 @@ class BuyerOnboardingWorkflow:
     @workflow.signal
     async def user_message(self, message: BuyerMessage) -> None:
         """
-        Signal handler for user messages.
+        Signal handler for user messages (fix #554: FIFO queue).
 
         Called by Telegram webhook when user sends a message.
-        Updates snapshot atomically after state change.
+        Appends to queue instead of overwriting, eliminating TOCTOU race.
 
         Args:
             message: BuyerMessage with text and metadata
         """
-        self._pending_message = message
-        self._update_snapshot()  # Atomic snapshot update
+        self._message_queue.append(message)  # Atomic FIFO append (fix #554)
+        self._update_snapshot()
 
     @workflow.signal
     async def cancel(self) -> None:

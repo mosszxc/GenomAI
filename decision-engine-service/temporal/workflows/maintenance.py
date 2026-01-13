@@ -5,7 +5,6 @@ Periodic maintenance tasks for GenomAI.
 Replaces n8n workflow H1uuOanSy627H4kg (Pipeline Health Monitor).
 
 Tasks:
-- Reset stale buyer states (awaiting_* for > 6 hours)
 - Clean up expired recommendations
 - Verify data integrity
 - Staleness detection (Inspiration System)
@@ -14,16 +13,20 @@ Tasks:
 Schedule: Every 6 hours
 """
 
+import asyncio
 from datetime import timedelta
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Dict
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
 
+# Maximum creatives to process per workflow execution before continue-as-new
+# Prevents workflow from running too long with large backlogs (Issue #555)
+MAX_BATCH_SIZE = 50
+
 with workflow.unsafe.imports_passed_through():
     from temporal.activities.maintenance import (
-        reset_stale_buyer_states,
         expire_old_recommendations,
         mark_stuck_transcriptions_failed,
         archive_failed_creatives,
@@ -31,6 +34,7 @@ with workflow.unsafe.imports_passed_through():
         cleanup_orphaned_hypotheses,
         emit_maintenance_event,
         check_staleness,
+        CheckStalenessInput,
         release_orphaned_agent_tasks,
         find_stuck_creatives,
         find_failed_creatives_for_retry,
@@ -44,6 +48,10 @@ with workflow.unsafe.imports_passed_through():
         retry_failed_hypotheses,
         cleanup_exhausted_hypotheses,
     )
+    from temporal.activities.module_snapshots import (
+        create_weekly_snapshots,
+        CreateWeeklySnapshotsInput,
+    )
     from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
     from temporal.models.creative import CreativeInput
 
@@ -52,12 +60,8 @@ with workflow.unsafe.imports_passed_through():
 class MaintenanceInput:
     """Input for maintenance workflow"""
 
-    # Buyer state timeout in hours
-    buyer_state_timeout_hours: int = 6
     # Recommendation expiry in days
     recommendation_expiry_days: int = 7
-    # Stuck transcription timeout in minutes
-    stuck_transcription_timeout_minutes: int = 10
     # Failed creative retention before archival in days
     failed_creative_retention_days: int = 7
     # Run data integrity checks
@@ -69,7 +73,6 @@ class MaintenanceInput:
     # Cleanup retention periods
     import_queue_retention_days: int = 7
     knowledge_retention_days: int = 30
-    buyer_states_retention_days: int = 30
     staleness_archive_days: int = 90
     # Retry failed hypotheses (Issue #313)
     run_hypothesis_retry: bool = True
@@ -81,8 +84,6 @@ class MaintenanceInput:
     agent_heartbeat_timeout_minutes: int = 10
     # Stuck creatives recovery (Issue #398)
     run_stuck_recovery: bool = True
-    # Timeout before considering transcription stuck (minutes)
-    stuck_transcription_timeout_minutes: int = 5
     # Timeout before considering decomposition stuck (minutes)
     stuck_decomposition_timeout_minutes: int = 30
     # Orphaned hypotheses cleanup (Issue #475)
@@ -96,13 +97,24 @@ class MaintenanceInput:
     # Stuck recovery force threshold (Issue #481)
     # If stuck > this many minutes, force cancel + reset + restart
     stuck_recovery_force_threshold_minutes: int = 120  # 2 hours
+    # Module weekly snapshots (CPA & Trend Tracking #601)
+    # Runs on Mondays only (checked via workflow.now().weekday() == 0)
+    run_weekly_snapshots: bool = True
+    # Continue-as-new state (Issue #555): track processed creative IDs
+    # to avoid re-processing after continue-as-new
+    _processed_stuck_ids: List[str] = field(default_factory=list)
+    _processed_failed_ids: List[str] = field(default_factory=list)
+    # Accumulated results from previous executions (for continue-as-new)
+    _accumulated_stuck_recovered: int = 0
+    _accumulated_stuck_failed: int = 0
+    _accumulated_failed_retried: int = 0
+    _accumulated_failed_abandoned: int = 0
 
 
 @dataclass
 class MaintenanceResult:
     """Result of maintenance workflow"""
 
-    stale_buyers_reset: int
     recommendations_expired: int
     stuck_transcriptions_failed: int
     failed_creatives_archived: int
@@ -128,6 +140,9 @@ class MaintenanceResult:
     # Failed creatives retry (Issue #472)
     failed_creatives_retried: int = 0
     failed_creatives_abandoned: int = 0
+    # Module weekly snapshots (CPA & Trend Tracking #601)
+    module_snapshots_created: int = 0
+    module_snapshots_updated: int = 0
 
 
 @workflow.defn
@@ -136,14 +151,13 @@ class MaintenanceWorkflow:
     Workflow for periodic maintenance tasks.
 
     Flow:
-    1. Reset stale buyer states (stuck in awaiting_* for > 6 hours)
-    2. Expire old recommendations
-    3. Mark stuck transcriptions as failed
-    4. Archive old failed creatives
-    5. Run data integrity checks
-    6. Check system staleness (Inspiration System)
-    7. Data cleanup (Hygiene Agent)
-    8. Emit maintenance event
+    1. Expire old recommendations
+    2. Mark stuck transcriptions as failed
+    3. Archive old failed creatives
+    4. Run data integrity checks
+    5. Check system staleness (Inspiration System)
+    6. Data cleanup (Hygiene Agent)
+    7. Emit maintenance event
     """
 
     @workflow.run
@@ -157,7 +171,6 @@ class MaintenanceWorkflow:
         )
 
         result = MaintenanceResult(
-            stale_buyers_reset=0,
             recommendations_expired=0,
             stuck_transcriptions_failed=0,
             failed_creatives_archived=0,
@@ -165,21 +178,7 @@ class MaintenanceWorkflow:
             completed_at="",
         )
 
-        # Step 1: Reset stale buyer states
-        try:
-            reset_count = await workflow.execute_activity(
-                reset_stale_buyer_states,
-                input.buyer_state_timeout_hours,
-                start_to_close_timeout=timedelta(seconds=60),
-                retry_policy=retry_policy,
-            )
-            result.stale_buyers_reset = reset_count
-            workflow.logger.info(f"Reset {reset_count} stale buyer states")
-        except Exception as e:
-            workflow.logger.error(f"Failed to reset buyer states: {e}")
-            result.integrity_issues.append(f"Buyer state reset failed: {e}")
-
-        # Step 2: Expire old recommendations
+        # Step 1: Expire old recommendations
         try:
             expired_count = await workflow.execute_activity(
                 expire_old_recommendations,
@@ -193,7 +192,7 @@ class MaintenanceWorkflow:
             workflow.logger.error(f"Failed to expire recommendations: {e}")
             result.integrity_issues.append(f"Recommendation expiry failed: {e}")
 
-        # Step 3: Mark stuck transcriptions as failed
+        # Step 2: Mark stuck transcriptions as failed
         try:
             stuck_count = await workflow.execute_activity(
                 mark_stuck_transcriptions_failed,
@@ -203,16 +202,14 @@ class MaintenanceWorkflow:
             )
             result.stuck_transcriptions_failed = stuck_count
             if stuck_count > 0:
-                workflow.logger.warning(
-                    f"Marked {stuck_count} stuck transcriptions as failed"
-                )
+                workflow.logger.warning(f"Marked {stuck_count} stuck transcriptions as failed")
             else:
                 workflow.logger.info("No stuck transcriptions found")
         except Exception as e:
             workflow.logger.error(f"Failed to mark stuck transcriptions: {e}")
             result.integrity_issues.append(f"Stuck transcription check failed: {e}")
 
-        # Step 4: Archive old failed creatives
+        # Step 3: Archive old failed creatives
         try:
             archived_count = await workflow.execute_activity(
                 archive_failed_creatives,
@@ -229,7 +226,7 @@ class MaintenanceWorkflow:
             workflow.logger.error(f"Failed to archive failed creatives: {e}")
             result.integrity_issues.append(f"Failed creative archival failed: {e}")
 
-        # Step 5: Data integrity checks (optional)
+        # Step 4: Data integrity checks (optional)
         if input.run_integrity_checks:
             try:
                 issues = await workflow.execute_activity(
@@ -246,7 +243,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Integrity check failed: {e}")
                 result.integrity_issues.append(f"Integrity check error: {e}")
 
-        # Step 5b: Cleanup orphaned hypotheses (Issue #475)
+        # Step 4b: Cleanup orphaned hypotheses (Issue #475)
         if input.run_orphan_hypothesis_cleanup:
             try:
                 deleted_count = await workflow.execute_activity(
@@ -261,18 +258,16 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Orphan hypothesis cleanup failed: {e}")
                 result.integrity_issues.append(f"Orphan hypothesis cleanup error: {e}")
 
-        # Step 6: Staleness detection (Inspiration System)
+        # Step 5: Staleness detection (Inspiration System)
         if input.run_staleness_check:
             try:
                 staleness_result = await workflow.execute_activity(
                     check_staleness,
-                    args=[None, None],  # Global check (no avatar/geo filter)
+                    CheckStalenessInput(),  # Global check (no avatar/geo filter)
                     start_to_close_timeout=timedelta(seconds=120),
                     retry_policy=retry_policy,
                 )
-                result.staleness_score = staleness_result.get("metrics", {}).get(
-                    "staleness_score"
-                )
+                result.staleness_score = staleness_result.get("metrics", {}).get("staleness_score")
                 result.is_stale = staleness_result.get("is_stale", False)
                 result.staleness_action = staleness_result.get("recommended_action")
 
@@ -289,7 +284,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Staleness check failed: {e}")
                 result.integrity_issues.append(f"Staleness check error: {e}")
 
-        # Step 7: Data cleanup (Hygiene Agent)
+        # Step 6: Data cleanup (Hygiene Agent)
         if input.run_cleanup:
             try:
                 cleanup_stats = await workflow.execute_activity(
@@ -297,7 +292,6 @@ class MaintenanceWorkflow:
                     args=[
                         input.import_queue_retention_days,
                         input.knowledge_retention_days,
-                        input.buyer_states_retention_days,
                         input.staleness_archive_days,
                     ],
                     start_to_close_timeout=timedelta(seconds=180),
@@ -306,16 +300,14 @@ class MaintenanceWorkflow:
                 result.cleanup_stats = cleanup_stats
                 total_cleaned = sum(cleanup_stats.values())
                 if total_cleaned > 0:
-                    workflow.logger.info(
-                        f"Cleaned {total_cleaned} records: {cleanup_stats}"
-                    )
+                    workflow.logger.info(f"Cleaned {total_cleaned} records: {cleanup_stats}")
                 else:
                     workflow.logger.info("No records to clean")
             except Exception as e:
                 workflow.logger.error(f"Cleanup failed: {e}")
                 result.integrity_issues.append(f"Cleanup error: {e}")
 
-        # Step 8: Retry failed hypotheses (Issue #313)
+        # Step 7: Retry failed hypotheses (Issue #313)
         if input.run_hypothesis_retry:
             try:
                 retry_stats = await workflow.execute_activity(
@@ -352,7 +344,7 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Hypothesis cleanup failed: {e}")
                 result.integrity_issues.append(f"Hypothesis cleanup error: {e}")
 
-        # Step 9: Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
+        # Step 8: Agent task orphan detection (Multi-Agent Phase 2, Issue #350)
         if input.run_orphan_detection:
             try:
                 released_count = await workflow.execute_activity(
@@ -363,14 +355,14 @@ class MaintenanceWorkflow:
                 )
                 result.orphaned_tasks_released = released_count
                 if released_count > 0:
-                    workflow.logger.warning(
-                        f"Released {released_count} orphaned agent tasks"
-                    )
+                    workflow.logger.warning(f"Released {released_count} orphaned agent tasks")
             except Exception as e:
                 workflow.logger.error(f"Orphan detection failed: {e}")
                 result.integrity_issues.append(f"Orphan detection error: {e}")
 
-        # Step 10: Recover stuck creatives (Issue #398, #481)
+        # Step 9: Recover stuck creatives (Issue #398, #481, #555)
+        # Issue #555: Batch processing with continue-as-new to prevent timeout
+        needs_continuation = False
         if input.run_stuck_recovery:
             try:
                 stuck_creatives = await workflow.execute_activity(
@@ -384,124 +376,136 @@ class MaintenanceWorkflow:
                 )
 
                 if stuck_creatives:
-                    workflow.logger.warning(
-                        f"Found {len(stuck_creatives)} stuck creatives, starting recovery"
-                    )
+                    # Filter out already processed creatives (from previous continue-as-new)
+                    processed_set = set(input._processed_stuck_ids)
+                    pending_creatives = [
+                        c for c in stuck_creatives if c["creative_id"] not in processed_set
+                    ]
 
-                    for stuck in stuck_creatives:
-                        creative_id = stuck["creative_id"]
-                        stuck_duration = stuck.get("stuck_duration_minutes", 0)
+                    # Apply accumulated results from previous executions
+                    result.stuck_creatives_recovered = input._accumulated_stuck_recovered
+                    result.stuck_creatives_failed = input._accumulated_stuck_failed
 
-                        try:
-                            # Issue #481: If stuck for too long, force cancel + reset + restart
-                            if (
-                                stuck_duration
-                                >= input.stuck_recovery_force_threshold_minutes
-                            ):
-                                workflow.logger.warning(
-                                    f"Creative {creative_id[:8]} stuck for {stuck_duration}min "
-                                    f"(>{input.stuck_recovery_force_threshold_minutes}min), "
-                                    f"forcing recovery: cancel -> reset -> restart"
-                                )
+                    if pending_creatives:
+                        total_pending = len(pending_creatives)
+                        batch = pending_creatives[:MAX_BATCH_SIZE]
 
-                                # Step 1: Cancel the stuck workflow
-                                cancelled = await workflow.execute_activity(
-                                    cancel_stuck_creative_workflow,
-                                    creative_id,
-                                    start_to_close_timeout=timedelta(seconds=30),
-                                    retry_policy=retry_policy,
-                                )
+                        workflow.logger.warning(
+                            f"Found {total_pending} stuck creatives pending, "
+                            f"processing batch of {len(batch)} (max {MAX_BATCH_SIZE})"
+                        )
 
-                                if not cancelled:
+                        for stuck in batch:
+                            creative_id = stuck["creative_id"]
+                            stuck_duration = stuck.get("stuck_duration_minutes", 0)
+                            input._processed_stuck_ids.append(creative_id)
+
+                            try:
+                                # Issue #481: If stuck for too long, force cancel + reset + restart
+                                if stuck_duration >= input.stuck_recovery_force_threshold_minutes:
                                     workflow.logger.warning(
-                                        f"Could not cancel workflow for {creative_id[:8]}, "
-                                        f"skipping recovery"
+                                        f"Creative {creative_id[:8]} stuck for {stuck_duration}min "
+                                        f"(>{input.stuck_recovery_force_threshold_minutes}min), "
+                                        f"forcing recovery: cancel -> reset -> restart"
                                     )
-                                    result.stuck_creatives_failed += 1
-                                    continue
 
-                                # Step 2: Reset creative status to 'registered'
-                                reset_ok = await workflow.execute_activity(
-                                    reset_creative_for_recovery,
-                                    creative_id,
-                                    start_to_close_timeout=timedelta(seconds=30),
-                                    retry_policy=retry_policy,
-                                )
-
-                                if not reset_ok:
-                                    workflow.logger.warning(
-                                        f"Could not reset creative {creative_id[:8]}, "
-                                        f"skipping restart"
+                                    # Step 1: Cancel the stuck workflow
+                                    cancelled = await workflow.execute_activity(
+                                        cancel_stuck_creative_workflow,
+                                        creative_id,
+                                        start_to_close_timeout=timedelta(seconds=30),
+                                        retry_policy=retry_policy,
                                     )
-                                    result.stuck_creatives_failed += 1
-                                    continue
 
-                                # Step 3: Start new workflow (use TERMINATE_IF_RUNNING as we cancelled)
-                                await workflow.start_child_workflow(
-                                    CreativePipelineWorkflow.run,
-                                    CreativeInput(
-                                        creative_id=creative_id,
-                                        buyer_id=stuck.get("buyer_id"),
-                                        source_type="force_recovery",
-                                    ),
-                                    id=f"creative-pipeline-{creative_id}",
-                                    task_queue="creative-pipeline",
-                                    id_reuse_policy=WorkflowIDReusePolicy.TERMINATE_IF_RUNNING,
-                                )
-                                result.stuck_creatives_recovered += 1
-                                workflow.logger.info(
-                                    f"Force-recovered creative {creative_id[:8]} "
-                                    f"(stuck {stuck_duration}min, reason={stuck['stuck_reason']})"
-                                )
-                            else:
-                                # Regular recovery: try to start workflow if previous failed
-                                await workflow.start_child_workflow(
-                                    CreativePipelineWorkflow.run,
-                                    CreativeInput(
-                                        creative_id=creative_id,
-                                        buyer_id=stuck.get("buyer_id"),
-                                        source_type="recovery",
-                                    ),
-                                    id=f"creative-pipeline-{creative_id}",
-                                    task_queue="creative-pipeline",
-                                    id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
-                                )
-                                result.stuck_creatives_recovered += 1
-                                workflow.logger.info(
-                                    f"Started recovery for creative {creative_id[:8]} "
-                                    f"(stuck {stuck_duration}min, reason={stuck['stuck_reason']})"
-                                )
+                                    if not cancelled:
+                                        workflow.logger.warning(
+                                            f"Could not cancel workflow for {creative_id[:8]}, "
+                                            f"skipping recovery"
+                                        )
+                                        result.stuck_creatives_failed += 1
+                                        continue
 
-                        except workflow.ChildWorkflowError as e:
-                            if "already started" in str(e).lower():
+                                    # Step 2: Reset creative status to 'registered'
+                                    reset_ok = await workflow.execute_activity(
+                                        reset_creative_for_recovery,
+                                        creative_id,
+                                        start_to_close_timeout=timedelta(seconds=30),
+                                        retry_policy=retry_policy,
+                                    )
+
+                                    if not reset_ok:
+                                        workflow.logger.warning(
+                                            f"Could not reset creative {creative_id[:8]}, "
+                                            f"skipping restart"
+                                        )
+                                        result.stuck_creatives_failed += 1
+                                        continue
+
+                                    # Step 3: Start new workflow (use TERMINATE_IF_RUNNING as we cancelled)
+                                    await workflow.start_child_workflow(
+                                        CreativePipelineWorkflow.run,
+                                        CreativeInput(
+                                            creative_id=creative_id,
+                                            buyer_id=stuck.get("buyer_id"),
+                                            source_type="force_recovery",
+                                        ),
+                                        id=f"creative-pipeline-{creative_id}",
+                                        task_queue="creative-pipeline",
+                                        id_reuse_policy=WorkflowIDReusePolicy.TERMINATE_IF_RUNNING,
+                                    )
+                                    result.stuck_creatives_recovered += 1
+                                    workflow.logger.info(
+                                        f"Force-recovered creative {creative_id[:8]} "
+                                        f"(stuck {stuck_duration}min, reason={stuck['stuck_reason']})"
+                                    )
+                                else:
+                                    # Regular recovery: try to start workflow if previous failed
+                                    await workflow.start_child_workflow(
+                                        CreativePipelineWorkflow.run,
+                                        CreativeInput(
+                                            creative_id=creative_id,
+                                            buyer_id=stuck.get("buyer_id"),
+                                            source_type="recovery",
+                                        ),
+                                        id=f"creative-pipeline-{creative_id}",
+                                        task_queue="creative-pipeline",
+                                        id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                                    )
+                                    result.stuck_creatives_recovered += 1
+                                    workflow.logger.info(
+                                        f"Started recovery for creative {creative_id[:8]} "
+                                        f"(stuck {stuck_duration}min, reason={stuck['stuck_reason']})"
+                                    )
+
+                            except asyncio.CancelledError:
+                                # Workflow was cancelled, re-raise to allow proper cancellation
                                 workflow.logger.info(
-                                    f"Creative {creative_id[:8]} workflow already running, "
-                                    f"skipping recovery"
+                                    f"Recovery cancelled for creative {creative_id[:8]}"
                                 )
-                            else:
+                                raise
+                            except Exception as e:
                                 result.stuck_creatives_failed += 1
-                                workflow.logger.error(
-                                    f"Failed to recover creative {creative_id[:8]}: {e}"
-                                )
-                        except Exception as e:
-                            if (
-                                "already started" in str(e).lower()
-                                or "already running" in str(e).lower()
-                            ):
-                                workflow.logger.info(
-                                    f"Creative {creative_id[:8]} workflow already running, "
-                                    f"skipping recovery"
-                                )
-                            else:
-                                result.stuck_creatives_failed += 1
-                                workflow.logger.error(
-                                    f"Failed to recover creative {creative_id[:8]}: {e}"
+                                workflow.logger.exception(
+                                    f"Unexpected error recovering creative {creative_id[:8]}: {e}"
                                 )
 
-                    workflow.logger.info(
-                        f"Recovery complete: {result.stuck_creatives_recovered} recovered, "
-                        f"{result.stuck_creatives_failed} failed"
-                    )
+                        # Check if more creatives need processing
+                        if total_pending > MAX_BATCH_SIZE:
+                            needs_continuation = True
+                            workflow.logger.info(
+                                f"Stuck recovery batch done: {result.stuck_creatives_recovered} recovered, "
+                                f"{result.stuck_creatives_failed} failed. "
+                                f"{total_pending - len(batch)} remaining, will continue-as-new"
+                            )
+                        else:
+                            workflow.logger.info(
+                                f"Stuck recovery complete: {result.stuck_creatives_recovered} recovered, "
+                                f"{result.stuck_creatives_failed} failed"
+                            )
+                    else:
+                        workflow.logger.info(
+                            f"All {len(stuck_creatives)} stuck creatives already processed"
+                        )
                 else:
                     workflow.logger.info("No stuck creatives to recover")
 
@@ -509,7 +513,8 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Stuck creatives recovery failed: {e}")
                 result.integrity_issues.append(f"Stuck recovery error: {e}")
 
-        # Step 11: Retry failed creatives (Issue #472)
+        # Step 10: Retry failed creatives (Issue #472, #555)
+        # Issue #555: Batch processing with continue-as-new to prevent timeout
         if input.run_failed_retry:
             try:
                 failed_creatives = await workflow.execute_activity(
@@ -523,40 +528,69 @@ class MaintenanceWorkflow:
                 )
 
                 if failed_creatives:
-                    workflow.logger.info(
-                        f"Found {len(failed_creatives)} failed creatives for retry"
-                    )
+                    # Filter out already processed creatives (from previous continue-as-new)
+                    processed_set = set(input._processed_failed_ids)
+                    pending_creatives = [
+                        c for c in failed_creatives if c["id"] not in processed_set
+                    ]
 
-                    for creative in failed_creatives:
-                        creative_id = creative["id"]
-                        retry_count = creative.get("retry_count", 0)
+                    # Apply accumulated results from previous executions
+                    result.failed_creatives_retried = input._accumulated_failed_retried
+                    result.failed_creatives_abandoned = input._accumulated_failed_abandoned
 
-                        # Check if max retries exceeded
-                        if retry_count >= input.failed_creative_max_retries:
-                            # Abandon this creative
-                            success = await workflow.execute_activity(
-                                abandon_failed_creative,
-                                creative_id,
-                                start_to_close_timeout=timedelta(seconds=30),
-                                retry_policy=retry_policy,
+                    if pending_creatives:
+                        total_pending = len(pending_creatives)
+                        batch = pending_creatives[:MAX_BATCH_SIZE]
+
+                        workflow.logger.info(
+                            f"Found {total_pending} failed creatives pending, "
+                            f"processing batch of {len(batch)} (max {MAX_BATCH_SIZE})"
+                        )
+
+                        for creative in batch:
+                            creative_id = creative["id"]
+                            retry_count = creative.get("retry_count", 0)
+                            input._processed_failed_ids.append(creative_id)
+
+                            # Check if max retries exceeded
+                            if retry_count >= input.failed_creative_max_retries:
+                                # Abandon this creative
+                                success = await workflow.execute_activity(
+                                    abandon_failed_creative,
+                                    creative_id,
+                                    start_to_close_timeout=timedelta(seconds=30),
+                                    retry_policy=retry_policy,
+                                )
+                                if success:
+                                    result.failed_creatives_abandoned += 1
+                            else:
+                                # Reset for retry
+                                success = await workflow.execute_activity(
+                                    reset_creative_for_retry,
+                                    creative_id,
+                                    start_to_close_timeout=timedelta(seconds=30),
+                                    retry_policy=retry_policy,
+                                )
+                                if success:
+                                    result.failed_creatives_retried += 1
+
+                        # Check if more creatives need processing
+                        if total_pending > MAX_BATCH_SIZE:
+                            needs_continuation = True
+                            workflow.logger.info(
+                                f"Failed retry batch done: {result.failed_creatives_retried} retried, "
+                                f"{result.failed_creatives_abandoned} abandoned. "
+                                f"{total_pending - len(batch)} remaining, will continue-as-new"
                             )
-                            if success:
-                                result.failed_creatives_abandoned += 1
                         else:
-                            # Reset for retry
-                            success = await workflow.execute_activity(
-                                reset_creative_for_retry,
-                                creative_id,
-                                start_to_close_timeout=timedelta(seconds=30),
-                                retry_policy=retry_policy,
+                            workflow.logger.info(
+                                f"Failed creatives: {result.failed_creatives_retried} retried, "
+                                f"{result.failed_creatives_abandoned} abandoned"
                             )
-                            if success:
-                                result.failed_creatives_retried += 1
-
-                    workflow.logger.info(
-                        f"Failed creatives: {result.failed_creatives_retried} retried, "
-                        f"{result.failed_creatives_abandoned} abandoned"
-                    )
+                    else:
+                        workflow.logger.info(
+                            f"All {len(failed_creatives)} failed creatives already processed"
+                        )
                 else:
                     workflow.logger.info("No failed creatives to retry")
 
@@ -564,13 +598,38 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Failed creatives retry failed: {e}")
                 result.integrity_issues.append(f"Failed retry error: {e}")
 
-        # Step 12: Emit maintenance event
+        # Step 10b: Create weekly module snapshots (CPA & Trend Tracking #601)
+        # Only run on Mondays to create weekly snapshots
+        if input.run_weekly_snapshots and workflow.now().weekday() == 0:
+            try:
+                snapshot_result = await workflow.execute_activity(
+                    create_weekly_snapshots,
+                    CreateWeeklySnapshotsInput(),
+                    start_to_close_timeout=timedelta(seconds=300),  # 5 min for large module banks
+                    retry_policy=retry_policy,
+                )
+                result.module_snapshots_created = snapshot_result.snapshots_created
+                result.module_snapshots_updated = snapshot_result.snapshots_updated
+
+                total = snapshot_result.snapshots_created + snapshot_result.snapshots_updated
+                if total > 0:
+                    workflow.logger.info(
+                        f"Module snapshots: {snapshot_result.snapshots_created} created, "
+                        f"{snapshot_result.snapshots_updated} updated for week {snapshot_result.week_id}"
+                    )
+                if snapshot_result.errors:
+                    for err in snapshot_result.errors[:5]:  # Log first 5 errors
+                        workflow.logger.warning(f"Snapshot error: {err}")
+            except Exception as e:
+                workflow.logger.error(f"Weekly snapshots failed: {e}")
+                result.integrity_issues.append(f"Weekly snapshots error: {e}")
+
+        # Step 11: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
         await workflow.execute_activity(
             emit_maintenance_event,
             args=[
-                result.stale_buyers_reset,
                 result.recommendations_expired,
                 len(result.integrity_issues),
                 result.integrity_issues,  # Pass details for debugging
@@ -580,8 +639,8 @@ class MaintenanceWorkflow:
         )
 
         workflow.logger.info(
-            f"Maintenance complete: reset={result.stale_buyers_reset}, "
-            f"expired={result.recommendations_expired}, stuck_failed={result.stuck_transcriptions_failed}, "
+            f"Maintenance complete: expired={result.recommendations_expired}, "
+            f"stuck_failed={result.stuck_transcriptions_failed}, "
             f"archived={result.failed_creatives_archived}, "
             f"issues={len(result.integrity_issues)}, stale={result.is_stale}, "
             f"hypothesis_retried={result.hypotheses_retried}, "
@@ -589,7 +648,22 @@ class MaintenanceWorkflow:
             f"stuck_recovered={result.stuck_creatives_recovered}, "
             f"orphaned_hypotheses={result.orphaned_hypotheses_deleted}, "
             f"failed_retried={result.failed_creatives_retried}, "
-            f"failed_abandoned={result.failed_creatives_abandoned}"
+            f"failed_abandoned={result.failed_creatives_abandoned}, "
+            f"module_snapshots={result.module_snapshots_created + result.module_snapshots_updated}"
         )
+
+        # Issue #555: Continue-as-new if there are more creatives to process
+        # This prevents workflow timeout when processing large backlogs
+        if needs_continuation:
+            workflow.logger.info(
+                "Batch limit reached, continuing as new to process remaining items"
+            )
+            # Update accumulated results for the next execution
+            input._accumulated_stuck_recovered = result.stuck_creatives_recovered
+            input._accumulated_stuck_failed = result.stuck_creatives_failed
+            input._accumulated_failed_retried = result.failed_creatives_retried
+            input._accumulated_failed_abandoned = result.failed_creatives_abandoned
+            # Continue-as-new with updated state
+            await workflow.continue_as_new(input)
 
         return result

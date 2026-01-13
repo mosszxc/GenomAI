@@ -136,10 +136,7 @@ class DailyRecommendationWorkflow:
                         continue
 
                 # Check limit
-                if (
-                    input.max_recommendations > 0
-                    and result.generated >= input.max_recommendations
-                ):
+                if input.max_recommendations > 0 and result.generated >= input.max_recommendations:
                     workflow.logger.info(
                         f"Reached max recommendations limit: {input.max_recommendations}"
                     )

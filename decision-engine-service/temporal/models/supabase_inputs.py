@@ -188,9 +188,7 @@ class SaveDecomposedCreativeInput(BaseModel):
     @classmethod
     def validate_payload(cls, v: Any) -> Dict[str, Any]:
         if not isinstance(v, dict):
-            raise ValueError(
-                f"payload must be a dict, got {type(v).__name__}: {v!r:.200}"
-            )
+            raise ValueError(f"payload must be a dict, got {type(v).__name__}: {v!r:.200}")
         return v
 
     @field_validator("transcript_id")
@@ -205,9 +203,7 @@ class UpdateCreativeStatusInput(BaseModel):
     """Input for update_creative_status activity."""
 
     creative_id: str = Field(..., description="Creative UUID")
-    status: str = Field(
-        ..., description="New status: registered, processing, processed, failed"
-    )
+    status: str = Field(..., description="New status: registered, processing, processed, failed")
     error: Optional[str] = Field(None, description="Error message when status=failed")
 
     @field_validator("creative_id")
@@ -226,9 +222,7 @@ class EmitEventInput(BaseModel):
 
     event_type: str = Field(..., description="Event type (e.g., CreativeDecomposed)")
     payload: Dict[str, Any] = Field(..., description="Event payload")
-    entity_type: Optional[str] = Field(
-        None, description="Entity type (creative, decision)"
-    )
+    entity_type: Optional[str] = Field(None, description="Entity type (creative, decision)")
     entity_id: Optional[str] = Field(None, description="Entity UUID")
 
     @field_validator("event_type")

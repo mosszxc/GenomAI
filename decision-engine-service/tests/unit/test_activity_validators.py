@@ -317,3 +317,129 @@ class TestSourceTypes:
         for source in ["telegram", "keitaro", "historical", "spy", "user"]:
             result = validate_enum(source, SOURCE_TYPES, "source_type")
             assert result == source
+
+
+class TestValidateSafeString:
+    """Tests for validate_safe_string function - URL injection prevention"""
+
+    def test_valid_alphanumeric(self):
+        """Alphanumeric strings should pass"""
+        from temporal.models.validators import validate_safe_string
+
+        result = validate_safe_string("RU", "geo")
+        assert result == "RU"
+
+    def test_valid_with_underscore(self):
+        """Strings with underscores should pass"""
+        from temporal.models.validators import validate_safe_string
+
+        result = validate_safe_string("angle_type", "component_type")
+        assert result == "angle_type"
+
+    def test_valid_with_hyphen(self):
+        """Strings with hyphens should pass"""
+        from temporal.models.validators import validate_safe_string
+
+        result = validate_safe_string("hook-mechanism", "component_type")
+        assert result == "hook-mechanism"
+
+    def test_valid_mixed(self):
+        """Mixed alphanumeric, underscore, hyphen should pass"""
+        from temporal.models.validators import validate_safe_string
+
+        result = validate_safe_string("test_value-123", "field")
+        assert result == "test_value-123"
+
+    def test_invalid_sql_injection(self):
+        """SQL injection attempt should fail"""
+        from temporal.models.validators import validate_safe_string
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_safe_string("RU'; DROP TABLE premises; --", "geo")
+        assert "contains unsafe characters" in str(exc_info.value)
+
+    def test_invalid_url_injection(self):
+        """URL manipulation attempt should fail"""
+        from temporal.models.validators import validate_safe_string
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_safe_string("value&other_param=eq.attack", "field")
+        assert "contains unsafe characters" in str(exc_info.value)
+
+    def test_invalid_postgrest_operator(self):
+        """PostgREST operator injection should fail"""
+        from temporal.models.validators import validate_safe_string
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_safe_string("value.neq.other", "field")
+        assert "contains unsafe characters" in str(exc_info.value)
+
+    def test_invalid_spaces(self):
+        """Strings with spaces should fail"""
+        from temporal.models.validators import validate_safe_string
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_safe_string("value with spaces", "field")
+        assert "contains unsafe characters" in str(exc_info.value)
+
+    def test_invalid_special_chars(self):
+        """Special characters should fail"""
+        from temporal.models.validators import validate_safe_string
+
+        for char in ["=", "&", "?", "/", "\\", "'", '"', ";", "(", ")"]:
+            with pytest.raises(ValueError):
+                validate_safe_string(f"value{char}test", "field")
+
+    def test_empty_string_fails(self):
+        """Empty string should fail"""
+        from temporal.models.validators import validate_safe_string
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_safe_string("", "field")
+        assert "cannot be empty" in str(exc_info.value)
+
+    def test_max_length_exceeded(self):
+        """String exceeding max length should fail"""
+        from temporal.models.validators import validate_safe_string
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_safe_string("a" * 101, "field", max_length=100)
+        assert "exceeds maximum length" in str(exc_info.value)
+
+    def test_custom_max_length(self):
+        """Custom max length should be respected"""
+        from temporal.models.validators import validate_safe_string
+
+        # Should pass with custom length
+        result = validate_safe_string("a" * 50, "field", max_length=50)
+        assert result == "a" * 50
+
+        # Should fail with custom length
+        with pytest.raises(ValueError):
+            validate_safe_string("a" * 51, "field", max_length=50)
+
+
+class TestValidateOptionalSafeString:
+    """Tests for validate_optional_safe_string function"""
+
+    def test_none_returns_none(self):
+        """None should return None"""
+        from temporal.models.validators import validate_optional_safe_string
+
+        result = validate_optional_safe_string(None, "geo")
+        assert result is None
+
+    def test_valid_string_passes(self):
+        """Valid string should pass through"""
+        from temporal.models.validators import validate_optional_safe_string
+
+        result = validate_optional_safe_string("RU", "geo")
+        assert result == "RU"
+
+    def test_invalid_string_raises(self):
+        """Invalid string should raise ValueError"""
+        from temporal.models.validators import validate_optional_safe_string
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_optional_safe_string("RU&attack=true", "geo")
+        assert "contains unsafe characters" in str(exc_info.value)

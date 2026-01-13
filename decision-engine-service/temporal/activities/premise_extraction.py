@@ -259,11 +259,7 @@ async def extract_premises_via_llm(data: CreativeData) -> List[ExtractedPremise]
         return []
 
     # Format prompt
-    payload_json = (
-        json.dumps(data.payload, indent=2, ensure_ascii=False)
-        if data.payload
-        else "N/A"
-    )
+    payload_json = json.dumps(data.payload, indent=2, ensure_ascii=False) if data.payload else "N/A"
     transcript = data.transcript_text[:8000] if data.transcript_text else "N/A"
 
     prompt = PREMISE_EXTRACTION_PROMPT.format(
@@ -326,7 +322,7 @@ async def extract_premises_via_llm(data: CreativeData) -> List[ExtractedPremise]
         return []
     except openai.APIError as e:
         activity.logger.error(f"OpenAI API error: {e}")
-        raise ApplicationError(f"LLM extraction failed: {e}")
+        raise ApplicationError(f"LLM extraction failed: {e}") from e
 
 
 @activity.defn

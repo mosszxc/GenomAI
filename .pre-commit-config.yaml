@@ -7,7 +7,7 @@ repos:
 
       - id: ruff-check
         name: ruff lint
-        entry: python3 -m ruff check decision-engine-service/ --fix
+        entry: python3 -m ruff check decision-engine-service/
         language: system
         pass_filenames: false
         types: [python]
@@ -28,6 +28,15 @@ repos:
         pass_filenames: false
         types: [python]
         stages: [pre-commit]
+
+      - id: mypy-check
+        name: mypy type check
+        entry: bash -c "cd decision-engine-service && python3 -m mypy src/ --config-file=pyproject.toml --no-error-summary 2>/dev/null || true"
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-commit]
+        verbose: true
 
       # === PRE-PUSH (~60s) ===
 

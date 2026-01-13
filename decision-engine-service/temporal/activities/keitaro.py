@@ -12,11 +12,52 @@ from datetime import datetime, timedelta
 from typing import Optional
 from dataclasses import dataclass
 
+import httpx
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from temporal.config import settings
 from src.utils.parsing import safe_int, safe_float
+
+
+# HTTP status codes that indicate temporary errors (should retry)
+_TEMPORARY_ERROR_CODES = {502, 503, 504, 429}
+
+
+def _handle_http_response(response: httpx.Response, context: str = "Keitaro API") -> None:
+    """
+    Handle HTTP response with proper error classification for Temporal retry.
+
+    Args:
+        response: The HTTP response to check
+        context: Description for error messages
+
+    Raises:
+        ApplicationError: With non_retryable=False for temporary errors (will retry)
+        ApplicationError: With non_retryable=True for permanent errors (won't retry)
+    """
+    if response.is_success:
+        return
+
+    status_code = response.status_code
+    error_body = response.text[:500] if response.text else "No response body"
+
+    if status_code in _TEMPORARY_ERROR_CODES:
+        # Temporary error - Temporal should retry
+        activity.logger.warning(
+            f"{context} temporary error: status={status_code}, body={error_body}"
+        )
+        raise ApplicationError(
+            f"{context} temporarily unavailable: HTTP {status_code}",
+            non_retryable=False,
+        )
+    else:
+        # Permanent error - no point in retrying
+        activity.logger.error(f"{context} permanent error: status={status_code}, body={error_body}")
+        raise ApplicationError(
+            f"{context} error: HTTP {status_code} - {error_body}",
+            non_retryable=True,
+        )
 
 
 @dataclass
@@ -116,7 +157,7 @@ async def get_all_trackers(input: GetAllTrackersInput) -> GetAllTrackersOutput:
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=60.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     rows = data.get("rows", [])
@@ -148,14 +189,12 @@ async def get_tracker_metrics(input: GetTrackerMetricsInput) -> GetTrackerMetric
     payload = {
         "range": {"interval": input.interval},
         "metrics": ["clicks", "conversions", "revenue", "cost", "profit_confirmed"],
-        "filters": [
-            {"name": "sub_id_1", "operator": "EQUALS", "expression": input.tracker_id}
-        ],
+        "filters": [{"name": "sub_id_1", "operator": "EQUALS", "expression": input.tracker_id}],
     }
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=30.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     rows = data.get("rows", [])
@@ -278,7 +317,7 @@ async def get_campaigns_by_source(
 
     client = get_http_client()
     response = await client.get(url, headers=headers, timeout=120.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     all_campaigns = response.json()
 
     # Step 2: Calculate date cutoff (last 30 days by default)
@@ -288,7 +327,7 @@ async def get_campaigns_by_source(
         except ValueError:
             raise ApplicationError(
                 f"Invalid date format: {input.date_from}", non_retryable=True
-            )
+            ) from None
     else:
         cutoff = datetime.utcnow() - timedelta(days=30)
 
@@ -407,7 +446,7 @@ async def get_campaign_creatives(
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=60.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     rows = data.get("rows", [])
@@ -427,9 +466,7 @@ async def get_campaign_creatives(
             )
         )
 
-    activity.logger.info(
-        f"Found {len(creatives)} creatives for campaign: {input.campaign_id}"
-    )
+    activity.logger.info(f"Found {len(creatives)} creatives for campaign: {input.campaign_id}")
 
     return GetCampaignCreativesOutput(
         creatives=creatives, campaign_id=input.campaign_id, total=len(creatives)
@@ -450,9 +487,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
     Returns:
         BatchMetricsOutput with all metrics and any failed IDs
     """
-    activity.logger.info(
-        f"Fetching batch metrics for {len(input.tracker_ids)} trackers"
-    )
+    activity.logger.info(f"Fetching batch metrics for {len(input.tracker_ids)} trackers")
 
     url = _get_keitaro_url("/report/build")
     headers = _get_keitaro_headers()
@@ -466,7 +501,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
 
     client = get_http_client()
     response = await client.post(url, headers=headers, json=payload, timeout=120.0)
-    response.raise_for_status()
+    _handle_http_response(response, "Keitaro API")
     data = response.json()
 
     # Calculate date based on interval
@@ -479,9 +514,7 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
 
     # Build lookup from response
     rows = data.get("rows", [])
-    metrics_by_tracker = {
-        row.get("sub_id_1"): row for row in rows if row.get("sub_id_1")
-    }
+    metrics_by_tracker = {row.get("sub_id_1"): row for row in rows if row.get("sub_id_1")}
 
     # Match with requested tracker IDs
     results = []
@@ -503,8 +536,6 @@ async def get_batch_metrics(input: BatchMetricsInput) -> BatchMetricsOutput:
         else:
             failed_ids.append(tracker_id)
 
-    activity.logger.info(
-        f"Batch metrics: {len(results)} found, {len(failed_ids)} not found"
-    )
+    activity.logger.info(f"Batch metrics: {len(results)} found, {len(failed_ids)} not found")
 
     return BatchMetricsOutput(metrics=results, failed_ids=failed_ids)

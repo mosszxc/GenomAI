@@ -92,9 +92,7 @@ class HistoricalImportWorkflow:
 
         try:
             # Step 1: Fetch campaigns from Keitaro
-            workflow.logger.info(
-                f"Fetching campaigns for source: {self._keitaro_source}"
-            )
+            workflow.logger.info(f"Fetching campaigns for source: {self._keitaro_source}")
 
             campaigns_result = await workflow.execute_activity(
                 get_campaigns_by_source,
@@ -343,9 +341,7 @@ class HistoricalVideoHandlerWorkflow:
         self._error: Optional[str] = None
 
     @workflow.run
-    async def run(
-        self, input: HistoricalVideoHandlerInput
-    ) -> HistoricalVideoHandlerResult:
+    async def run(self, input: HistoricalVideoHandlerInput) -> HistoricalVideoHandlerResult:
         """
         Process video URL for historical import.
 
@@ -366,9 +362,7 @@ class HistoricalVideoHandlerWorkflow:
         queue_record = None  # Initialize before try block for except handler
         try:
             # Step 1: Find queue record by campaign_id
-            workflow.logger.info(
-                f"Looking up import queue for campaign: {input.campaign_id}"
-            )
+            workflow.logger.info(f"Looking up import queue for campaign: {input.campaign_id}")
 
             queue_record = await workflow.execute_activity(
                 get_import_by_campaign_id,
@@ -378,9 +372,7 @@ class HistoricalVideoHandlerWorkflow:
             )
 
             if not queue_record:
-                self._error = (
-                    f"No import queue record found for campaign: {input.campaign_id}"
-                )
+                self._error = f"No import queue record found for campaign: {input.campaign_id}"
                 workflow.logger.error(self._error)
                 return self._build_result()
 
@@ -488,9 +480,7 @@ class HistoricalVideoHandlerWorkflow:
                 campaign_id=input.campaign_id,
                 creative_id=self._creative_id,
                 idea_id=pipeline_result.idea_id if pipeline_result else None,
-                decision_type=(
-                    pipeline_result.decision_type if pipeline_result else None
-                ),
+                decision_type=(pipeline_result.decision_type if pipeline_result else None),
                 queue_status=self._queue_status,
                 completed=True,
             )
@@ -509,8 +499,8 @@ class HistoricalVideoHandlerWorkflow:
                         start_to_close_timeout=timedelta(seconds=30),
                         retry_policy=default_retry,
                     )
-                except Exception:
-                    pass
+                except Exception as status_err:
+                    workflow.logger.debug(f"Failed to update import status to failed: {status_err}")
 
             return self._build_result()
 

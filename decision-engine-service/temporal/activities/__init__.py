@@ -36,6 +36,7 @@ from temporal.activities.telegram import (
     get_buyer_chat_id,
     update_hypothesis_delivery_status,
     emit_delivery_event,
+    send_status_notification,
 )
 from temporal.activities.keitaro import (
     get_all_trackers,
@@ -79,7 +80,6 @@ from temporal.activities.recommendation import (
     check_existing_daily_recommendation,
 )
 from temporal.activities.maintenance import (
-    reset_stale_buyer_states,
     expire_old_recommendations,
     mark_stuck_transcriptions_failed,
     archive_failed_creatives,
@@ -103,6 +103,11 @@ from temporal.activities.module_learning import (
     update_module_stats,
     update_compatibility_stats,
     process_module_learning,
+)
+from temporal.activities.module_snapshots import (
+    create_weekly_snapshots,
+    get_module_trend,
+    get_trending_modules,
 )
 
 __all__ = [
@@ -134,6 +139,7 @@ __all__ = [
     "get_buyer_chat_id",
     "update_hypothesis_delivery_status",
     "emit_delivery_event",
+    "send_status_notification",
     # Keitaro activities
     "get_all_trackers",
     "get_tracker_metrics",
@@ -171,7 +177,6 @@ __all__ = [
     "get_recommendation_by_id",
     "check_existing_daily_recommendation",
     # Maintenance activities
-    "reset_stale_buyer_states",
     "expire_old_recommendations",
     "mark_stuck_transcriptions_failed",
     "archive_failed_creatives",
@@ -192,4 +197,8 @@ __all__ = [
     "update_module_stats",
     "update_compatibility_stats",
     "process_module_learning",
+    # Module snapshots activities (CPA & Trend Tracking #601)
+    "create_weekly_snapshots",
+    "get_module_trend",
+    "get_trending_modules",
 ]

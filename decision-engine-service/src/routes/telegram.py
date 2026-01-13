@@ -10,19 +10,25 @@ Routes:
     Video/URL → CreativeRegistrationWorkflow or signal to active onboarding
 """
 
+from __future__ import annotations
+
 import os
 import re
 import logging
 import asyncio
+import uuid
 from datetime import datetime
-from typing import Optional
-from fastapi import APIRouter, Request, BackgroundTasks
+from html import escape as html_escape
+from typing import Any, Optional
+import secrets
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from src.utils.parsing import safe_float
 from temporal.models.buyer import VALID_GEOS
 from src.core.http_client import get_http_client
 from src.core.supabase import get_supabase
+from temporalio.service import RPCError, RPCStatusCode
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -34,6 +40,34 @@ TELEGRAM_BASE_DELAY = 1.0  # seconds
 TELEGRAM_MAX_DELAY = 10.0  # seconds
 
 router = APIRouter()
+
+# Telegram webhook security header
+TELEGRAM_SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
+
+
+def verify_webhook_secret(request: Request) -> None:
+    """Verify Telegram webhook secret token.
+
+    Telegram sends secret_token in X-Telegram-Bot-Api-Secret-Token header
+    when configured via setWebhook API with secret_token parameter.
+
+    Raises:
+        HTTPException: 401 if secret is configured but not provided/invalid
+    """
+    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+    if not webhook_secret:
+        # Secret not configured - skip verification (backwards compatible)
+        return
+
+    provided_secret = request.headers.get(TELEGRAM_SECRET_HEADER, "")
+    if not provided_secret:
+        logger.warning("Telegram webhook request missing secret token")
+        raise HTTPException(status_code=401, detail="Missing webhook secret")
+
+    # Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(webhook_secret, provided_secret):
+        logger.warning("Telegram webhook request with invalid secret token")
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
 
 # Webhook error tracking for monitoring
@@ -59,14 +93,118 @@ class WebhookErrorStats:
         return {
             "total_errors": self.total_errors,
             "last_error": self.last_error,
-            "last_error_time": self.last_error_time.isoformat()
-            if self.last_error_time
-            else None,
+            "last_error_time": self.last_error_time.isoformat() if self.last_error_time else None,
             "error_types": self.error_types,
         }
 
 
 webhook_error_stats = WebhookErrorStats()
+
+
+def safe_json_response(
+    response: httpx.Response,
+    context: str = "API call",
+    default: Any = None,
+) -> Any:
+    """Safely extract JSON from HTTP response with status check.
+
+    Args:
+        response: httpx Response object
+        context: Description of the API call for logging
+        default: Value to return on error (None or [] typically)
+
+    Returns:
+        Parsed JSON data or default value on error
+    """
+    if response.status_code != 200:
+        logger.error(f"{context} failed: status={response.status_code}, body={response.text[:200]}")
+        return default
+    try:
+        return response.json()
+    except Exception as e:
+        logger.error(f"{context} JSON parse error: {e}, body={response.text[:200]}")
+        return default
+
+
+def record_handler_error(error: Exception, context: str) -> None:
+    """Log handler error and record in webhook stats for unified monitoring.
+
+    Use this instead of plain logger.error() in handler except blocks
+    to ensure all errors are tracked in webhook_error_stats.
+
+    Args:
+        error: The exception that occurred
+        context: Description of what failed (e.g., "Failed to get stats")
+    """
+    logger.error(f"{context}: {error}")
+    webhook_error_stats.record_error(error)
+
+
+# Callback data validation constants
+CALLBACK_DATA_MAX_LENGTH = 64  # Telegram limit
+CALLBACK_DATA_PATTERN = re.compile(r"^[a-z_]+_[a-zA-Z0-9\-]+$")
+
+# Input length validation constants
+MAX_FEEDBACK_LENGTH = 500  # Max chars for /feedback text
+
+
+class CallbackDataError(ValueError):
+    """Raised when callback_data validation fails."""
+
+    pass
+
+
+def parse_callback_data(data: str) -> tuple[str, str]:
+    """Parse and validate callback_data from Telegram inline button.
+
+    Expected formats:
+    - ke_approve_{uuid}
+    - ke_reject_{uuid}
+    - ke_skip_{uuid}
+    - chat_{telegram_id}
+
+    Args:
+        data: Raw callback_data string from Telegram
+
+    Returns:
+        Tuple of (action, id) where action is the prefix and id is the identifier
+
+    Raises:
+        CallbackDataError: If validation fails
+    """
+    if not data:
+        raise CallbackDataError("Empty callback data")
+
+    if len(data) > CALLBACK_DATA_MAX_LENGTH:
+        raise CallbackDataError(f"Callback data exceeds {CALLBACK_DATA_MAX_LENGTH} chars")
+
+    if not CALLBACK_DATA_PATTERN.match(data):
+        raise CallbackDataError("Invalid callback data format")
+
+    # Split on last underscore to get action and id
+    last_underscore = data.rfind("_")
+    if last_underscore == -1:
+        raise CallbackDataError("Invalid callback format: missing underscore")
+
+    action = data[:last_underscore]
+    identifier = data[last_underscore + 1 :]
+
+    if not action or not identifier:
+        raise CallbackDataError("Empty action or identifier")
+
+    # Strict type validation based on action
+    if action in ("ke_approve", "ke_reject", "ke_skip"):
+        try:
+            uuid.UUID(identifier)
+        except ValueError:
+            raise CallbackDataError(
+                f"Invalid UUID format for {action}: {identifier[:20]}"
+            ) from None
+    elif action == "chat":
+        if not identifier.isdigit():
+            raise CallbackDataError(f"Invalid telegram_id format: {identifier[:20]}")
+
+    return action, identifier
 
 
 class TelegramUpdate(BaseModel):
@@ -128,15 +266,13 @@ def _should_retry(status_code: int, error_code: int | None = None) -> bool:
 def _get_retry_delay(attempt: int, retry_after: int | None = None) -> float:
     """Calculate delay before next retry with exponential backoff."""
     if retry_after:
-        return min(float(retry_after), TELEGRAM_MAX_DELAY)
+        return float(min(float(retry_after), TELEGRAM_MAX_DELAY))
     # Exponential backoff: 1s, 2s, 4s, ...
     delay = TELEGRAM_BASE_DELAY * (2**attempt)
-    return min(delay, TELEGRAM_MAX_DELAY)
+    return float(min(delay, TELEGRAM_MAX_DELAY))
 
 
-async def send_telegram_message(
-    chat_id: str, text: str, reply_markup: dict | None = None
-) -> bool:
+async def send_telegram_message(chat_id: str, text: str, reply_markup: dict | None = None) -> bool:
     """
     Send a message to Telegram chat with retry on transient errors.
 
@@ -152,7 +288,7 @@ async def send_telegram_message(
         logger.error("TELEGRAM_BOT_TOKEN not configured")
         return False
 
-    payload = {
+    payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
@@ -168,7 +304,7 @@ async def send_telegram_message(
             client = get_http_client()
             response = await client.post(url, json=payload, timeout=30.0)
 
-            data = response.json()
+            data = safe_json_response(response, "Telegram sendMessage", {})
 
             if data.get("ok"):
                 return True
@@ -215,9 +351,7 @@ async def send_telegram_message(
 
         except Exception as e:
             # Unexpected error - don't retry
-            logger.error(
-                f"Telegram sendMessage unexpected error: chat_id={chat_id}, error={e}"
-            )
+            logger.error(f"Telegram sendMessage unexpected error: chat_id={chat_id}, error={e}")
             return False
 
     # All retries exhausted
@@ -259,7 +393,7 @@ async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -
             client = get_http_client()
             response = await client.post(url, json=payload, timeout=30.0)
 
-            data = response.json()
+            data = safe_json_response(response, "Telegram sendPhoto", {})
 
             if data.get("ok"):
                 return True
@@ -306,9 +440,7 @@ async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -
 
         except Exception as e:
             # Unexpected error - don't retry
-            logger.error(
-                f"Telegram sendPhoto unexpected error: chat_id={chat_id}, error={e}"
-            )
+            logger.error(f"Telegram sendPhoto unexpected error: chat_id={chat_id}, error={e}")
             return False
 
     # All retries exhausted
@@ -338,9 +470,16 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
             # If state is not completed/cancelled/timed_out, workflow is active
             if state not in ["COMPLETED", "CANCELLED", "TIMED_OUT"]:
                 return workflow_id
-        except Exception:
-            # Workflow doesn't exist or completed
-            pass
+        except RPCError as e:
+            if e.status == RPCStatusCode.NOT_FOUND:
+                # Expected - workflow doesn't exist or completed
+                pass
+            else:
+                # Unexpected RPC error - log but assume workflow inactive to avoid deadlock
+                logger.warning(f"RPC error querying workflow {workflow_id}: {e}")
+        except Exception as e:
+            # Unexpected error - log but assume workflow inactive to avoid deadlock
+            logger.error(f"Unexpected error querying workflow {workflow_id}: {e}")
 
         return None
     except Exception as e:
@@ -348,8 +487,22 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
         return None
 
 
+# Maximum input length for regex operations (ReDoS protection)
+MAX_INPUT_LENGTH = 2048
+
+
 def extract_video_url(text: str) -> Optional[str]:
-    """Extract video URL from text."""
+    """
+    Extract video URL from text.
+
+    Includes input length limit to prevent ReDoS attacks.
+    """
+    if not text:
+        return None
+
+    # ReDoS protection: limit input length
+    safe_text = text[:MAX_INPUT_LENGTH]
+
     # Common video URL patterns
     patterns = [
         r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)/\S+",
@@ -361,13 +514,13 @@ def extract_video_url(text: str) -> Optional[str]:
     ]
 
     for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = re.search(pattern, safe_text, re.IGNORECASE)
         if match:
             return match.group(0)
 
     # Check if entire text is a URL
-    if text.startswith("http://") or text.startswith("https://"):
-        return text.strip()
+    if safe_text.startswith("http://") or safe_text.startswith("https://"):
+        return safe_text.strip()
 
     return None
 
@@ -407,12 +560,11 @@ async def handle_start_command(message: TelegramMessage) -> None:
         logger.info(f"Workflow already running for user: {message.user_id}")
         await send_telegram_message(
             message.chat_id,
-            "У вас уже есть активная регистрация.\n"
-            "Завершите её или дождитесь таймаута.",
+            "У вас уже есть активная регистрация.\nЗавершите её или дождитесь таймаута.",
         )
 
     except Exception as e:
-        logger.error(f"Failed to start onboarding: {e}")
+        record_handler_error(e, "Failed to start onboarding")
         await send_telegram_message(
             message.chat_id,
             "Не удалось начать регистрацию. Попробуйте позже.",
@@ -464,7 +616,66 @@ async def log_buyer_interaction(
             timeout=10.0,
         )
     except Exception as e:
-        logger.error(f"Failed to log buyer interaction: {e}")
+        record_handler_error(e, "Failed to log buyer interaction")
+
+
+# Core variables from VISION.md for component analysis
+CORE_COMPONENT_VARS = [
+    "hook_mechanism",
+    "angle_type",
+    "message_structure",
+    "ump_type",
+    "promise_type",
+    "proof_type",
+    "cta_style",
+]
+
+
+async def _get_best_component(
+    client: Any,
+    headers: dict[str, str],
+    sb: Any,
+    creatives: list[dict[str, Any]],
+) -> str | None:
+    """Find the most common component in winning creatives.
+
+    Returns the component value (e.g., "fear", "curiosity") or None if no data.
+    """
+    # Get IDs of winning creatives
+    winning_ids = [c["id"] for c in creatives if c.get("test_result") == "win"]
+    if not winning_ids:
+        return None
+
+    # Get decomposed_creatives for winners
+    ids_str = ",".join(f'"{cid}"' for cid in winning_ids)
+    try:
+        resp = await client.get(
+            f"{sb.rest_url}/decomposed_creatives?creative_id=in.({ids_str})&select=payload",
+            headers=headers,
+        )
+        decomposed = safe_json_response(resp, "Get decomposed for best component", [])
+    except Exception as e:
+        logger.warning(f"Failed to get decomposed creatives: {e}")
+        return None
+
+    if not decomposed:
+        return None
+
+    # Count component occurrences across all winning creatives
+    component_counts: dict[str, int] = {}
+    for row in decomposed:
+        payload = row.get("payload") or {}
+        for var in CORE_COMPONENT_VARS:
+            value = payload.get(var)
+            if value and isinstance(value, str):
+                component_counts[value] = component_counts.get(value, 0) + 1
+
+    if not component_counts:
+        return None
+
+    # Return most common component
+    best = max(component_counts, key=lambda k: component_counts[k])
+    return best
 
 
 async def handle_stats_command(message: TelegramMessage) -> None:
@@ -490,12 +701,10 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         client = get_http_client()
         # Get buyer
         buyer_resp = await client.get(
-            f"{sb.rest_url}/buyers"
-            f"?telegram_id=eq.{message.user_id}"
-            f"&select=id,name,geos,verticals",
+            f"{sb.rest_url}/buyers?telegram_id=eq.{message.user_id}&select=id,name,geos,verticals",
             headers=headers,
         )
-        buyers = buyer_resp.json()
+        buyers = safe_json_response(buyer_resp, "Get buyer for stats", [])
 
         if not buyers:
             await send_telegram_message(
@@ -514,7 +723,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             f"&select=id,status,test_result,tracking_status,tracker_id",
             headers=headers,
         )
-        creatives = creatives_resp.json()
+        creatives = safe_json_response(creatives_resp, "Get creatives for stats", [])
 
         total = len(creatives)
         wins = len([c for c in creatives if c.get("test_result") == "win"])
@@ -534,12 +743,10 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             # Fetch metrics for all tracker_ids
             tracker_list = ",".join(tracker_ids)
             metrics_resp = await client.get(
-                f"{sb.rest_url}/raw_metrics_current"
-                f"?tracker_id=in.({tracker_list})"
-                f"&select=metrics",
+                f"{sb.rest_url}/raw_metrics_current?tracker_id=in.({tracker_list})&select=metrics",
                 headers=headers,
             )
-            metrics_rows = metrics_resp.json()
+            metrics_rows = safe_json_response(metrics_resp, "Get metrics for stats", [])
 
             if isinstance(metrics_rows, list):
                 for row in metrics_rows:
@@ -548,23 +755,40 @@ async def handle_stats_command(message: TelegramMessage) -> None:
                     total_revenue += safe_float(metrics.get("revenue", 0))
 
         # Calculate ROI
-        roi = (
-            ((total_revenue - total_spend) / total_spend * 100)
-            if total_spend > 0
-            else 0
-        )
+        roi = ((total_revenue - total_spend) / total_spend * 100) if total_spend > 0 else 0
         roi_sign = "+" if roi >= 0 else ""
 
-        stats_message = (
-            f"📊 <b>Твоя статистика:</b>\n\n"
-            f"Креативов: {total}\n"
-            f"✅ Побед: {wins} ({win_rate:.0f}%)\n"
-            f"❌ Поражений: {losses}\n"
-            f"⏳ Тестируется: {testing}\n\n"
-            f"ROI: {roi_sign}{roi:.1f}%\n"
-            f"Расход: ${total_spend:.0f}\n"
-            f"Доход: ${total_revenue:.0f}"
-        )
+        # Get best component from winning creatives
+        best_component = await _get_best_component(client, headers, sb, creatives)
+
+        # Build stats message with tree structure
+        stats_lines = [
+            "📊 <b>Твоя статистика</b>\n",
+            f"Креативов: {total}",
+            f"├─ ✅ Побед: {wins} ({win_rate:.0f}%)",
+            f"├─ ❌ Поражений: {losses}",
+            f"└─ ⏳ Тестируется: {testing}",
+        ]
+
+        # Add recommendation if we have winning creatives and best component
+        if best_component:
+            stats_lines.append("")
+            stats_lines.append(
+                f"💡 <b>Совет:</b> Твой лучший компонент — «{best_component}».\n"
+                "   Используй его чаще для повышения win rate."
+            )
+
+        # Add ROI with context
+        if total_spend > 0:
+            stats_lines.append("")
+            stats_lines.append(
+                f"ROI: {roi_sign}{roi:.1f}% (${total_revenue:.0f} / ${total_spend:.0f})"
+            )
+        else:
+            stats_lines.append("")
+            stats_lines.append("ROI: — (ещё нет данных о расходах)")
+
+        stats_message = "\n".join(stats_lines)
 
         await send_telegram_message(message.chat_id, stats_message)
 
@@ -586,7 +810,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to get stats: {e}")
+        record_handler_error(e, "Failed to get stats")
         await send_telegram_message(message.chat_id, "Не удалось загрузить статистику.")
 
 
@@ -768,7 +992,7 @@ async def handle_genome_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Failed to generate genome heatmap: {e}")
+        record_handler_error(e, "Failed to generate genome heatmap")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось сгенерировать матрицу: {str(e)[:100]}",
@@ -832,7 +1056,7 @@ async def handle_confidence_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось рассчитать доверительные интервалы: {e}")
+        record_handler_error(e, "Failed to calculate confidence intervals")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось рассчитать доверительные интервалы: {str(e)[:100]}",
@@ -844,9 +1068,7 @@ async def handle_trends_command(message: TelegramMessage) -> None:
     from src.services.charts import generate_win_rate_chart_url
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -885,12 +1107,11 @@ async def handle_trends_command(message: TelegramMessage) -> None:
             # Fallback to text if photo fails
             await send_telegram_message(
                 message.chat_id,
-                f"График создан, но не удалось отправить картинку.\n"
-                f"Ссылка: {chart_url[:100]}...",
+                f"График создан, но не удалось отправить картинку.\nСсылка: {chart_url[:100]}...",
             )
 
     except Exception as e:
-        logger.error(f"Failed to generate trends chart: {e}")
+        record_handler_error(e, "Failed to generate trends chart")
         await send_telegram_message(message.chat_id, "Не удалось создать график.")
 
 
@@ -910,9 +1131,7 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Parse command
@@ -984,7 +1203,7 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось запустить симуляцию: {e}")
+        record_handler_error(e, "Failed to run simulation")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось запустить симуляцию: {str(e)[:100]}",
@@ -1006,9 +1225,7 @@ async def handle_drift_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Parse component type from command
@@ -1060,7 +1277,7 @@ async def handle_drift_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось обнаружить дрифт: {e}")
+        record_handler_error(e, "Failed to detect drift")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось обнаружить дрифт: {str(e)[:100]}",
@@ -1080,9 +1297,7 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Log incoming command
@@ -1110,17 +1325,13 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
             content=result_text,
             context={
                 "correlation_count": len(correlations),
-                "positive": len(
-                    [c for c in correlations if c.correlation_type == "positive"]
-                ),
-                "negative": len(
-                    [c for c in correlations if c.correlation_type == "negative"]
-                ),
+                "positive": len([c for c in correlations if c.correlation_type == "positive"]),
+                "negative": len([c for c in correlations if c.correlation_type == "negative"]),
             },
         )
 
     except Exception as e:
-        logger.error(f"Не удалось найти корреляции: {e}")
+        record_handler_error(e, "Failed to find correlations")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось найти корреляции: {str(e)[:100]}",
@@ -1145,9 +1356,7 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Log incoming command
@@ -1183,10 +1392,85 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
         )
 
     except Exception as e:
-        logger.error(f"Не удалось сгенерировать рекомендацию: {e}")
+        record_handler_error(e, "Failed to generate recommendation")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось сгенерировать рекомендацию: {str(e)[:100]}",
+        )
+
+
+async def handle_meta_command(message: TelegramMessage) -> None:
+    """
+    Handle /meta command - show Meta Dashboard with HOT/COLD/GAPS analysis.
+
+    Usage:
+        /meta - Show global meta dashboard
+        /meta US - Show meta dashboard for specific geo
+
+    Shows component performance summary:
+    - HOT: High-performing components (>30% win rate)
+    - COLD: Fatigued components (overused, declining)
+    - GAPS: Components needing more testing
+    """
+    from src.services.meta_dashboard import (
+        generate_meta_dashboard,
+        format_meta_dashboard_telegram,
+    )
+
+    if not is_admin(message.user_id):
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
+        return
+
+    # Parse optional geo filter
+    text = message.text or "/meta"
+    parts = text.split(maxsplit=1)
+    geo = parts[1].upper() if len(parts) > 1 else None
+
+    # Validate geo if provided
+    if geo and geo not in VALID_GEOS:
+        await send_telegram_message(
+            message.chat_id,
+            f"Неизвестный гео: {geo}\nДоступные: {', '.join(sorted(VALID_GEOS))}",
+        )
+        return
+
+    # Log incoming command
+    await log_buyer_interaction(
+        telegram_id=message.user_id,
+        direction="in",
+        message_type="command",
+        content=text,
+    )
+
+    try:
+        # Generate meta dashboard
+        dashboard = await generate_meta_dashboard(geo=geo)
+
+        # Format for Telegram
+        result_text = format_meta_dashboard_telegram(dashboard)
+
+        await send_telegram_message(message.chat_id, result_text)
+
+        # Log outgoing response
+        await log_buyer_interaction(
+            telegram_id=message.user_id,
+            direction="out",
+            message_type="system",
+            content=result_text,
+            context={
+                "geo": geo,
+                "hot_count": len(dashboard.hot_components),
+                "cold_count": len(dashboard.cold_components),
+                "gaps_count": len(dashboard.gap_components),
+                "week_num": dashboard.week_num,
+            },
+        )
+
+    except Exception as e:
+        record_handler_error(e, "Failed to generate Meta Dashboard")
+        await send_telegram_message(
+            message.chat_id,
+            f"Не удалось сгенерировать дашборд: {str(e)[:100]}",
         )
 
 
@@ -1199,9 +1483,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
     """Handle /buyers command - list all buyers with stats."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1221,7 +1503,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=10",
             headers=headers,
         )
-        buyers = buyers_resp.json()
+        buyers = safe_json_response(buyers_resp, "Get buyers list", [])
 
         if not buyers:
             await send_telegram_message(message.chat_id, "Баеров пока нет.")
@@ -1235,7 +1517,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
             f"&select=buyer_id,test_result",
             headers=headers,
         )
-        creatives = creatives_resp.json()
+        creatives = safe_json_response(creatives_resp, "Get creatives for buyers", [])
 
         # Aggregate stats per buyer
         buyer_stats = {}
@@ -1254,9 +1536,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
 
         for i, b in enumerate(buyers, 1):
             name = b.get("name") or "Без имени"
-            username = (
-                f"@{b['telegram_username']}" if b.get("telegram_username") else ""
-            )
+            username = f"@{b['telegram_username']}" if b.get("telegram_username") else ""
             geos = ", ".join(b.get("geos") or []) or "—"
             verticals = ", ".join(b.get("verticals") or []) or "—"
 
@@ -1288,7 +1568,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines), keyboard)
 
     except Exception as e:
-        logger.error(f"Failed to get buyers: {e}")
+        record_handler_error(e, "Failed to get buyers")
         await send_telegram_message(message.chat_id, "Не удалось загрузить баеров.")
 
 
@@ -1296,9 +1576,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
     """Handle /activity command - show recent buyer interactions."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1318,7 +1596,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=15",
             headers=headers,
         )
-        interactions = response.json()
+        interactions = safe_json_response(response, "Get buyer interactions", [])
 
         if not interactions:
             await send_telegram_message(message.chat_id, "Активности пока нет.")
@@ -1332,7 +1610,8 @@ async def handle_activity_command(message: TelegramMessage) -> None:
             f"&select=telegram_id,telegram_username,name",
             headers=headers,
         )
-        buyers = {b["telegram_id"]: b for b in buyers_resp.json()}
+        buyers_data = safe_json_response(buyers_resp, "Get buyers for interactions", [])
+        buyers = {b["telegram_id"]: b for b in buyers_data}
 
         # Format response
         lines = ["📋 <b>Активность (последние 15)</b>\n"]
@@ -1341,9 +1620,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
             tid = i["telegram_id"]
             buyer = buyers.get(tid, {})
             username = (
-                f"@{buyer.get('telegram_username')}"
-                if buyer.get("telegram_username")
-                else tid
+                f"@{buyer.get('telegram_username')}" if buyer.get("telegram_username") else tid
             )
 
             direction = "→" if i["direction"] == "in" else "←"
@@ -1360,7 +1637,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get activity: {e}")
+        record_handler_error(e, "Failed to get activity")
         await send_telegram_message(message.chat_id, "Не удалось загрузить активность.")
 
 
@@ -1389,7 +1666,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
             f"&limit=1",
             headers=headers,
         )
-        buyers = buyer_resp.json()
+        buyers = safe_json_response(buyer_resp, "Get buyer for chat", [])
         buyer = buyers[0] if buyers else {}
         buyer_uuid = buyer.get("id")
 
@@ -1413,7 +1690,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
                 f"&order=created_at.desc&limit=20",
                 headers=headers,
             )
-        interactions = response.json()
+        interactions = safe_json_response(response, "Get chat history", [])
 
         if not interactions:
             await send_telegram_message(chat_id, "Сообщений с этим байером нет.")
@@ -1443,7 +1720,7 @@ async def handle_chat_history(chat_id: str, buyer_telegram_id: str) -> None:
         await send_telegram_message(chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get chat history: {e}")
+        record_handler_error(e, "Failed to get chat history")
         await send_telegram_message(chat_id, "Не удалось загрузить переписку.")
 
 
@@ -1451,9 +1728,7 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
     """Handle /decisions command - show Decision Engine stats."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1474,7 +1749,7 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=50",
             headers=headers,
         )
-        decisions = response.json()
+        decisions = safe_json_response(response, "Get decisions", [])
 
         # Count by decision type
         counts = {"approve": 0, "reject": 0, "defer": 0}
@@ -1500,15 +1775,13 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
                 decision = d.get("decision", "").upper()
                 created_at = d.get("created_at", "")
                 time_str = created_at[11:16] if len(created_at) > 16 else ""
-                emoji = {"APPROVE": "✅", "REJECT": "❌", "DEFER": "⏸️"}.get(
-                    decision, "❓"
-                )
+                emoji = {"APPROVE": "✅", "REJECT": "❌", "DEFER": "⏸️"}.get(decision, "❓")
                 lines.append(f"• {time_str} {emoji} {decision}")
 
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get decisions: {e}")
+        record_handler_error(e, "Failed to get decisions")
         await send_telegram_message(message.chat_id, "Не удалось загрузить решения.")
 
 
@@ -1516,9 +1789,7 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
     """Handle /creatives command - list all creatives."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1539,7 +1810,7 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
             f"&order=created_at.desc&limit=10",
             headers=headers,
         )
-        creatives = response.json()
+        creatives = safe_json_response(response, "Get creatives list", [])
 
         if not creatives:
             await send_telegram_message(message.chat_id, "Креативов пока нет.")
@@ -1573,7 +1844,7 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get creatives: {e}")
+        record_handler_error(e, "Failed to get creatives")
         await send_telegram_message(message.chat_id, "Не удалось загрузить креативы.")
 
 
@@ -1581,9 +1852,7 @@ async def handle_status_command(message: TelegramMessage) -> None:
     """Handle /status command - show system status."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1607,26 +1876,20 @@ async def handle_status_command(message: TelegramMessage) -> None:
             f"{sb.rest_url}/creatives?select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
-        creatives_count = creatives_resp.headers.get("content-range", "0").split("/")[
-            -1
-        ]
+        creatives_count = creatives_resp.headers.get("content-range", "0").split("/")[-1]
 
         decisions_resp = await client.get(
             f"{sb.rest_url}/decisions?select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
-        decisions_count = decisions_resp.headers.get("content-range", "0").split("/")[
-            -1
-        ]
+        decisions_count = decisions_resp.headers.get("content-range", "0").split("/")[-1]
 
         # Get pending hypotheses
         hypotheses_resp = await client.get(
             f"{sb.rest_url}/hypotheses?status=is.null&select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
-        pending_hypotheses = hypotheses_resp.headers.get("content-range", "0").split(
-            "/"
-        )[-1]
+        pending_hypotheses = hypotheses_resp.headers.get("content-range", "0").split("/")[-1]
 
         # Format response
         status_message = (
@@ -1641,7 +1904,7 @@ async def handle_status_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, status_message)
 
     except Exception as e:
-        logger.error(f"Failed to get status: {e}")
+        record_handler_error(e, "Failed to get status")
         await send_telegram_message(message.chat_id, "Не удалось загрузить статус.")
 
 
@@ -1649,9 +1912,7 @@ async def handle_errors_command(message: TelegramMessage) -> None:
     """Handle /errors command - show recent errors."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1671,7 +1932,7 @@ async def handle_errors_command(message: TelegramMessage) -> None:
             f"&order=last_retry_at.desc&limit=10",
             headers=headers,
         )
-        failed = response.json()
+        failed = safe_json_response(response, "Get failed hypotheses", [])
 
         if not failed:
             await send_telegram_message(
@@ -1694,7 +1955,7 @@ async def handle_errors_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get errors: {e}")
+        record_handler_error(e, "Failed to get errors")
         await send_telegram_message(message.chat_id, "Не удалось загрузить ошибки.")
 
 
@@ -1727,9 +1988,7 @@ async def get_pending_modular_hypotheses() -> list[dict]:
     return response.json() if response.status_code == 200 else []
 
 
-async def update_hypothesis_review_status(
-    hypothesis_id: str, review_status: str
-) -> bool:
+async def update_hypothesis_review_status(hypothesis_id: str, review_status: str) -> bool:
     """Update hypothesis review status (approved/rejected)."""
     try:
         sb = get_supabase()
@@ -1762,9 +2021,7 @@ async def update_hypothesis_review_status(
 async def handle_pending_command(message: TelegramMessage) -> None:
     """Handle /pending command - show modular hypotheses awaiting review."""
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     await log_buyer_interaction(
@@ -1817,22 +2074,19 @@ async def handle_pending_command(message: TelegramMessage) -> None:
         await send_telegram_message(message.chat_id, "\n".join(lines))
 
     except Exception as e:
-        logger.error(f"Failed to get pending hypotheses: {e}")
-        await send_telegram_message(
-            message.chat_id, "Не удалось загрузить гипотезы на ревью."
-        )
+        record_handler_error(e, "Failed to get pending hypotheses")
+        await send_telegram_message(message.chat_id, "Не удалось загрузить гипотезы на ревью.")
 
 
 async def handle_approve_command(message: TelegramMessage) -> None:
     """Handle /approve <id> command - approve modular hypothesis."""
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     text = message.text or ""
-    parts = text.strip().split()
+    # Filter empty parts to handle multiple whitespace (issue #543)
+    parts = [p for p in text.strip().split() if p]
 
     if len(parts) < 2:
         await send_telegram_message(
@@ -1853,11 +2107,7 @@ async def handle_approve_command(message: TelegramMessage) -> None:
     try:
         # Find hypothesis by prefix
         hypotheses = await get_pending_modular_hypotheses()
-        matching = [
-            h
-            for h in hypotheses
-            if str(h["id"]).lower().startswith(hypothesis_id_prefix)
-        ]
+        matching = [h for h in hypotheses if str(h["id"]).lower().startswith(hypothesis_id_prefix)]
 
         if not matching:
             await send_telegram_message(
@@ -1887,25 +2137,22 @@ async def handle_approve_command(message: TelegramMessage) -> None:
             )
             logger.info(f"Hypothesis {hypothesis_id} approved by {message.user_id}")
         else:
-            await send_telegram_message(
-                message.chat_id, "Ошибка при обновлении статуса."
-            )
+            await send_telegram_message(message.chat_id, "Ошибка при обновлении статуса.")
 
     except Exception as e:
-        logger.error(f"Failed to approve hypothesis: {e}")
+        record_handler_error(e, "Failed to approve hypothesis")
         await send_telegram_message(message.chat_id, f"Ошибка: {str(e)[:100]}")
 
 
 async def handle_reject_command(message: TelegramMessage) -> None:
     """Handle /reject <id> command - reject modular hypothesis."""
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     text = message.text or ""
-    parts = text.strip().split()
+    # Filter empty parts to handle multiple whitespace (issue #543)
+    parts = [p for p in text.strip().split() if p]
 
     if len(parts) < 2:
         await send_telegram_message(
@@ -1926,11 +2173,7 @@ async def handle_reject_command(message: TelegramMessage) -> None:
     try:
         # Find hypothesis by prefix
         hypotheses = await get_pending_modular_hypotheses()
-        matching = [
-            h
-            for h in hypotheses
-            if str(h["id"]).lower().startswith(hypothesis_id_prefix)
-        ]
+        matching = [h for h in hypotheses if str(h["id"]).lower().startswith(hypothesis_id_prefix)]
 
         if not matching:
             await send_telegram_message(
@@ -1959,12 +2202,10 @@ async def handle_reject_command(message: TelegramMessage) -> None:
             )
             logger.info(f"Hypothesis {hypothesis_id} rejected by {message.user_id}")
         else:
-            await send_telegram_message(
-                message.chat_id, "Ошибка при обновлении статуса."
-            )
+            await send_telegram_message(message.chat_id, "Ошибка при обновлении статуса.")
 
     except Exception as e:
-        logger.error(f"Failed to reject hypothesis: {e}")
+        record_handler_error(e, "Failed to reject hypothesis")
         await send_telegram_message(message.chat_id, f"Ошибка: {str(e)[:100]}")
 
 
@@ -1992,7 +2233,7 @@ async def notify_admin(event_type: str, data: dict) -> None:
         try:
             await send_telegram_message(admin_id, message)
         except Exception as e:
-            logger.error(f"Failed to notify admin {admin_id}: {e}")
+            record_handler_error(e, f"Failed to notify admin {admin_id}")
 
 
 def format_admin_notification(event_type: str, data: dict) -> str:
@@ -2003,30 +2244,18 @@ def format_admin_notification(event_type: str, data: dict) -> str:
         return f"👤 <b>Новый баер:</b> {name} {username}"
 
     elif event_type == "creative_win":
-        username = (
-            f"@{data['username']}"
-            if data.get("username")
-            else data.get("buyer_name", "?")
-        )
+        username = f"@{data['username']}" if data.get("username") else data.get("buyer_name", "?")
         roi = data.get("roi")
         roi_str = f" (ROI {roi:+.0f}%)" if roi is not None else ""
         return f"🎉 <b>WIN:</b> креатив от {username}{roi_str}"
 
     elif event_type == "creative_loss":
-        username = (
-            f"@{data['username']}"
-            if data.get("username")
-            else data.get("buyer_name", "?")
-        )
+        username = f"@{data['username']}" if data.get("username") else data.get("buyer_name", "?")
         return f"📉 <b>LOSS:</b> креатив от {username}"
 
     elif event_type == "error":
         command = data.get("command", "?")
-        username = (
-            f"@{data['username']}"
-            if data.get("username")
-            else data.get("telegram_id", "?")
-        )
+        username = f"@{data['username']}" if data.get("username") else data.get("telegram_id", "?")
         error = data.get("error", "Unknown error")[:100]
         return f"❌ <b>Ошибка {command}</b> для {username}:\n{error}"
 
@@ -2038,22 +2267,22 @@ def format_admin_notification(event_type: str, data: dict) -> str:
     return ""
 
 
-# Admin telegram IDs (for knowledge extraction)
-ADMIN_TELEGRAM_IDS = ["291678304"]
+# Admin telegram IDs (from environment variable)
+ADMIN_TELEGRAM_IDS = [
+    aid.strip() for aid in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if aid.strip()
+]
 
 
 def is_admin(telegram_id: str) -> bool:
     """Check if user is admin."""
-    return telegram_id in ADMIN_TELEGRAM_IDS
+    return bool(telegram_id and telegram_id in ADMIN_TELEGRAM_IDS)
 
 
 async def handle_knowledge_command(message: TelegramMessage) -> None:
     """Handle /knowledge command - show pending extractions."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -2068,11 +2297,10 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
         client = get_http_client()
         # Get pending extractions
         response = await client.get(
-            f"{sb.rest_url}/knowledge_extractions"
-            f"?status=eq.pending&order=created_at.asc&limit=5",
+            f"{sb.rest_url}/knowledge_extractions?status=eq.pending&order=created_at.asc&limit=5",
             headers=headers,
         )
-        extractions = response.json()
+        extractions = safe_json_response(response, "Get knowledge extractions", [])
 
         if not extractions:
             await send_telegram_message(
@@ -2093,7 +2321,7 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
             )
 
     except Exception as e:
-        logger.error(f"Failed to get knowledge extractions: {e}")
+        record_handler_error(e, "Failed to get knowledge extractions")
         await send_telegram_message(message.chat_id, "Не удалось загрузить извлечения.")
 
 
@@ -2191,6 +2419,13 @@ async def handle_feedback_command(message: TelegramMessage) -> None:
         )
         return
 
+    if len(feedback_text) > MAX_FEEDBACK_LENGTH:
+        await send_telegram_message(
+            message.chat_id,
+            f"❌ Текст слишком длинный (максимум {MAX_FEEDBACK_LENGTH} символов).",
+        )
+        return
+
     # Get buyer name if available
     buyer_name = await get_buyer_name(message.user_id)
 
@@ -2238,9 +2473,13 @@ async def get_buyer_name(telegram_id: str) -> str | None:
             f"{sb.rest_url}/buyers?telegram_id=eq.{telegram_id}&select=name",
             headers=headers,
         )
-        buyers = response.json()
+        buyers = safe_json_response(response, "Get buyer name", [])
         return buyers[0].get("name") if buyers else None
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        logger.debug(f"HTTP error getting buyer name for telegram_id={telegram_id}: {e}")
+        return None
+    except Exception as e:
+        logger.debug(f"Unexpected error getting buyer name for telegram_id={telegram_id}: {e}")
         return None
 
 
@@ -2282,7 +2521,7 @@ async def handle_document_upload(message: TelegramMessage) -> None:
             params={"file_id": file_id},
             timeout=30.0,
         )
-        file_data = file_resp.json()
+        file_data = safe_json_response(file_resp, "Telegram getFile", {})
 
         if not file_data.get("ok"):
             await send_telegram_message(message.chat_id, "Не удалось получить файл.")
@@ -2331,7 +2570,7 @@ async def handle_document_upload(message: TelegramMessage) -> None:
         logger.info(f"Started knowledge ingestion: {workflow_id}")
 
     except Exception as e:
-        logger.error(f"Failed to process document: {e}")
+        record_handler_error(e, "Failed to process document")
         await send_telegram_message(
             message.chat_id,
             f"Не удалось обработать файл: {str(e)[:100]}",
@@ -2357,34 +2596,38 @@ async def handle_callback_query(update: dict) -> None:
 
     # Answer callback to remove loading state
     client = get_http_client()
-    await client.post(
-        f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
-        json={"callback_query_id": callback_id},
-        timeout=10.0,
-    )
+    try:
+        await client.post(
+            f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+            json={"callback_query_id": callback_id},
+            timeout=10.0,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to answer callback query: {e}")
+        # Continue processing even if answerCallbackQuery fails
 
     # Check admin permission
     if not is_admin(user_id):
         return
 
-    # Parse callback data
-    if data.startswith("ke_approve_"):
-        extraction_id = data.replace("ke_approve_", "")
-        await handle_extraction_approve(chat_id, message_id, extraction_id, user_id)
+    # Parse and validate callback data
+    try:
+        action, identifier = parse_callback_data(data)
+    except CallbackDataError as e:
+        logger.warning(f"Invalid callback_data from user {user_id}: {e}")
+        return
 
-    elif data.startswith("ke_reject_"):
-        extraction_id = data.replace("ke_reject_", "")
-        await handle_extraction_reject(chat_id, message_id, extraction_id, user_id)
-
-    elif data.startswith("ke_skip_"):
-        # Just show next extraction
-        await send_telegram_message(
-            chat_id, "Пропущено. Используйте /knowledge для следующего."
-        )
-
-    elif data.startswith("chat_"):
-        buyer_telegram_id = data.replace("chat_", "")
-        await handle_chat_history(chat_id, buyer_telegram_id)
+    # Route to appropriate handler
+    if action == "ke_approve":
+        await handle_extraction_approve(chat_id, message_id, identifier, user_id)
+    elif action == "ke_reject":
+        await handle_extraction_reject(chat_id, message_id, identifier, user_id)
+    elif action == "ke_skip":
+        await send_telegram_message(chat_id, "Пропущено. Используйте /knowledge для следующего.")
+    elif action == "chat":
+        await handle_chat_history(chat_id, identifier)
+    else:
+        logger.warning(f"Unknown callback action: {action}")
 
 
 async def handle_extraction_approve(
@@ -2430,7 +2673,7 @@ async def handle_extraction_approve(
         logger.info(f"Started knowledge application: {workflow_id}")
 
     except Exception as e:
-        logger.error(f"Failed to approve extraction: {e}")
+        record_handler_error(e, "Failed to approve extraction")
         await send_telegram_message(chat_id, f"Не удалось одобрить: {str(e)[:100]}")
 
 
@@ -2479,7 +2722,7 @@ async def handle_extraction_reject(
         logger.info(f"Rejected extraction: {extraction_id}")
 
     except Exception as e:
-        logger.error(f"Failed to reject extraction: {e}")
+        record_handler_error(e, "Failed to reject extraction")
         await send_telegram_message(chat_id, f"Не удалось отклонить: {str(e)[:100]}")
 
 
@@ -2502,7 +2745,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             f"{sb.rest_url}/buyers?telegram_id=eq.{message.user_id}&select=id",
             headers=headers,
         )
-        buyers = buyer_resp.json()
+        buyers = safe_json_response(buyer_resp, "Get buyer for creative", [])
 
         if not buyers:
             await send_telegram_message(
@@ -2530,14 +2773,14 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
         await send_telegram_message(
             message.chat_id,
             f"Видео получено!\n\n"
-            f"<i>URL: {video_url[:50]}...</i>\n\n"
+            f"<i>URL: {html_escape(video_url[:50])}...</i>\n\n"
             f"Обработка скоро начнётся. Уведомлю когда будет готово.",
         )
 
         logger.info(f"Started creative registration: {workflow_id}")
 
     except Exception as e:
-        logger.error(f"Failed to register creative: {e}")
+        record_handler_error(e, "Failed to register creative")
         await send_telegram_message(
             message.chat_id, "Не удалось обработать видео. Попробуйте снова."
         )
@@ -2560,6 +2803,7 @@ async def handle_user_message(message: TelegramMessage) -> None:
                 "user_message",
                 BuyerMessage(
                     text=message.text or "",
+                    telegram_id=str(message.user_id),
                     message_id=message.message_id,
                     timestamp=datetime.utcnow(),
                 ),
@@ -2569,7 +2813,7 @@ async def handle_user_message(message: TelegramMessage) -> None:
             return
 
         except Exception as e:
-            logger.error(f"Failed to signal workflow: {e}")
+            record_handler_error(e, "Failed to signal workflow")
 
     # No active workflow - check if it's a video URL
     if message.text:
@@ -2591,9 +2835,7 @@ async def process_telegram_update(update: dict) -> None:
         await _process_telegram_update_inner(update)
     except Exception as e:
         # Log with full traceback - critical for debugging background task failures
-        logger.exception(
-            f"Failed to process Telegram update {update.get('update_id')}: {e}"
-        )
+        logger.exception(f"Failed to process Telegram update {update.get('update_id')}: {e}")
         # Track error for monitoring
         webhook_error_stats.record_error(e)
 
@@ -2609,7 +2851,9 @@ async def _process_telegram_update_inner(update: dict) -> None:
     if not message:
         return
 
-    logger.info(f"Telegram message from {message.user_id}: {message.text or '[media]'}")
+    logger.info(
+        f"Telegram message from {message.user_id}: {repr(message.text)[:100] if message.text else '[media]'}"
+    )
 
     # Handle commands
     if message.text:
@@ -2635,6 +2879,8 @@ async def _process_telegram_update_inner(update: dict) -> None:
             await handle_correlations_command(message)
         elif text.startswith("/recommend"):
             await handle_recommend_command(message)
+        elif text.startswith("/meta"):
+            await handle_meta_command(message)
         elif text.startswith("/simulate"):
             await handle_simulate_command(message)
         elif text.startswith("/feedback"):
@@ -2688,7 +2934,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     Telegram webhook endpoint.
 
     Receives updates from Telegram Bot API and processes them asynchronously.
+    Verifies X-Telegram-Bot-Api-Secret-Token header if TELEGRAM_WEBHOOK_SECRET is set.
     """
+    # Verify webhook secret before processing
+    verify_webhook_secret(request)
+
     try:
         update = await request.json()
         logger.debug(f"Received Telegram update: {update.get('update_id')}")
@@ -2725,7 +2975,7 @@ async def telegram_webhook_status():
             f"https://api.telegram.org/bot{bot_token}/getWebhookInfo",
             timeout=10.0,
         )
-        data = response.json()
+        data = safe_json_response(response, "Telegram getWebhookInfo", {})
 
         if data.get("ok"):
             result = data.get("result", {})

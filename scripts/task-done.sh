@@ -33,7 +33,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+# Find main repo root (not worktree root)
+CURRENT_ROOT="$(git rev-parse --show-toplevel)"
+if [[ "$CURRENT_ROOT" == */.worktrees/* ]]; then
+    PROJECT_ROOT="${CURRENT_ROOT%/.worktrees/*}"
+else
+    PROJECT_ROOT="$CURRENT_ROOT"
+fi
 WORKTREES_DIR="$PROJECT_ROOT/.worktrees"
 
 if [ -z "$ISSUE_NUM" ]; then
@@ -41,7 +47,7 @@ if [ -z "$ISSUE_NUM" ]; then
     echo ""
     echo "Options:"
     echo "  --no-pr       Skip PR creation and merge"
-    echo "  --no-merge    Create PR but skip CI wait and merge"
+    echo "  --no-merge    Create PR with auto-merge label (merges after CI)"
     echo "  --skip-tests  Skip pre-merge tests"
     echo ""
     echo "Active worktrees:"
@@ -90,23 +96,78 @@ echo "✓ qa-notes found: $(basename "$QA_NOTE")"
 
 # Run tests unless skipped
 if [ "$SKIP_TESTS" != "true" ]; then
+    # Find dynamic FastAPI port
+    echo ""
+    echo "=== Pre-flight Checks ==="
+    FASTAPI_PORT=""
+
+    # Method 1: pid file
+    shopt -s nullglob
+    for pf in /tmp/genomai-dev/server-*.pid; do
+        [ -f "$pf" ] && FASTAPI_PORT=$(basename "$pf" .pid | sed 's/server-//')
+    done
+
+    # Method 2: find uvicorn process via lsof (dynamic port detection)
+    if [ -z "$FASTAPI_PORT" ]; then
+        # Find python/uvicorn listening port
+        FASTAPI_PORT=$(lsof -i -P -n 2>/dev/null | grep -E "python.*LISTEN|uvicorn.*LISTEN" | awk '{print $9}' | grep -oE '[0-9]+$' | head -1)
+        if [ -n "$FASTAPI_PORT" ]; then
+            echo "Found FastAPI on dynamic port $FASTAPI_PORT (via lsof)"
+        fi
+    fi
+
+    if [ -z "$FASTAPI_PORT" ]; then
+        echo "⚠️  FastAPI not running (no pid file and no uvicorn process found)"
+        echo ""
+        echo "Start the server first:"
+        echo "  make up"
+        echo ""
+        echo "Or skip tests with --skip-tests flag"
+        exit 1
+    fi
+
+    if ! curl -sf "http://localhost:${FASTAPI_PORT}/health" >/dev/null 2>&1; then
+        echo "⚠️  FastAPI not responding on localhost:${FASTAPI_PORT}"
+        echo ""
+        echo "Restart the server:"
+        echo "  make down && make up"
+        echo ""
+        echo "Or skip tests with --skip-tests flag"
+        exit 1
+    fi
+    echo "✓ localhost:${FASTAPI_PORT} is healthy"
+    export FASTAPI_PORT
+
     # Extract and run functional test from qa-notes
     echo ""
     echo "=== Functional Test ==="
 
     # Extract test command from qa-notes (between ```bash and ``` after ## Test)
-    TEST_CMD=$(sed -n '/^## Test/,/^## /p' "$QA_NOTE" | sed -n '/```bash/,/```/p' | grep -v '```' | head -5)
+    TEST_BLOCK=$(sed -n '/^## Test/,/^## /p' "$QA_NOTE" | sed -n '/```bash/,/```/p' | grep -v '```')
+    TEST_CMD=$(echo "$TEST_BLOCK" | head -5)
 
     if [ -z "$TEST_CMD" ]; then
         echo "⚠️  No test command found in qa-notes"
-        echo "Add ## Test section with \`\`\`bash block"
+        echo ""
+        echo "Expected format in $(basename "$QA_NOTE"):"
+        echo "  ## Test"
+        echo "  \`\`\`bash"
+        echo "  curl -sf localhost:\$FASTAPI_PORT/endpoint || echo 'OK'"
+        echo "  \`\`\`"
+        echo ""
+        echo "Actual content:"
+        cat "$QA_NOTE" | head -30
         exit 1
     fi
+
+    # Substitute port placeholder (supports both $FASTAPI_PORT and hardcoded 10000)
+    TEST_CMD=$(echo "$TEST_CMD" | sed "s/localhost:10000/localhost:${FASTAPI_PORT}/g")
+    TEST_CMD=$(echo "$TEST_CMD" | sed "s/\\\$FASTAPI_PORT/${FASTAPI_PORT}/g")
 
     echo "Command: $TEST_CMD"
     echo ""
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKTREE_PATH"
     if eval "$TEST_CMD"; then
         echo ""
         echo "✓ Functional test passed"
@@ -119,7 +180,7 @@ if [ "$SKIP_TESTS" != "true" ]; then
     # Then unit tests
     echo ""
     echo "=== Unit Tests ==="
-    if ! make ci; then
+    if ! make -C "$WORKTREE_PATH" test-unit; then
         echo "Unit tests failed. Fix issues and re-run."
         exit 1
     fi
@@ -132,10 +193,24 @@ echo ""
 echo "Updating issue status..."
 gh issue edit "$ISSUE_NUM" --add-label "status:pending-deploy" --remove-label "status:in-progress" 2>/dev/null || true
 
+# Sync with develop before push (avoid merge conflicts)
+echo ""
+echo "Syncing with develop..."
+git fetch origin develop
+if ! git rebase origin/develop; then
+    echo "⚠️  Rebase conflict detected"
+    echo ""
+    echo "Resolve conflicts and run again:"
+    echo "  git rebase --continue"
+    echo "  ./scripts/task-done.sh $ISSUE_NUM"
+    exit 1
+fi
+echo "✓ Branch synced with develop"
+
 # Push branch
 echo ""
 echo "Pushing branch..."
-git push -u origin "$BRANCH_NAME"
+git push -u origin "$BRANCH_NAME" --force-with-lease
 
 # Create PR to develop
 PR_NUMBER=""
@@ -178,40 +253,53 @@ Closes #$ISSUE_NUM"
             echo "Found existing PR #$PR_NUMBER"
         fi
     fi
+
+    # Add auto-merge label if --no-merge flag is set
+    if [ "$NO_MERGE" = "true" ] && [ -n "$PR_NUMBER" ]; then
+        gh pr edit "$PR_NUMBER" --add-label "auto-merge"
+        echo "✓ Label 'auto-merge' added. PR will merge automatically after CI."
+    fi
 fi
 
 # Wait for CI and merge
 if [ "$NO_PR" != "true" ] && [ "$NO_MERGE" != "true" ] && [ -n "$PR_NUMBER" ]; then
     echo ""
     echo "=== Waiting for CI ==="
-    if gh pr checks "$PR_NUMBER" --watch; then
-        echo "✓ CI checks passed"
-    else
-        echo "✗ CI checks failed"
-        exit 1
-    fi
+    # Wait for CI to start (GitHub needs a few seconds)
+    echo "Waiting for CI to start..."
+    sleep 5
+
+    # Retry up to 3 times if no checks yet
+    for i in 1 2 3; do
+        if gh pr checks "$PR_NUMBER" --watch 2>/dev/null; then
+            echo "✓ CI checks passed"
+            break
+        else
+            if [ $i -lt 3 ]; then
+                echo "CI not ready, retrying in 10s... ($i/3)"
+                sleep 10
+            else
+                echo "✗ CI checks failed or not available"
+                exit 1
+            fi
+        fi
+    done
+
+    # Close issue immediately after CI passes (before merge attempt)
+    echo ""
+    echo "=== Closing issue ==="
+    gh issue close "$ISSUE_NUM" --comment "Fixed in PR #$PR_NUMBER" 2>/dev/null || true
+    echo "✓ Issue #$ISSUE_NUM closed"
 
     echo ""
     echo "=== Merging PR ==="
-    if gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+    # Note: --delete-branch removed to avoid conflicts with git worktrees
+    # GitHub auto-deletes remote branch. Local cleanup: git fetch --prune
+    if gh pr merge "$PR_NUMBER" --squash; then
         echo "✓ PR #$PR_NUMBER merged"
     else
         echo "Trying auto-merge..."
-        gh pr merge "$PR_NUMBER" --squash --delete-branch --auto || true
-    fi
-
-    # Verify issue is closed
-    echo ""
-    echo "=== Verifying issue closure ==="
-    sleep 2
-    ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
-
-    if [ "$ISSUE_STATE" = "CLOSED" ]; then
-        echo "✓ Issue #$ISSUE_NUM closed automatically"
-    else
-        echo "Issue still open, closing manually..."
-        gh issue close "$ISSUE_NUM" --comment "Fixed in PR #$PR_NUMBER (merged to develop)" || true
-        echo "✓ Issue #$ISSUE_NUM closed"
+        gh pr merge "$PR_NUMBER" --squash --auto || true
     fi
 fi
 
@@ -273,7 +361,7 @@ fi
 echo ""
 echo "=== Done ==="
 if [ "$NO_MERGE" = "true" ]; then
-    echo "PR created. Run 'gh pr merge <number> --squash' when ready."
+    echo "PR created with auto-merge label. Will merge automatically after CI."
 else
     echo "Issue #$ISSUE_NUM completed and merged to develop."
 fi

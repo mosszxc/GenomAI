@@ -35,9 +35,7 @@ class KnowledgeExtraction:
 
     id: str
     source_id: str
-    knowledge_type: (
-        str  # 'premise', 'creative_attribute', 'process_rule', 'component_weight'
-    )
+    knowledge_type: str  # 'premise', 'creative_attribute', 'process_rule', 'component_weight'
     name: str
     description: Optional[str]
     payload: dict

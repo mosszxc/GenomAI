@@ -78,9 +78,7 @@ class MetricsProcessingWorkflow:
         2. Process each snapshot into outcome
         3. Trigger learning loop if enabled
         """
-        workflow.logger.info(
-            f"Starting Metrics Processing (limit: {input.batch_limit})"
-        )
+        workflow.logger.info(f"Starting Metrics Processing (limit: {input.batch_limit})")
 
         errors = []
         outcomes_created = 0
@@ -88,13 +86,11 @@ class MetricsProcessingWorkflow:
 
         # Step 1: Get unprocessed snapshots
         try:
-            snapshots_result: GetUnprocessedSnapshotsOutput = (
-                await workflow.execute_activity(
-                    get_unprocessed_snapshots,
-                    GetUnprocessedSnapshotsInput(limit=input.batch_limit),
-                    start_to_close_timeout=timedelta(minutes=1),
-                    retry_policy=SUPABASE_RETRY_POLICY,
-                )
+            snapshots_result: GetUnprocessedSnapshotsOutput = await workflow.execute_activity(
+                get_unprocessed_snapshots,
+                GetUnprocessedSnapshotsInput(limit=input.batch_limit),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=SUPABASE_RETRY_POLICY,
             )
         except Exception as e:
             workflow.logger.error(f"Failed to get snapshots: {e}")
@@ -130,9 +126,7 @@ class MetricsProcessingWorkflow:
 
                 if outcome_result.success:
                     outcomes_created += 1
-                    workflow.logger.info(
-                        f"Outcome created: {outcome_result.outcome_id}"
-                    )
+                    workflow.logger.info(f"Outcome created: {outcome_result.outcome_id}")
                 else:
                     # Some errors are expected (no idea found, no decision, etc.)
                     if outcome_result.error_code not in [
@@ -153,14 +147,14 @@ class MetricsProcessingWorkflow:
         learning_triggered = False
         if input.trigger_learning and outcomes_created > 0:
             try:
-                # Start child workflow for learning
-                learning_triggered = await workflow.start_child_workflow(
+                # Start child workflow for learning (fire-and-forget)
+                await workflow.start_child_workflow(
                     "LearningLoopWorkflow",
                     LearningLoopInput(batch_limit=100),
                     id=f"learning-{workflow.info().workflow_id}",
                     task_queue="metrics",
                 )
-                learning_triggered = True
+                learning_triggered = True  # Set only after successful start
                 workflow.logger.info("Learning loop triggered")
             except Exception as e:
                 # Learning trigger is best-effort
@@ -184,8 +178,8 @@ class MetricsProcessingWorkflow:
                 start_to_close_timeout=timedelta(seconds=15),
                 retry_policy=SUPABASE_RETRY_POLICY,
             )
-        except Exception:
-            pass  # Event emission is best-effort
+        except Exception as event_err:
+            workflow.logger.debug(f"Failed to emit metrics.processing.completed event: {event_err}")
 
         workflow.logger.info(
             f"Metrics Processing complete: "

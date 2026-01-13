@@ -5,33 +5,49 @@ Extracts components from decomposed_creatives and updates component_learnings
 based on outcome results (win/loss).
 
 Issue: #122
+Issue #600: Extended to support 7 independent variables from VISION.md
 """
 
+import logging
 import os
 from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
+from temporal.models.validators import validate_uuid
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
 
-# Components to track from decomposed_creative payload
-TRACKABLE_COMPONENTS = [
-    "angle_type",
-    "hook_mechanism",
-    "proof_type",
+# 7 Independent Variables (VISION.md) - Issue #600
+# These are the core variables used for Learning Loop statistics
+CORE_VARIABLES = [
+    "hook_mechanism",  # 1. How to grab attention
+    "angle_type",  # 2. Emotional angle
+    "message_structure",  # 3. Narrative structure
+    "ump_type",  # 4. Unique mechanism promise
+    "promise_type",  # 5. Type of promise
+    "proof_type",  # 6. Type of proof
+    "cta_style",  # 7. Call to action style
+]
+
+# Additional components tracked for analysis (preserved from Canonical Schema v2)
+# These correlate with CORE_VARIABLES but provide more granular data
+ADDITIONAL_COMPONENTS = [
     "source_type",
     "emotion_primary",
-    "message_structure",
     "opening_type",
-    "promise_type",
     "core_belief",
     "context_frame",
     "horizon",
     "risk_level",
 ]
+
+# Combined list for full tracking
+TRACKABLE_COMPONENTS = CORE_VARIABLES + ADDITIONAL_COMPONENTS
 
 # Win thresholds per issue #122
 WIN_THRESHOLD_LOW_SPEND = {"max_spend": 50, "max_cpa": 4}
@@ -109,14 +125,15 @@ def extract_components(payload: dict) -> list[tuple[str, str]]:
 
 async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
     """Fetch decomposed_creative payload for a creative_id"""
+    # Validate input to prevent URL injection
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/decomposed_creatives"
-        f"?creative_id=eq.{creative_id}"
-        f"&select=payload,idea_id",
+        f"{rest_url}/decomposed_creatives?creative_id=eq.{creative_id}&select=payload,idea_id",
         headers=headers,
     )
     response.raise_for_status()
@@ -129,6 +146,9 @@ async def get_decomposed_creative(creative_id: str) -> Optional[dict]:
 
 async def get_idea_avatar(idea_id: str) -> Optional[str]:
     """Get avatar_id for an idea"""
+    # Validate input to prevent URL injection
+    idea_id = validate_uuid(idea_id, "idea_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -144,8 +164,18 @@ async def get_idea_avatar(idea_id: str) -> Optional[str]:
     return None
 
 
-async def get_creative_geo(creative_id: str) -> Optional[str]:
-    """Get geo for a creative via creatives -> buyer -> geos"""
+async def get_creative_geos(creative_id: str) -> list[str]:
+    """
+    Get all geos for a creative via creatives -> buyer -> geos.
+
+    Issue #564: Returns all geos instead of silently truncating to first one.
+
+    Returns:
+        List of geo codes (empty list if unavailable)
+    """
+    # Validate input to prevent URL injection
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -160,9 +190,10 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
         data = response.json()
 
         if not data or not data[0].get("buyer_id"):
-            return None
+            return []
 
-        buyer_id = data[0]["buyer_id"]
+        # Validate buyer_id from DB result before using in URL
+        buyer_id = validate_uuid(data[0]["buyer_id"], "buyer_id")
 
         # Get geos from buyer
         response = await client.get(
@@ -172,100 +203,99 @@ async def get_creative_geo(creative_id: str) -> Optional[str]:
         data = response.json()
 
         if data and data[0].get("geos"):
-            # Return first geo if multiple
             geos = data[0]["geos"]
-            return geos[0] if geos else None
-        return None
-    except Exception:
-        # Geo is optional, don't fail if unavailable
-        return None
+            return geos if isinstance(geos, list) else []
+        return []
+    except Exception as e:
+        logger.debug(f"Failed to get geo list (optional, continuing): {e}")
+        return []
 
 
-async def upsert_component_learning(
+def _build_component_key(
     component_type: str,
     component_value: str,
     geo: Optional[str],
     avatar_id: Optional[str],
-    was_win: bool,
-    spend: float,
-    revenue: float,
+) -> str:
+    """Build unique key for component lookup."""
+    return f"{component_type}|{component_value}|{geo or ''}|{avatar_id or ''}"
+
+
+async def batch_upsert_component_learnings(
+    updates: list[ComponentUpdate],
 ) -> dict:
     """
-    Upsert component learning record.
+    Batch upsert multiple component learning records atomically.
 
-    Updates sample_size, win_count/loss_count, totals, and recalculates metrics.
+    Issue #546: Uses PostgreSQL ON CONFLICT DO UPDATE via RPC to fix TOCTOU race condition.
+    Issue #577: Batch operations (O(1) instead of O(n)).
+
+    Args:
+        updates: List of ComponentUpdate objects to process
+
+    Returns:
+        Dict with counts of inserts and updates
     """
+    if not updates:
+        return {"inserted": 0, "updated": 0}
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
-
-    # Build filter for existing record
-    filters = [
-        f"component_type=eq.{component_type}",
-        f"component_value=eq.{component_value}",
-    ]
-    if geo:
-        filters.append(f"geo=eq.{geo}")
-    else:
-        filters.append("geo=is.null")
-    if avatar_id:
-        filters.append(f"avatar_id=eq.{avatar_id}")
-    else:
-        filters.append("avatar_id=is.null")
-
-    filter_str = "&".join(filters)
-
     client = get_http_client()
-    # Check if record exists
-    response = await client.get(
-        f"{rest_url}/component_learnings?{filter_str}",
-        headers=_get_headers(supabase_key),
+
+    # Build unique keys and merge duplicates in same batch
+    update_keys: dict[str, ComponentUpdate] = {}
+    for u in updates:
+        key = _build_component_key(u.component_type, u.component_value, u.geo, u.avatar_id)
+        if key not in update_keys:
+            update_keys[key] = u
+        else:
+            # Merge duplicates (same component in same batch)
+            existing = update_keys[key]
+            update_keys[key] = ComponentUpdate(
+                component_type=existing.component_type,
+                component_value=existing.component_value,
+                geo=existing.geo,
+                avatar_id=existing.avatar_id,
+                was_win=existing.was_win or u.was_win,  # Count as win if any was win
+                spend=existing.spend + u.spend,
+                revenue=existing.revenue + u.revenue,
+            )
+
+    # Build payload for atomic RPC upsert
+    rpc_payload = []
+    for update in update_keys.values():
+        rpc_payload.append(
+            {
+                "component_type": update.component_type,
+                "component_value": update.component_value,
+                "geo": update.geo if update.geo else None,
+                "avatar_id": str(update.avatar_id) if update.avatar_id else None,
+                "sample_size": 1,
+                "win_count": 1 if update.was_win else 0,
+                "loss_count": 0 if update.was_win else 1,
+                "total_spend": float(update.spend),
+                "total_revenue": float(update.revenue),
+            }
+        )
+
+    # Call atomic upsert RPC (fixes TOCTOU race condition)
+    response = await client.post(
+        f"{rest_url}/rpc/upsert_component_learnings_batch",
+        headers=headers,
+        json={"p_updates": rpc_payload},
     )
     response.raise_for_status()
-    existing = response.json()
+    data = response.json()
 
-    if existing:
-        # Update existing record
-        record = existing[0]
-        new_sample = (record.get("sample_size") or 0) + 1
-        new_wins = (record.get("win_count") or 0) + (1 if was_win else 0)
-        new_losses = (record.get("loss_count") or 0) + (0 if was_win else 1)
-        new_spend = float(record.get("total_spend") or 0) + spend
-        new_revenue = float(record.get("total_revenue") or 0) + revenue
+    # RPC returns array with single row containing inserted/updated counts
+    if data and len(data) > 0:
+        return {
+            "inserted": data[0].get("inserted", 0),
+            "updated": data[0].get("updated", 0),
+        }
 
-        # win_rate and avg_roi are generated columns, don't update them
-        response = await client.patch(
-            f"{rest_url}/component_learnings?id=eq.{record['id']}",
-            headers=headers,
-            json={
-                "sample_size": new_sample,
-                "win_count": new_wins,
-                "loss_count": new_losses,
-                "total_spend": new_spend,
-                "total_revenue": new_revenue,
-                "updated_at": "now()",
-            },
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
-    else:
-        # Insert new record (win_rate and avg_roi are generated columns)
-        response = await client.post(
-            f"{rest_url}/component_learnings",
-            headers=headers,
-            json={
-                "component_type": component_type,
-                "component_value": component_value,
-                "geo": geo,
-                "avatar_id": avatar_id,
-                "sample_size": 1,
-                "win_count": 1 if was_win else 0,
-                "loss_count": 0 if was_win else 1,
-                "total_spend": spend,
-                "total_revenue": revenue,
-            },
-        )
-        response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+    return {"inserted": 0, "updated": 0}
 
 
 async def process_component_learnings(
@@ -281,6 +311,9 @@ async def process_component_learnings(
 
     Returns summary of updates.
     """
+    # Validate input upfront to prevent URL injection
+    creative_id = validate_uuid(creative_id, "creative_id")
+
     result = {
         "creative_id": creative_id,
         "components_updated": 0,
@@ -305,45 +338,55 @@ async def process_component_learnings(
         return result
 
     # Get context
-    geo = await get_creative_geo(creative_id)
+    # Issue #564: Get all geos instead of silently truncating to first one
+    geos = await get_creative_geos(creative_id)
     avatar_id = await get_idea_avatar(idea_id) if idea_id else None
 
     # Determine win/loss
     was_win = is_win(cpa, spend)
 
-    # Update for each component
-    for component_type, component_value in components:
-        try:
-            # Global update (avatar_id = NULL)
-            await upsert_component_learning(
-                component_type=component_type,
-                component_value=component_value,
-                geo=geo,
-                avatar_id=None,
-                was_win=was_win,
-                spend=spend,
-                revenue=revenue,
-            )
-            result["global_updates"] += 1
-            result["components_updated"] += 1
+    # Build batch updates (O(1) instead of O(n*2) - Issue #577)
+    # Issue #564: Create updates for each geo (or None if no geos)
+    updates = []
+    geos_to_process = geos if geos else [None]  # type: ignore[list-item]
 
-            # Per-avatar update (if avatar known)
-            if avatar_id:
-                await upsert_component_learning(
+    for geo in geos_to_process:
+        for component_type, component_value in components:
+            # Global update (avatar_id = NULL)
+            updates.append(
+                ComponentUpdate(
                     component_type=component_type,
                     component_value=component_value,
                     geo=geo,
-                    avatar_id=avatar_id,
+                    avatar_id=None,
                     was_win=was_win,
                     spend=spend,
                     revenue=revenue,
                 )
-                result["avatar_updates"] += 1
-                result["components_updated"] += 1
-
-        except Exception as e:
-            result["errors"].append(
-                f"Error updating {component_type}={component_value}: {str(e)}"
             )
+
+            # Per-avatar update (if avatar known)
+            if avatar_id:
+                updates.append(
+                    ComponentUpdate(
+                        component_type=component_type,
+                        component_value=component_value,
+                        geo=geo,
+                        avatar_id=avatar_id,
+                        was_win=was_win,
+                        spend=spend,
+                        revenue=revenue,
+                    )
+                )
+
+    try:
+        batch_result = await batch_upsert_component_learnings(updates)
+        num_geos = len(geos_to_process)
+        result["global_updates"] = len(components) * num_geos
+        result["avatar_updates"] = len(components) * num_geos if avatar_id else 0
+        result["components_updated"] = batch_result["inserted"] + batch_result["updated"]
+        result["geos_processed"] = len(geos) if geos else 0  # Issue #564: Track geos
+    except Exception as e:
+        result["errors"].append(f"Batch update error: {str(e)}")
 
     return result

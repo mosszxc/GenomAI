@@ -10,10 +10,13 @@ Processes outcome_aggregates and applies learning to ideas:
 Based on LEARNING_MEMORY_POLICY.md and ARCHITECTURE_LOCK.md
 """
 
+from __future__ import annotations
+
+import logging
 import os
 from src.core.http_client import get_http_client
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from dataclasses import dataclass
 
 from src.utils.errors import SupabaseError
@@ -24,6 +27,8 @@ from src.services.premise_learning import process_premise_learning
 from src.services.features.component_pair_winrate import compute_and_store_for_idea
 
 
+logger = logging.getLogger(__name__)
+
 SCHEMA = "genomai"
 
 # Learning configuration
@@ -32,6 +37,7 @@ CONFIDENCE_DELTA_GOOD = 0.1  # Delta for good outcome (CPA < target)
 CONFIDENCE_DELTA_BAD = -0.15  # Delta for bad outcome (CPA >= target)
 CONSECUTIVE_FAILURES_SOFT_DEAD = 3
 CONSECUTIVE_FAILURES_HARD_DEAD = 5
+MAX_FATIGUE = 1000.0  # Issue #566: Maximum fatigue value before overflow warning
 
 
 @dataclass
@@ -40,14 +46,14 @@ class LearningResult:
 
     processed_count: int = 0
     skipped_count: int = 0  # Issue #473: idempotency - already processed outcomes
-    updated_ideas: list = None
-    new_deaths: list = None
+    updated_ideas: list[Any] | None = None
+    new_deaths: list[Any] | None = None
     component_updates: int = 0
     premise_updates: int = 0
     fatigue_updates: int = 0  # Issue #237: track fatigue versioning
-    errors: list = None
+    errors: list[Any] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.updated_ideas = self.updated_ideas or []
         self.new_deaths = self.new_deaths or []
         self.errors = self.errors or []
@@ -180,7 +186,10 @@ async def get_current_confidence(idea_id: str) -> tuple[float, int]:
     data = response.json()
 
     if data:
-        return float(data[0]["confidence_value"]), int(data[0]["version"])
+        raw_confidence = float(data[0]["confidence_value"])
+        # Issue #566: Validate confidence from DB is in valid range
+        confidence = max(0.0, min(1.0, raw_confidence))
+        return confidence, int(data[0]["version"])
 
     return 0.0, 0
 
@@ -208,7 +217,10 @@ async def get_current_fatigue(idea_id: str) -> tuple[float, int]:
     data = response.json()
 
     if data:
-        return float(data[0]["fatigue_value"]), int(data[0]["version"])
+        raw_fatigue = float(data[0]["fatigue_value"])
+        # Issue #566: Validate fatigue from DB is non-negative
+        fatigue = max(0.0, raw_fatigue)
+        return fatigue, int(data[0]["version"])
 
     return 0.0, 0
 
@@ -249,9 +261,7 @@ async def get_recent_outcomes_for_idea(idea_id: str, limit: int = 10) -> list:
     return response.json()
 
 
-def calculate_confidence_delta(
-    cpa: float, outcome_date: str, env_ctx: Optional[dict]
-) -> float:
+def calculate_confidence_delta(cpa: float, outcome_date: str, env_ctx: Optional[dict]) -> float:
     """
     Calculate confidence delta based on CPA, time decay, and environment.
 
@@ -280,9 +290,7 @@ def calculate_confidence_delta(
     return weighted_delta
 
 
-def check_death_condition(
-    outcomes: list, was_resurrected: bool = False
-) -> Optional[str]:
+def check_death_condition(outcomes: list, was_resurrected: bool = False) -> Optional[str]:
     """
     Check if idea should die based on consecutive failures.
 
@@ -380,7 +388,8 @@ async def update_idea_death_state(idea_id: str, death_state: str) -> dict:
         json={"death_state": death_state},
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def mark_outcome_processed(outcome_id: str) -> None:
@@ -411,10 +420,7 @@ async def is_outcome_already_processed(outcome_id: str) -> bool:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/idea_confidence_versions"
-        f"?source_outcome_id=eq.{outcome_id}"
-        f"&select=id"
-        f"&limit=1",
+        f"{rest_url}/idea_confidence_versions?source_outcome_id=eq.{outcome_id}&select=id&limit=1",
         headers=headers,
     )
     response.raise_for_status()
@@ -457,6 +463,76 @@ async def emit_learning_event(
     response.raise_for_status()
 
 
+async def apply_learning_atomic_rpc(
+    idea_id: str,
+    outcome_id: str,
+    new_confidence: float,
+    confidence_version: int,
+    old_confidence: float,
+    delta: float,
+    new_fatigue: float,
+    fatigue_version: int,
+    death_state: Optional[str] = None,
+) -> dict:
+    """
+    Apply learning outcome atomically using RPC.
+
+    Issue #576: All 5 learning operations in single transaction:
+    1. INSERT idea_confidence_versions
+    2. INSERT fatigue_state_versions
+    3. UPDATE ideas.death_state (if applicable)
+    4. UPDATE outcome_aggregates.learning_applied
+    5. INSERT event_log
+
+    Args:
+        idea_id: Idea UUID
+        outcome_id: Outcome UUID being processed
+        new_confidence: New confidence value
+        confidence_version: New version number
+        old_confidence: Previous confidence value
+        delta: Confidence change
+        new_fatigue: New fatigue value
+        fatigue_version: New fatigue version number
+        death_state: Optional death state to set
+
+    Returns:
+        RPC result dict
+
+    Raises:
+        SupabaseError: If RPC call fails
+    """
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+    if not supabase_url or not supabase_key:
+        raise SupabaseError("Missing Supabase credentials")
+
+    rpc_url = f"{supabase_url}/rest/v1/rpc/apply_learning_atomic"
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "p_idea_id": idea_id,
+        "p_outcome_id": outcome_id,
+        "p_new_confidence": float(new_confidence),
+        "p_confidence_version": confidence_version,
+        "p_old_confidence": float(old_confidence),
+        "p_delta": float(delta),
+        "p_new_fatigue": float(new_fatigue),
+        "p_fatigue_version": fatigue_version,
+        "p_death_state": death_state,
+    }
+
+    client = get_http_client()
+    response = await client.post(rpc_url, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json()
+
+
 async def process_single_outcome(outcome: dict) -> dict:
     """
     Process a single outcome and apply learning.
@@ -465,6 +541,7 @@ async def process_single_outcome(outcome: dict) -> dict:
     returns early with skipped=True.
 
     Issue #473: Learning Loop idempotency fix.
+    Issue #576: Uses atomic RPC for all learning operations.
 
     Returns dict with result info or error
     """
@@ -500,44 +577,32 @@ async def process_single_outcome(outcome: dict) -> dict:
     new_confidence = max(0.0, min(1.0, new_confidence))
     new_version = current_version + 1
 
-    # Insert new confidence version
-    await insert_confidence_version(
-        idea_id=idea_id,
-        confidence_value=new_confidence,
-        version=new_version,
-        outcome_id=outcome_id,
-    )
-
-    # Update fatigue versioning (issue #237)
+    # Get current fatigue (issue #237)
     # MVP: fatigue_value = exposure count (incremented by 1 for each outcome)
     current_fatigue, fatigue_version = await get_current_fatigue(idea_id)
     new_fatigue = current_fatigue + 1.0  # Simple exposure count
+    # Issue #566: Validate fatigue is non-negative and warn on overflow
+    new_fatigue = max(0.0, new_fatigue)
+    if new_fatigue > MAX_FATIGUE:
+        logger.warning(f"Fatigue overflow for idea {idea_id}: {new_fatigue}")
     new_fatigue_version = fatigue_version + 1
-
-    await insert_fatigue_version(
-        idea_id=idea_id,
-        fatigue_value=new_fatigue,
-        version=new_fatigue_version,
-        outcome_id=outcome_id,
-    )
 
     # Check death conditions
     recent_outcomes = await get_recent_outcomes_for_idea(idea_id)
     death_state = check_death_condition(recent_outcomes)
 
-    if death_state:
-        await update_idea_death_state(idea_id, death_state)
-
-    # Mark outcome as processed
-    await mark_outcome_processed(outcome_id)
-
-    # Emit event
-    await emit_learning_event(
+    # Issue #576: Apply all learning operations atomically via RPC
+    # This ensures: confidence + fatigue + death_state + mark_processed + event
+    # are all committed together or rolled back together
+    await apply_learning_atomic_rpc(
         idea_id=idea_id,
         outcome_id=outcome_id,
-        old_confidence=current_confidence,
         new_confidence=new_confidence,
+        confidence_version=new_version,
+        old_confidence=current_confidence,
         delta=delta,
+        new_fatigue=new_fatigue,
+        fatigue_version=new_fatigue_version,
         death_state=death_state,
     )
 
@@ -629,17 +694,13 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                         elif "errors" in comp_result and comp_result["errors"]:
                             result.errors.extend(comp_result["errors"])
                         if "components_updated" in comp_result:
-                            result.component_updates += comp_result[
-                                "components_updated"
-                            ]
+                            result.component_updates += comp_result["components_updated"]
 
                     # Track premise learning updates (issue #167)
                     prem_result = learn_result.get("premise_learning")
                     if prem_result:
                         if "error" in prem_result:
-                            result.errors.append(
-                                f"Premise learning error: {prem_result['error']}"
-                            )
+                            result.errors.append(f"Premise learning error: {prem_result['error']}")
                         elif "errors" in prem_result and prem_result["errors"]:
                             result.errors.extend(prem_result["errors"])
                         if prem_result.get("premise_updated"):
@@ -650,9 +711,7 @@ async def process_learning_batch(limit: int = 100) -> LearningResult:
                         result.fatigue_updates += 1
 
             except Exception as e:
-                result.errors.append(
-                    f"Error processing outcome {outcome['id']}: {str(e)}"
-                )
+                result.errors.append(f"Error processing outcome {outcome['id']}: {str(e)}")
 
     except Exception as e:
         result.errors.append(f"Failed to fetch outcomes: {str(e)}")

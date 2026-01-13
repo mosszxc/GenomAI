@@ -8,18 +8,21 @@ Cleanup operations:
 - Expired historical_import_queue entries
 - Rejected knowledge_extractions
 - Orphan raw_metrics_current
-- Idle buyer_states
 - Old staleness_snapshots
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Dict
 
+import httpx
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
-import httpx
+
 from src.core.http_client import get_http_client
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -113,9 +116,7 @@ async def cleanup_rejected_knowledge(retention_days: int = 30) -> int:
 
     client = get_http_client()
     response = await client.delete(
-        f"{rest_url}/knowledge_extractions"
-        f"?status=eq.rejected"
-        f"&reviewed_at=lt.{cutoff_iso}",
+        f"{rest_url}/knowledge_extractions?status=eq.rejected&reviewed_at=lt.{cutoff_iso}",
         headers=headers,
     )
 
@@ -156,9 +157,7 @@ async def cleanup_orphan_raw_metrics() -> int:
         activity.logger.warning("Could not fetch valid tracker_ids")
         return 0
 
-    valid_trackers = {
-        r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")
-    }
+    valid_trackers = {r["tracker_id"] for r in valid_response.json() if r.get("tracker_id")}
 
     # Get all metrics tracker_ids
     metrics_response = await client.get(
@@ -170,9 +169,7 @@ async def cleanup_orphan_raw_metrics() -> int:
         activity.logger.warning("Could not fetch metrics tracker_ids")
         return 0
 
-    metrics_trackers = {
-        r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")
-    }
+    metrics_trackers = {r["tracker_id"] for r in metrics_response.json() if r.get("tracker_id")}
 
     # Find orphans
     orphan_trackers = metrics_trackers - valid_trackers
@@ -209,44 +206,6 @@ async def cleanup_orphan_raw_metrics() -> int:
         f"(failed: {failed}, remaining: {orphan_count - deleted - failed})"
     )
     return deleted
-
-
-@activity.defn
-async def cleanup_idle_buyer_states(retention_days: int = 30) -> int:
-    """
-    Delete buyer_states that have been idle for too long.
-
-    Args:
-        retention_days: Days to keep idle states
-
-    Returns:
-        Number of records deleted
-    """
-    rest_url, supabase_key = _get_credentials()
-    headers = _get_headers(supabase_key, for_write=True)
-
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
-    cutoff_iso = cutoff.isoformat()
-
-    activity.logger.info(f"Cleaning idle buyer_states older than {cutoff_iso}")
-
-    client = get_http_client()
-    response = await client.delete(
-        f"{rest_url}/buyer_states?state=eq.idle&updated_at=lt.{cutoff_iso}",
-        headers=headers,
-    )
-
-    if response.status_code == 404:
-        activity.logger.info("Table buyer_states not found")
-        return 0
-
-    if response.status_code not in (200, 204):
-        activity.logger.warning(f"Error cleaning buyer_states: {response.text}")
-        return 0
-
-    count = _extract_delete_count(response)
-    activity.logger.info(f"Deleted {count} idle buyer states")
-    return count
 
 
 @activity.defn
@@ -291,7 +250,6 @@ async def archive_staleness_snapshots(retention_days: int = 90) -> int:
 async def run_all_cleanup(
     import_queue_days: int = 7,
     knowledge_days: int = 30,
-    buyer_states_days: int = 30,
     staleness_days: int = 90,
 ) -> Dict[str, int]:
     """
@@ -304,7 +262,6 @@ async def run_all_cleanup(
         "import_queue": 0,
         "knowledge": 0,
         "raw_metrics": 0,
-        "buyer_states": 0,
         "staleness": 0,
     }
 
@@ -323,11 +280,6 @@ async def run_all_cleanup(
         stats["raw_metrics"] = await cleanup_orphan_raw_metrics()
     except Exception as e:
         activity.logger.error(f"raw_metrics cleanup failed: {e}")
-
-    try:
-        stats["buyer_states"] = await cleanup_idle_buyer_states(buyer_states_days)
-    except Exception as e:
-        activity.logger.error(f"buyer_states cleanup failed: {e}")
 
     try:
         stats["staleness"] = await archive_staleness_snapshots(staleness_days)
@@ -355,8 +307,8 @@ def _extract_delete_count(response: httpx.Response) -> int:
         data = response.json()
         if isinstance(data, list):
             return len(data)
-    except Exception:
-        pass
+    except (ValueError, TypeError) as e:
+        logger.debug(f"Failed to parse delete response body: {e}")
 
     return 0
 
@@ -373,13 +325,19 @@ async def retry_failed_hypotheses(
     max_retries: int = MAX_HYPOTHESIS_RETRIES,
 ) -> Dict[str, int]:
     """
-    Retry delivery of failed or stuck pending hypotheses.
+    Retry delivery of failed or stuck pending hypotheses (idempotent).
 
     Finds hypotheses with status='failed' or 'pending' (stuck > 5 min) and
     retry_count < max_retries, attempts to resend via Telegram, and updates status.
 
+    Idempotency: Uses conditional update on retry_count to claim the retry
+    attempt BEFORE sending Telegram. If Temporal retries this activity,
+    the claim will fail (retry_count already incremented) and Telegram
+    send is skipped, preventing duplicate messages.
+
     Issue: #313 - Failed hypothesis retry mechanism
     Issue: #399 - Stuck pending hypotheses delivery
+    Issue: #578 - Non-idempotent retry fix
 
     Args:
         max_retries: Maximum retry attempts per hypothesis
@@ -444,9 +402,7 @@ async def retry_failed_hypotheses(
         content = hypothesis.get("content", "")
 
         if not buyer_id or not content:
-            activity.logger.warning(
-                f"Hypothesis {hypothesis_id} missing buyer_id or content"
-            )
+            activity.logger.warning(f"Hypothesis {hypothesis_id} missing buyer_id or content")
             stats["skipped"] += 1
             continue
 
@@ -468,9 +424,35 @@ async def retry_failed_hypotheses(
             continue
 
         chat_id = buyers[0]["telegram_id"]
+        current_retry_count = hypothesis["retry_count"]
+        target_retry_count = current_retry_count + 1
+
+        # IDEMPOTENCY FIX (#578): Claim retry attempt BEFORE Telegram send
+        # Uses conditional update: only succeeds if retry_count hasn't changed
+        # This prevents duplicate Telegram messages on Temporal activity retry
+        claim_response = await client.patch(
+            f"{rest_url}/hypotheses?id=eq.{hypothesis_id}&retry_count=eq.{current_retry_count}",
+            headers=write_headers,
+            json={
+                "retry_count": target_retry_count,
+                "last_retry_at": datetime.utcnow().isoformat(),
+            },
+        )
+
+        # Check if we claimed this retry (row was updated)
+        claimed_rows = claim_response.json() if claim_response.status_code == 200 else []
+        if not claimed_rows:
+            # Another attempt already incremented retry_count - this is a Temporal retry
+            # Skip Telegram to avoid duplicate message
+            activity.logger.info(
+                f"Hypothesis {hypothesis_id} retry already claimed, skipping (idempotency)"
+            )
+            stats["skipped"] += 1
+            continue
+
         stats["retried"] += 1
 
-        # Attempt delivery
+        # Now safe to send Telegram - retry_count is already incremented
         try:
             telegram_response = await client.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
@@ -485,44 +467,36 @@ async def retry_failed_hypotheses(
             tg_data = telegram_response.json()
 
             if tg_data.get("ok"):
-                # Success - update hypothesis
+                # Success - update status only (retry_count already set above)
                 await client.patch(
                     f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
                     headers=write_headers,
                     json={
                         "status": "delivered",
-                        "retry_count": hypothesis["retry_count"] + 1,
-                        "last_retry_at": datetime.utcnow().isoformat(),
                         "last_error": None,
                     },
                 )
                 stats["succeeded"] += 1
                 activity.logger.info(f"Retry succeeded for hypothesis {hypothesis_id}")
             else:
-                # Telegram error
+                # Telegram error - update error only (retry_count already set)
                 error_msg = tg_data.get("description", "Unknown Telegram error")
                 await client.patch(
                     f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
                     headers=write_headers,
                     json={
-                        "retry_count": hypothesis["retry_count"] + 1,
-                        "last_retry_at": datetime.utcnow().isoformat(),
                         "last_error": error_msg,
                     },
                 )
                 stats["failed"] += 1
-                activity.logger.warning(
-                    f"Retry failed for {hypothesis_id}: {error_msg}"
-                )
+                activity.logger.warning(f"Retry failed for {hypothesis_id}: {error_msg}")
 
         except Exception as e:
-            # Network error
+            # Network error - update error only (retry_count already set)
             await client.patch(
                 f"{rest_url}/hypotheses?id=eq.{hypothesis_id}",
                 headers=write_headers,
                 json={
-                    "retry_count": hypothesis["retry_count"] + 1,
-                    "last_retry_at": datetime.utcnow().isoformat(),
                     "last_error": str(e),
                 },
             )
@@ -557,9 +531,7 @@ async def cleanup_exhausted_hypotheses(retention_days: int = 7) -> int:
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     cutoff_iso = cutoff.isoformat()
 
-    activity.logger.info(
-        f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned"
-    )
+    activity.logger.info(f"Marking exhausted hypotheses older than {cutoff_iso} as abandoned")
 
     client = get_http_client()
     response = await client.patch(

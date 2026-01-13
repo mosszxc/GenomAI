@@ -100,6 +100,7 @@ from temporal.activities.telegram import (
     get_buyer_chat_id,
     update_hypothesis_delivery_status,
     emit_delivery_event,
+    send_status_notification,
 )
 
 # Import activities - Keitaro
@@ -161,6 +162,13 @@ from temporal.activities.module_learning import (
     process_module_learning_batch,
 )
 
+# Import activities - Module Snapshots (CPA & Trend Tracking #601)
+from temporal.activities.module_snapshots import (
+    create_weekly_snapshots,
+    get_module_trend,
+    get_trending_modules,
+)
+
 # Import activities - Recommendation
 from temporal.activities.recommendation import (
     get_active_buyers,
@@ -174,7 +182,6 @@ from temporal.activities.recommendation import (
 
 # Import activities - Maintenance
 from temporal.activities.maintenance import (
-    reset_stale_buyer_states,
     expire_old_recommendations,
     mark_stuck_transcriptions_failed,
     archive_failed_creatives,
@@ -307,15 +314,12 @@ async def run_worker():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
+            send_status_notification,
         ],
     )
 
-    logger.info(
-        f"Starting worker on queue: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
-    )
-    logger.info(
-        "Registered workflows: CreativePipelineWorkflow, ModularHypothesisWorkflow"
-    )
+    logger.info(f"Starting worker on queue: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
+    logger.info("Registered workflows: CreativePipelineWorkflow, ModularHypothesisWorkflow")
     logger.info("Press Ctrl+C to stop")
 
     # Run worker
@@ -387,6 +391,7 @@ async def run_all_workers():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
+            send_status_notification,
         ],
     )
 
@@ -430,6 +435,10 @@ async def run_all_workers():
             update_compatibility_stats,
             process_module_learning,
             process_module_learning_batch,
+            # Module snapshots activities (CPA & Trend Tracking #601)
+            create_weekly_snapshots,
+            get_module_trend,
+            get_trending_modules,
             # Recommendation activities
             get_active_buyers,
             generate_recommendation_for_buyer,
@@ -439,7 +448,6 @@ async def run_all_workers():
             get_recommendation_by_id,
             check_existing_daily_recommendation,
             # Maintenance activities
-            reset_stale_buyer_states,
             expire_old_recommendations,
             mark_stuck_transcriptions_failed,
             archive_failed_creatives,
@@ -544,9 +552,7 @@ async def run_all_workers():
     workers = [creative_worker, metrics_worker, telegram_worker, knowledge_worker]
 
     logger.info("Workers configured:")
-    logger.info(
-        f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}"
-    )
+    logger.info(f"  - Creative Pipeline: {settings.temporal.TASK_QUEUE_CREATIVE_PIPELINE}")
     logger.info(f"  - Metrics & Learning: {settings.temporal.TASK_QUEUE_METRICS}")
     logger.info(f"  - Telegram & Buyer: {settings.temporal.TASK_QUEUE_TELEGRAM}")
     logger.info(f"  - Knowledge Extraction: {settings.temporal.TASK_QUEUE_KNOWLEDGE}")
@@ -571,7 +577,7 @@ async def run_all_workers():
         asyncio.create_task(graceful_shutdown(sig.name))
 
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))
+        loop.add_signal_handler(sig, lambda s=sig: signal_handler(s))  # type: ignore[misc]
 
     logger.info("Signal handlers installed (SIGTERM, SIGINT)")
     logger.info("Press Ctrl+C to stop gracefully")

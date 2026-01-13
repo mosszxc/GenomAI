@@ -126,13 +126,13 @@ async def register(request: RegisterRequest, _: bool = Depends(verify_api_key)):
         )
 
     except DecomposedCreativeNotFoundError as e:
-        raise HTTPException(status_code=404, detail={"success": False, "error": str(e)})
+        raise HTTPException(status_code=404, detail={"success": False, "error": str(e)}) from e
 
     except IdeaRegistryError as e:
-        raise HTTPException(status_code=500, detail={"success": False, "error": str(e)})
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(e)}) from e
 
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail={"success": False, "error": f"Internal error: {str(e)}"},
-        )
+        ) from e

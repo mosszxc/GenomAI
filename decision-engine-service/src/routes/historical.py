@@ -82,8 +82,7 @@ async def submit_video(request: SubmitVideoRequest) -> SubmitVideoResponse:
         )
 
         logger.info(
-            f"Started historical video handler: {workflow_id} "
-            f"for campaign {request.campaign_id}"
+            f"Started historical video handler: {workflow_id} for campaign {request.campaign_id}"
         )
 
         return SubmitVideoResponse(

@@ -5,17 +5,44 @@ Temporal activity for sending hypotheses to Telegram.
 Delivers generated hypotheses to buyers via Telegram Bot API.
 """
 
+import asyncio
 import os
 import uuid
 from datetime import datetime
 from typing import Optional
+
+import httpx
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
-import httpx
+
 from src.core.http_client import get_http_client
 
 # Telegram API base URL
 TELEGRAM_API_BASE = "https://api.telegram.org"
+
+# Retry configuration
+TELEGRAM_MAX_RETRIES = 3
+TELEGRAM_BASE_DELAY = 1.0  # seconds
+TELEGRAM_MAX_DELAY = 10.0  # seconds
+
+
+def _should_retry(status_code: int, error_code: Optional[int] = None) -> bool:
+    """Check if request should be retried based on status code."""
+    # Retry on rate limit (429) or server errors (5xx)
+    if status_code == 429:
+        return True
+    if 500 <= status_code < 600:
+        return True
+    return False
+
+
+def _get_retry_delay(attempt: int, retry_after: Optional[int] = None) -> float:
+    """Calculate delay before next retry with exponential backoff."""
+    if retry_after:
+        return min(float(retry_after), TELEGRAM_MAX_DELAY)
+    # Exponential backoff: 1s, 2s, 4s, ...
+    delay = TELEGRAM_BASE_DELAY * (2**attempt)
+    return min(delay, TELEGRAM_MAX_DELAY)
 
 
 @activity.defn
@@ -26,7 +53,7 @@ async def send_hypothesis_to_telegram(
     idea_id: Optional[str] = None,
 ) -> dict:
     """
-    Send hypothesis text to Telegram chat.
+    Send hypothesis text to Telegram chat with retry logic.
 
     Args:
         hypothesis_id: Hypothesis UUID
@@ -38,7 +65,7 @@ async def send_hypothesis_to_telegram(
         dict with message_id, status, and timestamp
 
     Raises:
-        ApplicationError: If Telegram API fails
+        ApplicationError: If Telegram API fails after all retries
     """
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not bot_token:
@@ -49,51 +76,85 @@ async def send_hypothesis_to_telegram(
     # Format message
     message_text = _format_hypothesis_message(hypothesis_content, idea_id)
 
-    client = get_http_client()
-    try:
-        response = await client.post(
-            f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": message_text,
-                "parse_mode": "HTML",
-            },
-            timeout=30.0,
-        )
+    url = f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message_text,
+        "parse_mode": "HTML",
+    }
+    last_error: Optional[str] = None
 
-        data = response.json()
+    for attempt in range(TELEGRAM_MAX_RETRIES):
+        try:
+            client = get_http_client()
+            response = await client.post(url, json=payload, timeout=30.0)
 
-        if not data.get("ok"):
+            data = response.json()
+
+            if data.get("ok"):
+                result = data.get("result", {})
+                message_id = result.get("message_id")
+
+                activity.logger.info(f"Hypothesis sent successfully: message_id={message_id}")
+
+                return {
+                    "hypothesis_id": hypothesis_id,
+                    "message_id": message_id,
+                    "chat_id": chat_id,
+                    "status": "delivered",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+
+            # Check if we should retry
+            error_code = data.get("error_code")
             error_desc = data.get("description", "Unknown Telegram error")
-            activity.logger.error(f"Telegram API error: {error_desc}")
-            raise ApplicationError(
-                f"Telegram API error: {error_desc}",
-                type="TELEGRAM_ERROR",
+            if _should_retry(response.status_code, error_code):
+                retry_after = data.get("parameters", {}).get("retry_after")
+                delay = _get_retry_delay(attempt, retry_after)
+
+                activity.logger.warning(
+                    f"Telegram sendMessage failed "
+                    f"(attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                    f"status={response.status_code}, error={error_desc}. "
+                    f"Retrying in {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            # Non-retryable error
+            last_error = error_desc
+            activity.logger.error(f"Telegram API error (non-retryable): {error_desc}")
+            break
+
+        except httpx.TimeoutException as e:
+            last_error = f"Timeout: {e}"
+            delay = _get_retry_delay(attempt)
+            activity.logger.warning(
+                f"Telegram sendMessage timeout "
+                f"(attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                f"hypothesis_id={hypothesis_id}. Retrying in {delay:.1f}s"
             )
+            await asyncio.sleep(delay)
 
-        result = data.get("result", {})
-        message_id = result.get("message_id")
+        except httpx.HTTPError as e:
+            last_error = f"HTTP error: {e}"
+            delay = _get_retry_delay(attempt)
+            activity.logger.warning(
+                f"Telegram sendMessage HTTP error "
+                f"(attempt {attempt + 1}/{TELEGRAM_MAX_RETRIES}): "
+                f"hypothesis_id={hypothesis_id}, error={e}. Retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
 
-        activity.logger.info(f"Hypothesis sent successfully: message_id={message_id}")
-
-        return {
-            "hypothesis_id": hypothesis_id,
-            "message_id": message_id,
-            "chat_id": chat_id,
-            "status": "delivered",
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-
-    except httpx.TimeoutException:
-        raise ApplicationError(
-            "Telegram API timeout",
-            type="TELEGRAM_TIMEOUT",
-        )
-    except httpx.RequestError as e:
-        raise ApplicationError(
-            f"Telegram request error: {e}",
-            type="TELEGRAM_REQUEST_ERROR",
-        )
+    # All retries exhausted or non-retryable error
+    activity.logger.error(
+        f"Telegram sendMessage failed after {TELEGRAM_MAX_RETRIES} attempts: "
+        f"hypothesis_id={hypothesis_id}, last_error={last_error}"
+    )
+    raise ApplicationError(
+        f"Telegram API error: {last_error}",
+        type="TELEGRAM_ERROR",
+    )
 
 
 def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> str:
@@ -113,6 +174,69 @@ def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> s
         )
 
     return "\n".join(lines)
+
+
+@activity.defn
+async def send_status_notification(
+    chat_id: str,
+    stage: str,
+    message: str,
+) -> dict:
+    """
+    Send progress notification to Telegram chat.
+
+    Non-blocking: returns success=False on error instead of raising.
+    Used for UX updates during creative processing.
+
+    Args:
+        chat_id: Telegram chat ID
+        stage: Pipeline stage identifier (e.g., "extraction", "hypotheses", "complete")
+        message: Human-readable status message
+
+    Returns:
+        dict with success status and optional message_id
+    """
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        activity.logger.warning("TELEGRAM_BOT_TOKEN not configured, skipping notification")
+        return {"success": False, "reason": "no_token"}
+
+    activity.logger.info(f"Sending status notification: stage={stage}, chat={chat_id}")
+
+    client = get_http_client()
+    try:
+        response = await client.post(
+            f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            },
+            timeout=10.0,
+        )
+
+        data = response.json()
+
+        if not data.get("ok"):
+            error_desc = data.get("description", "Unknown error")
+            activity.logger.warning(f"Telegram notification failed: {error_desc}")
+            return {"success": False, "reason": error_desc}
+
+        message_id = data.get("result", {}).get("message_id")
+        activity.logger.info(f"Status notification sent: message_id={message_id}")
+
+        return {
+            "success": True,
+            "message_id": message_id,
+            "stage": stage,
+        }
+
+    except httpx.TimeoutException:
+        activity.logger.warning("Telegram notification timeout")
+        return {"success": False, "reason": "timeout"}
+    except httpx.RequestError as e:
+        activity.logger.warning(f"Telegram notification error: {e}")
+        return {"success": False, "reason": str(e)}
 
 
 @activity.defn
@@ -186,9 +310,7 @@ async def update_hypothesis_delivery_status(
 
     update_data = {
         "delivery_status": status,
-        "delivered_at": datetime.utcnow().isoformat()
-        if status == "delivered"
-        else None,
+        "delivered_at": datetime.utcnow().isoformat() if status == "delivered" else None,
     }
 
     if message_id:
@@ -204,9 +326,7 @@ async def update_hypothesis_delivery_status(
         json=update_data,
     )
 
-    activity.logger.info(
-        f"Updated hypothesis delivery status: {hypothesis_id} -> {status}"
-    )
+    activity.logger.info(f"Updated hypothesis delivery status: {hypothesis_id} -> {status}")
 
 
 @activity.defn

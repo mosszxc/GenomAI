@@ -224,10 +224,7 @@ async def can_promote(name: str) -> tuple[bool, str]:
         )
 
     correlation = feature.get("correlation_cpa")
-    if (
-        correlation is None
-        or abs(float(correlation)) < FEATURE_RULES["min_abs_correlation"]
-    ):
+    if correlation is None or abs(float(correlation)) < FEATURE_RULES["min_abs_correlation"]:
         corr_str = f"{correlation:.4f}" if correlation else "None"
         return (
             False,
@@ -453,9 +450,7 @@ async def compute_feature_values(name: str, entity_type: str) -> int:
     return 0
 
 
-async def get_feature_value(
-    feature_name: str, entity_type: str, entity_id: str
-) -> Optional[float]:
+async def get_feature_value(feature_name: str, entity_type: str, entity_id: str) -> Optional[float]:
     """
     Get computed feature value for an entity.
 

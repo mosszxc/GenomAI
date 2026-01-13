@@ -341,42 +341,30 @@ class TestWindowIdBoundaries:
         decision_date = date(2025, 1, 1)
 
         # 1 day = D1
-        assert (
-            OutcomeService.calculate_window_id(decision_date, date(2025, 1, 2)) == "D1"
-        )
+        assert OutcomeService.calculate_window_id(decision_date, date(2025, 1, 2)) == "D1"
 
         # 2 days = D3
-        assert (
-            OutcomeService.calculate_window_id(decision_date, date(2025, 1, 3)) == "D3"
-        )
+        assert OutcomeService.calculate_window_id(decision_date, date(2025, 1, 3)) == "D3"
 
     def test_boundary_d3_to_d7(self):
         """Test exact boundary between D3 and D7 (4 days)"""
         decision_date = date(2025, 1, 1)
 
         # 3 days = D3
-        assert (
-            OutcomeService.calculate_window_id(decision_date, date(2025, 1, 4)) == "D3"
-        )
+        assert OutcomeService.calculate_window_id(decision_date, date(2025, 1, 4)) == "D3"
 
         # 4 days = D7
-        assert (
-            OutcomeService.calculate_window_id(decision_date, date(2025, 1, 5)) == "D7"
-        )
+        assert OutcomeService.calculate_window_id(decision_date, date(2025, 1, 5)) == "D7"
 
     def test_boundary_d7_to_d7_plus(self):
         """Test exact boundary between D7 and D7+ (8 days)"""
         decision_date = date(2025, 1, 1)
 
         # 7 days = D7
-        assert (
-            OutcomeService.calculate_window_id(decision_date, date(2025, 1, 8)) == "D7"
-        )
+        assert OutcomeService.calculate_window_id(decision_date, date(2025, 1, 8)) == "D7"
 
         # 8 days = D7+
-        assert (
-            OutcomeService.calculate_window_id(decision_date, date(2025, 1, 9)) == "D7+"
-        )
+        assert OutcomeService.calculate_window_id(decision_date, date(2025, 1, 9)) == "D7+"
 
 
 class TestWindowIdAllValues:
@@ -392,9 +380,7 @@ class TestWindowIdAllValues:
         for days in range(31):
             snapshot_date = date(2025, 1, 1 + days)
             if snapshot_date.month == 1:  # Stay in January
-                window_id = OutcomeService.calculate_window_id(
-                    decision_date, snapshot_date
-                )
+                window_id = OutcomeService.calculate_window_id(decision_date, snapshot_date)
                 window_ids.add(window_id)
 
         assert window_ids == {"D1", "D3", "D7", "D7+"}

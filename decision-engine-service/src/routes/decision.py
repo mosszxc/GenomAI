@@ -85,7 +85,7 @@ async def create_decision(body: dict, _: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": e.code, "message": e.message, "details": e.details},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -93,4 +93,4 @@ async def create_decision(body: dict, _: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e), "details": {}},
             },
-        )
+        ) from e

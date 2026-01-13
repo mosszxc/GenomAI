@@ -111,9 +111,7 @@ class PremiseExtractionWorkflow:
 
         # Validate test_result
         if test_result not in ("win", "loss"):
-            workflow.logger.warning(
-                f"Invalid test_result: {test_result}, skipping extraction"
-            )
+            workflow.logger.warning(f"Invalid test_result: {test_result}, skipping extraction")
             return PremiseExtractionOutput(
                 creative_id=input.creative_id,
                 test_result=test_result,
@@ -125,9 +123,7 @@ class PremiseExtractionWorkflow:
 
         # Step 2: Extract premises via LLM
         try:
-            extracted_premises: List[
-                ExtractedPremise
-            ] = await workflow.execute_activity(
+            extracted_premises: List[ExtractedPremise] = await workflow.execute_activity(
                 extract_premises_via_llm,
                 creative_data,
                 start_to_close_timeout=timedelta(minutes=2),
@@ -236,8 +232,6 @@ class BatchPremiseExtractionWorkflow:
                 workflow.logger.error(f"Failed to process {creative_id}: {e}")
                 results["errors"].append(f"{creative_id}: {str(e)}")
 
-        workflow.logger.info(
-            f"Batch complete: {results['processed']}/{results['total']}"
-        )
+        workflow.logger.info(f"Batch complete: {results['processed']}/{results['total']}")
 
         return results

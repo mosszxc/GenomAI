@@ -63,9 +63,7 @@ async def update_feature_correlations(
 
     try:
         # Update all correlations
-        correlation_results = (
-            await feature_correlation.update_all_feature_correlations()
-        )
+        correlation_results = await feature_correlation.update_all_feature_correlations()
 
         for r in correlation_results:
             results.append(
@@ -88,9 +86,7 @@ async def update_feature_correlations(
     try:
         deprecated = await feature_correlation.auto_deprecate_low_correlation_features()
         if deprecated:
-            activity.logger.info(
-                f"Auto-deprecated {len(deprecated)} features: {deprecated}"
-            )
+            activity.logger.info(f"Auto-deprecated {len(deprecated)} features: {deprecated}")
 
     except Exception as e:
         activity.logger.error(f"Error in auto-deprecation: {e}")
@@ -149,8 +145,8 @@ async def detect_feature_drift(input: DetectDriftInput) -> DetectDriftOutput:
     from src.services import feature_correlation
     from src.services import feature_registry
 
-    errors = []
-    drift_results = []
+    errors: list[str] = []
+    drift_results: list[DriftDetection] = []
 
     try:
         # Get active features count

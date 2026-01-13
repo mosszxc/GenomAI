@@ -118,7 +118,6 @@ created_at  TIMESTAMP      -- When snapshot was created
 | Table | Purpose | Mutable | Writer |
 |-------|---------|---------|--------|
 | `buyers` | Зарегистрированные баеры | Yes | buyer_onboarding |
-| `buyer_states` | Временное состояние онбординга | Yes | buyer_onboarding |
 | `buyer_interactions` | Лог взаимодействий | No (append-only) | telegram_router |
 | `historical_import_queue` | Очередь импорта | Yes | historical_loader |
 
@@ -253,6 +252,7 @@ UNIQUE (feature_name, entity_type, entity_id)
 |-------|---------|---------|--------|
 | `module_bank` | Reusable modules (Hook, Promise, Proof) | Yes | module_extraction |
 | `module_compatibility` | Pairwise compatibility scores | Yes | learning_loop |
+| `module_weekly_snapshots` | Weekly performance snapshots for trend tracking (#601) | No (append-only) | MaintenanceWorkflow |
 
 #### module_bank
 ```
@@ -271,8 +271,10 @@ win_count             INT       DEFAULT 0
 loss_count            INT       DEFAULT 0
 total_spend           NUMERIC   DEFAULT 0
 total_revenue         NUMERIC   DEFAULT 0
+total_conversions     INT       DEFAULT 0   -- Issue #601: CPA tracking
 win_rate              NUMERIC   GENERATED (win_count / sample_size)
 avg_roi               NUMERIC   GENERATED ((revenue - spend) / spend)
+avg_cpa               NUMERIC   GENERATED (spend / conversions)  -- Issue #601
 status                TEXT      DEFAULT 'emerging' CHECK (active|emerging|fatigued|dead)
 created_at            TIMESTAMPTZ
 updated_at            TIMESTAMPTZ
@@ -283,6 +285,41 @@ UNIQUE (module_type, module_key)
 - `idx_module_bank_type_win_rate` — prioritized selection WHERE status='active'
 - `idx_module_bank_exploration` — cold start (sample_size < 5)
 - `idx_module_bank_source_creative` — source tracking
+- `idx_module_bank_avg_cpa` — CPA-based module selection (#601)
+
+#### module_weekly_snapshots (Issue #601)
+```
+id                    UUID      PK
+module_id             UUID      FK → module_bank.id ON DELETE CASCADE
+week_id               TEXT      NOT NULL  -- ISO week: YYYY-WW (e.g., "2026-02")
+week_start            DATE      NOT NULL
+week_end              DATE      NOT NULL
+sample_size           INT       DEFAULT 0
+win_count             INT       DEFAULT 0
+loss_count            INT       DEFAULT 0
+total_spend           NUMERIC   DEFAULT 0
+total_revenue         NUMERIC   DEFAULT 0
+total_conversions     INT       DEFAULT 0
+win_rate              NUMERIC   GENERATED (win_count / sample_size)
+avg_cpa               NUMERIC   GENERATED (spend / conversions)
+avg_roi               NUMERIC   GENERATED ((revenue - spend) / spend)
+win_rate_trend        NUMERIC   -- (current - prev) / prev
+cpa_trend             NUMERIC   -- (current - prev) / prev, negative is better
+roi_trend             NUMERIC
+sample_size_delta     INT       DEFAULT 0
+win_count_delta       INT       DEFAULT 0
+spend_delta           NUMERIC   DEFAULT 0
+conversions_delta     INT       DEFAULT 0
+created_at            TIMESTAMPTZ
+UNIQUE (module_id, week_id)
+```
+
+**Indexes:**
+- `idx_module_snapshots_module_week` — fetching recent snapshots by module
+- `idx_module_snapshots_week` — finding all snapshots for a week
+- `idx_module_snapshots_cpa_trend` — trend analysis
+
+**Helper function:** `genomai.get_module_trend(p_module_id UUID, p_weeks INT DEFAULT 4)`
 
 #### module_compatibility
 ```
@@ -646,7 +683,14 @@ Centralized task queue for multi-agent coordination.
 
 ## Schema Version
 
-Current: genomai schema v1.5.0 (Release 2026-01-11)
+Current: genomai schema v1.6.0 (Release 2026-01-13)
+
+**Changes in v1.6.0:**
+- `module_bank`: Added `total_conversions` and generated `avg_cpa` columns (#601)
+- `module_weekly_snapshots`: New table for weekly performance snapshots and trend tracking (#601)
+- Helper function: `genomai.get_module_trend(module_id, weeks)` for trend queries
+- Indexes: `idx_module_bank_avg_cpa`, `idx_module_snapshots_*`
+- `MaintenanceWorkflow`: Added weekly snapshots creation (runs on Mondays)
 
 **Changes in v1.5.0:**
 - `module_bank`: New table for reusable creative modules (Hook, Promise, Proof) (#375)

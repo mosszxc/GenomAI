@@ -12,16 +12,46 @@ Main workflow that processes a creative through the entire pipeline:
 Replaces 6 n8n workflows with single durable workflow.
 """
 
-from datetime import timedelta
+from __future__ import annotations
+
+from datetime import datetime, timedelta
 from typing import Optional
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-# Import models
+# Import models and activities at module level for deterministic replay
 with workflow.unsafe.imports_passed_through():
     from temporal.models.creative import CreativeInput, PipelineResult
     from temporal.models.decision import DecisionResult
     from temporal.tracing import get_workflow_logger
+    from temporal.activities.supabase import (
+        get_creative,
+        save_decomposed_creative,
+        upsert_idea,
+        update_creative_status,
+        emit_event,
+        save_transcript,
+        get_existing_transcript,
+    )
+    from temporal.activities.decision_engine import make_decision
+    from temporal.activities.transcription import transcribe_audio
+    from temporal.activities.llm_decomposition import decompose_creative
+    from temporal.activities.hypothesis_generation import (
+        generate_hypotheses,
+        save_hypotheses,
+    )
+    from temporal.activities.premise_selection import (
+        select_premise,
+    )
+    from temporal.activities.telegram import (
+        send_hypothesis_to_telegram,
+        get_buyer_chat_id,
+        emit_delivery_event,
+        send_status_notification,
+    )
+    from temporal.activities.module_extraction import (
+        extract_modules_from_decomposition,
+    )
 
 
 @workflow.defn
@@ -49,6 +79,7 @@ class CreativePipelineWorkflow:
         self._hypothesis_count: int = 0
         self._error: Optional[str] = None
         self._log = None  # Initialized in run() with context
+        self._operation_start_time: Optional[datetime] = None  # For deterministic completed_at
 
     @workflow.run
     async def run(self, input: CreativeInput) -> PipelineResult:
@@ -64,6 +95,10 @@ class CreativePipelineWorkflow:
         self._creative_id = input.creative_id
         self._status = "started"
 
+        # Capture start time BEFORE try block for deterministic completed_at
+        # This ensures workflow.now() is called in deterministic execution path
+        self._operation_start_time = workflow.now()
+
         # Initialize structured logger with trace context
         self._log = get_workflow_logger(
             creative_id=input.creative_id,
@@ -72,36 +107,6 @@ class CreativePipelineWorkflow:
         self._log.info("Pipeline started", status=self._status)
 
         try:
-            # Import activities inside workflow with pass-through to avoid sandbox restrictions
-            with workflow.unsafe.imports_passed_through():
-                from temporal.activities.supabase import (
-                    get_creative,
-                    save_decomposed_creative,
-                    upsert_idea,
-                    update_creative_status,
-                    emit_event,
-                    save_transcript,
-                    get_existing_transcript,
-                )
-                from temporal.activities.decision_engine import make_decision
-                from temporal.activities.transcription import transcribe_audio
-                from temporal.activities.llm_decomposition import decompose_creative
-                from temporal.activities.hypothesis_generation import (
-                    generate_hypotheses,
-                    save_hypotheses,
-                )
-                from temporal.activities.premise_selection import (
-                    select_premise,
-                )
-                from temporal.activities.telegram import (
-                    send_hypothesis_to_telegram,
-                    get_buyer_chat_id,
-                    emit_delivery_event,
-                )
-                from temporal.activities.module_extraction import (
-                    extract_modules_from_decomposition,
-                )
-
             # Default retry policy for most activities
             default_retry = RetryPolicy(
                 initial_interval=timedelta(seconds=1),
@@ -129,6 +134,34 @@ class CreativePipelineWorkflow:
                 self._error = f"Creative {input.creative_id} not found"
                 return self._build_result()
 
+            # Get chat_id early for progress notifications (non-blocking)
+            notification_chat_id: Optional[str] = None
+            if input.buyer_id:
+                notification_chat_id = await workflow.execute_activity(
+                    get_buyer_chat_id,
+                    input.buyer_id,
+                    start_to_close_timeout=timedelta(seconds=10),
+                    retry_policy=default_retry,
+                )
+
+            # Helper to send progress notification (fire-and-forget, never blocks)
+            async def notify_progress(stage: str, message: str) -> None:
+                if not notification_chat_id:
+                    return
+                try:
+                    await workflow.execute_activity(
+                        send_status_notification,
+                        args=[notification_chat_id, stage, message],
+                        start_to_close_timeout=timedelta(seconds=15),
+                        retry_policy=RetryPolicy(maximum_attempts=1),
+                    )
+                except Exception as e:
+                    # Never fail workflow due to notification error
+                    workflow.logger.warning(f"Progress notification failed: {e}")
+
+            # Send initial notification
+            await notify_progress("accepted", "✅ Креатив принят! Начинаю анализ...")
+
             # Step 2: Check for existing transcript (RECOVERY PATH)
             self._status = "checking_transcript"
             existing_transcript = await workflow.execute_activity(
@@ -139,15 +172,13 @@ class CreativePipelineWorkflow:
             )
 
             transcript_text: str
-            assemblyai_transcript_id: str = None
-            saved_transcript_id: str = None
+            assemblyai_transcript_id: str | None = None
+            saved_transcript_id: str | None = None
 
             if existing_transcript:
                 # RECOVERY: Use existing transcript, skip AssemblyAI (saves time & money)
                 transcript_text = existing_transcript.get("transcript_text", "")
-                assemblyai_transcript_id = existing_transcript.get(
-                    "assemblyai_transcript_id"
-                )
+                assemblyai_transcript_id = existing_transcript.get("assemblyai_transcript_id")
                 # Convert bigint id to string for type compatibility
                 saved_transcript_id = str(existing_transcript["id"])
                 self._log.info(
@@ -204,9 +235,7 @@ class CreativePipelineWorkflow:
                             "transcript_id": saved_transcript_id,
                             "assemblyai_transcript_id": assemblyai_transcript_id,
                             "version": saved_transcript.get("version", 1),
-                            "words": len(transcript_text.split())
-                            if transcript_text
-                            else 0,
+                            "words": len(transcript_text.split()) if transcript_text else 0,
                         },
                     ],
                     start_to_close_timeout=timedelta(seconds=10),
@@ -214,6 +243,7 @@ class CreativePipelineWorkflow:
 
             # Step 3: LLM Decomposition (OpenAI)
             self._status = "decomposing"
+            await notify_progress("extraction", "🔬 Этап 1/3: Извлечение компонентов...")
             decomposition_result = await workflow.execute_activity(
                 decompose_creative,
                 args=[transcript_text, input.creative_id],
@@ -282,9 +312,7 @@ class CreativePipelineWorkflow:
             )
 
             self._idea_id = idea_result["id"]
-            idea_status = (
-                "new" if idea_result.get("upsert_status") == "created" else "reused"
-            )
+            idea_status = "new" if idea_result.get("upsert_status") == "created" else "reused"
 
             # Emit idea event
             await workflow.execute_activity(
@@ -331,6 +359,7 @@ class CreativePipelineWorkflow:
             hypothesis_id = None
             if decision_result.is_approved and input.buyer_id:
                 self._status = "generating_hypothesis"
+                await notify_progress("hypotheses", "📊 Этап 2/3: Генерация гипотез...")
 
                 # Step 6a: Select premise for hypothesis generation
                 # Uses Thompson Sampling: 75% exploit best, 25% explore
@@ -383,6 +412,12 @@ class CreativePipelineWorkflow:
                 )
 
                 self._hypothesis_count = len(saved_hypotheses)
+
+                # Send completion notification with hypothesis count
+                await notify_progress(
+                    "complete",
+                    f"✨ Этап 3/3: Готово! Создано {self._hypothesis_count} гипотез.",
+                )
 
                 # Emit hypothesis event
                 await workflow.execute_activity(
@@ -486,12 +521,10 @@ class CreativePipelineWorkflow:
                     ],
                     start_to_close_timeout=timedelta(seconds=10),
                 )
-            except Exception:
+            except Exception as e:
                 # Don't fail the workflow if status update fails
                 # The workflow result already contains the error
-                workflow.logger.warning(
-                    f"Failed to update creative status to 'failed': {e}"
-                )
+                workflow.logger.warning(f"Failed to update creative status to 'failed': {e}")
 
             return self._build_result()
 
@@ -502,6 +535,9 @@ class CreativePipelineWorkflow:
         hypothesis_id: Optional[str] = None,
     ) -> PipelineResult:
         """Build pipeline result."""
+        # Use pre-captured time to ensure determinism during replay
+        # workflow.now() in exception handlers can cause non-determinism errors
+        completed_at = self._operation_start_time or workflow.now()
         return PipelineResult(
             creative_id=self._creative_id or "",
             idea_id=self._idea_id,
@@ -510,7 +546,7 @@ class CreativePipelineWorkflow:
             decision_type=self._decision,
             hypothesis_id=hypothesis_id,
             hypothesis_count=self._hypothesis_count,
-            completed_at=workflow.now(),  # Use workflow.now() for determinism
+            completed_at=completed_at,
             error=self._error,
         )
 

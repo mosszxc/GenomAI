@@ -88,9 +88,7 @@ async def get_hypothesis_premise(hypothesis_id: str) -> Optional[dict]:
     client = get_http_client()
     # Get hypothesis with premise
     response = await client.get(
-        f"{rest_url}/hypotheses"
-        f"?id=eq.{hypothesis_id}"
-        f"&select=premise_id,premises(id,premise_type)",
+        f"{rest_url}/hypotheses?id=eq.{hypothesis_id}&select=premise_id,premises(id,premise_type)",
         headers=headers,
     )
     response.raise_for_status()
@@ -243,7 +241,8 @@ async def upsert_premise_learning(
             },
         )
         response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+        data = response.json()
+        return data[0] if data else {}
     else:
         # Insert new record (win_rate and avg_roi are generated columns)
         response = await client.post(
@@ -262,7 +261,8 @@ async def upsert_premise_learning(
             },
         )
         response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+        data = response.json()
+        return data[0] if data else {}
 
 
 async def process_premise_learning(

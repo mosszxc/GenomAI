@@ -197,9 +197,7 @@ async def extract_knowledge_from_transcript(
                 result = json.loads(content)
                 extractions = result.get("extractions", [])
                 all_extractions.extend(extractions)
-                activity.logger.info(
-                    f"Chunk {i + 1}: extracted {len(extractions)} items"
-                )
+                activity.logger.info(f"Chunk {i + 1}: extracted {len(extractions)} items")
             except json.JSONDecodeError as e:
                 activity.logger.error(f"Invalid JSON in chunk {i + 1}: {e}")
                 continue

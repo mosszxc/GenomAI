@@ -99,9 +99,7 @@ async def generate_hypotheses(
             messages=[
                 {
                     "role": "system",
-                    "content": HYPOTHESIS_SYSTEM_PROMPT.format(
-                        num_hypotheses=num_hypotheses
-                    ),
+                    "content": HYPOTHESIS_SYSTEM_PROMPT.format(num_hypotheses=num_hypotheses),
                 },
                 {"role": "user", "content": user_prompt},
             ],
@@ -124,7 +122,7 @@ async def generate_hypotheses(
             raise ApplicationError(
                 f"LLM returned invalid JSON: {e}",
                 type="SCHEMA_ERROR",
-            )
+            ) from e
 
         # Validate structure
         if "hypotheses" not in result:
@@ -140,9 +138,7 @@ async def generate_hypotheses(
                 type="SCHEMA_ERROR",
             )
 
-        activity.logger.info(
-            f"Generated {len(hypotheses)} hypotheses for idea={idea_id}"
-        )
+        activity.logger.info(f"Generated {len(hypotheses)} hypotheses for idea={idea_id}")
 
         return {
             "hypotheses": hypotheses,
@@ -156,7 +152,7 @@ async def generate_hypotheses(
         raise ApplicationError(
             f"OpenAI API error: {e}",
             type="LLM_API_ERROR",
-        )
+        ) from e
 
 
 def _build_generation_prompt(payload: dict) -> str:
@@ -269,8 +265,6 @@ async def save_hypotheses(
         if data:
             created_hypotheses.append(data[0])
 
-    activity.logger.info(
-        f"Saved {len(created_hypotheses)} hypotheses for idea={idea_id}"
-    )
+    activity.logger.info(f"Saved {len(created_hypotheses)} hypotheses for idea={idea_id}")
 
     return created_hypotheses

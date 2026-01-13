@@ -16,6 +16,11 @@ from dataclasses import dataclass
 from numpy.random import beta as beta_sample
 
 from src.utils.errors import SupabaseError
+from temporal.models.validators import (
+    validate_uuid,
+    validate_optional_uuid,
+    validate_optional_safe_string,
+)
 
 
 SCHEMA = "genomai"
@@ -100,6 +105,10 @@ async def get_active_premises(
     """
     Get all active premises, optionally filtered by vertical/geo.
     """
+    # Validate inputs to prevent URL injection
+    vertical = validate_optional_safe_string(vertical, "vertical")
+    geo = validate_optional_safe_string(geo, "geo")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -129,6 +138,11 @@ async def get_premise_learnings(
     """
     Get learning stats for a specific premise in context.
     """
+    # Validate inputs to prevent URL injection
+    premise_id = validate_uuid(premise_id, "premise_id")
+    geo = validate_optional_safe_string(geo, "geo")
+    avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -145,9 +159,7 @@ async def get_premise_learnings(
     filter_str = "&".join(filters)
 
     client = get_http_client()
-    response = await client.get(
-        f"{rest_url}/premise_learnings?{filter_str}", headers=headers
-    )
+    response = await client.get(f"{rest_url}/premise_learnings?{filter_str}", headers=headers)
     response.raise_for_status()
     data = response.json()
 
@@ -165,6 +177,10 @@ async def get_top_premises(
     """
     Get top performing premises by win_rate from premise_learnings.
     """
+    # Validate inputs to prevent URL injection
+    geo = validate_optional_safe_string(geo, "geo")
+    avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
+
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -202,6 +218,10 @@ async def get_undersampled_premises(
 
     Returns active premises that have fewer than min_sample_threshold samples.
     """
+    # Validate inputs to prevent URL injection
+    vertical = validate_optional_safe_string(vertical, "vertical")
+    geo = validate_optional_safe_string(geo, "geo")
+
     # Get all active premises
     all_premises = await get_active_premises(vertical=vertical, geo=geo)
 
@@ -236,9 +256,8 @@ async def select_best_premise(
     """
     Select the best premise by win_rate (exploitation).
     """
-    top_premises = await get_top_premises(
-        vertical=vertical, geo=geo, avatar_id=avatar_id, limit=1
-    )
+    # Note: geo and avatar_id are validated in get_top_premises and get_active_premises
+    top_premises = await get_top_premises(vertical=vertical, geo=geo, avatar_id=avatar_id, limit=1)
 
     if not top_premises:
         # No premises with enough samples - fall back to any active premise
@@ -247,8 +266,8 @@ async def select_best_premise(
             return active[0]
         return None
 
-    # Get full premise details
-    premise_id = top_premises[0]["premise_id"]
+    # Get full premise details - validate premise_id from DB result
+    premise_id = validate_uuid(top_premises[0]["premise_id"], "premise_id")
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -274,6 +293,7 @@ async def select_exploration_premise(
 
     Returns undersampled premise or None (signal for generation).
     """
+    # Note: vertical and geo are validated in get_undersampled_premises
     undersampled = await get_undersampled_premises(vertical=vertical, geo=geo)
 
     if not undersampled:
@@ -282,9 +302,7 @@ async def select_exploration_premise(
     # Thompson Sampling among undersampled
     scored = []
     for premise in undersampled:
-        score = thompson_sample(
-            premise.get("win_count", 0), premise.get("loss_count", 0)
-        )
+        score = thompson_sample(premise.get("win_count", 0), premise.get("loss_count", 0))
         scored.append((score, premise))
 
     # Select highest Thompson score
@@ -318,6 +336,13 @@ async def select_premise_for_hypothesis(
     Returns:
         PremiseSelection with premise details or is_new=True for generation
     """
+    # Validate inputs upfront to prevent URL injection
+    # Note: idea_id is not used in URL queries here, but validate for consistency
+    _ = validate_uuid(idea_id, "idea_id")
+    avatar_id = validate_optional_uuid(avatar_id, "avatar_id")
+    geo = validate_optional_safe_string(geo, "geo")
+    vertical = validate_optional_safe_string(vertical, "vertical")
+
     explore = force_exploration or should_explore()
 
     if explore:
@@ -360,9 +385,7 @@ async def select_premise_for_hypothesis(
             )
     else:
         # Exploitation mode
-        premise = await select_best_premise(
-            vertical=vertical, geo=geo, avatar_id=avatar_id
-        )
+        premise = await select_best_premise(vertical=vertical, geo=geo, avatar_id=avatar_id)
 
         if premise is None:
             # No premises at all - trigger generation

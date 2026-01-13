@@ -233,9 +233,7 @@ async def send_recommendation_to_telegram(
         result = data.get("result", {})
         message_id = result.get("message_id")
 
-        activity.logger.info(
-            f"Recommendation sent successfully: message_id={message_id}"
-        )
+        activity.logger.info(f"Recommendation sent successfully: message_id={message_id}")
 
         return {
             "recommendation_id": recommendation_id,
@@ -249,12 +247,12 @@ async def send_recommendation_to_telegram(
         raise ApplicationError(
             "Telegram API timeout",
             type="TELEGRAM_TIMEOUT",
-        )
+        ) from None
     except httpx.RequestError as e:
         raise ApplicationError(
             f"Telegram request error: {e}",
             type="TELEGRAM_REQUEST_ERROR",
-        )
+        ) from e
 
 
 def _format_recommendation_message(
@@ -297,9 +295,7 @@ def _format_recommendation_message(
         }.get(comp_type, "•")
 
         readable_type = comp_type.replace("_", " ").title()
-        component_lines.append(
-            f"{type_emoji} {readable_type}: {comp_value} ({confidence_pct}%)"
-        )
+        component_lines.append(f"{type_emoji} {readable_type}: {comp_value} ({confidence_pct}%)")
 
     components_text = "\n".join(component_lines)
 

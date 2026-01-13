@@ -5,10 +5,15 @@ Uses direct HTTP requests with proper schema headers to ensure
 all operations use the genomai schema.
 """
 
+import logging
 import os
+from typing import Optional
+
 import httpx
 from src.core.http_client import get_http_client
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 # Schema name for all operations
@@ -45,7 +50,7 @@ def _get_headers(supabase_key: str, for_write: bool = False) -> dict:
     return headers
 
 
-async def load_idea(idea_id: str) -> dict | None:
+async def load_idea(idea_id: str) -> Optional[dict]:
     """
     Load Idea from Supabase with Canonical Schema payload (schema: genomai)
 
@@ -58,9 +63,7 @@ async def load_idea(idea_id: str) -> dict | None:
 
         client = get_http_client()
         # First, load the idea
-        response = await client.get(
-            f"{rest_url}/ideas?id=eq.{idea_id}&select=*", headers=headers
-        )
+        response = await client.get(f"{rest_url}/ideas?id=eq.{idea_id}&select=*", headers=headers)
         response.raise_for_status()
         ideas_data = response.json()
 
@@ -146,9 +149,9 @@ async def load_idea(idea_id: str) -> dict | None:
 
         return idea
     except httpx.HTTPStatusError as e:
-        raise SupabaseError(f"Failed to load idea: HTTP {e.response.status_code}")
+        raise SupabaseError(f"Failed to load idea: HTTP {e.response.status_code}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to load idea: {str(e)}")
+        raise SupabaseError(f"Failed to load idea: {str(e)}") from e
 
 
 async def load_system_state() -> dict:
@@ -159,9 +162,7 @@ async def load_system_state() -> dict:
         headers["Prefer"] = "count=exact"
 
         client = get_http_client()
-        response = await client.get(
-            f"{rest_url}/ideas?status=eq.active&select=id", headers=headers
-        )
+        response = await client.get(f"{rest_url}/ideas?status=eq.active&select=id", headers=headers)
         response.raise_for_status()
 
         # Get count from Content-Range header
@@ -177,10 +178,10 @@ async def load_system_state() -> dict:
             "current_state": "exploit",
         }
     except Exception as e:
-        raise SupabaseError(f"Failed to load system state: {str(e)}")
+        raise SupabaseError(f"Failed to load system state: {str(e)}") from e
 
 
-async def get_existing_decision(idea_id: str, decision_epoch: int) -> dict | None:
+async def get_existing_decision(idea_id: str, decision_epoch: int) -> Optional[dict]:
     """
     Check if a decision already exists for this idea and epoch.
 
@@ -208,12 +209,19 @@ async def get_existing_decision(idea_id: str, decision_epoch: int) -> dict | Non
         if data and len(data) > 0:
             return data[0]
         return None
-    except Exception:
-        # On error, return None to allow new decision creation
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            f"HTTP error loading decision for idea_id={idea_id}, epoch={decision_epoch}: {e}"
+        )
+        return None
+    except Exception as e:
+        logger.warning(
+            f"Unexpected error loading decision for idea_id={idea_id}, epoch={decision_epoch}: {e}"
+        )
         return None
 
 
-async def get_decision_trace(decision_id: str) -> dict | None:
+async def get_decision_trace(decision_id: str) -> Optional[dict]:
     """
     Load Decision Trace by decision_id.
 
@@ -238,7 +246,13 @@ async def get_decision_trace(decision_id: str) -> dict | None:
         if data and len(data) > 0:
             return data[0]
         return None
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"HTTP error loading decision_trace for decision_id={decision_id}: {e}")
+        return None
+    except Exception as e:
+        logger.warning(
+            f"Unexpected error loading decision_trace for decision_id={decision_id}: {e}"
+        )
         return None
 
 
@@ -249,9 +263,7 @@ async def save_decision(decision: dict) -> dict:
         headers = _get_headers(supabase_key, for_write=True)
 
         client = get_http_client()
-        response = await client.post(
-            f"{rest_url}/decisions", headers=headers, json=decision
-        )
+        response = await client.post(f"{rest_url}/decisions", headers=headers, json=decision)
         response.raise_for_status()
         data = response.json()
 
@@ -261,9 +273,9 @@ async def save_decision(decision: dict) -> dict:
         return data[0]
     except httpx.HTTPStatusError as e:
         error_detail = e.response.text
-        raise SupabaseError(f"Failed to save decision: {error_detail}")
+        raise SupabaseError(f"Failed to save decision: {error_detail}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to save decision: {str(e)}")
+        raise SupabaseError(f"Failed to save decision: {str(e)}") from e
 
 
 async def delete_decision(decision_id: str) -> None:
@@ -273,13 +285,12 @@ async def delete_decision(decision_id: str) -> None:
         headers = _get_headers(supabase_key, for_write=True)
 
         client = get_http_client()
-        response = await client.delete(
-            f"{rest_url}/decisions?id=eq.{decision_id}", headers=headers
-        )
+        response = await client.delete(f"{rest_url}/decisions?id=eq.{decision_id}", headers=headers)
         response.raise_for_status()
-    except Exception:
-        # Log but don't raise - this is cleanup
-        pass
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"HTTP error deleting decision {decision_id} (cleanup): {e}")
+    except Exception as e:
+        logger.warning(f"Unexpected error deleting decision {decision_id} (cleanup): {e}")
 
 
 async def save_decision_trace(trace: dict) -> dict:
@@ -289,9 +300,7 @@ async def save_decision_trace(trace: dict) -> dict:
         headers = _get_headers(supabase_key, for_write=True)
 
         client = get_http_client()
-        response = await client.post(
-            f"{rest_url}/decision_traces", headers=headers, json=trace
-        )
+        response = await client.post(f"{rest_url}/decision_traces", headers=headers, json=trace)
         response.raise_for_status()
         data = response.json()
 
@@ -301,9 +310,9 @@ async def save_decision_trace(trace: dict) -> dict:
         return data[0]
     except httpx.HTTPStatusError as e:
         error_detail = e.response.text
-        raise SupabaseError(f"Failed to save decision trace: {error_detail}")
+        raise SupabaseError(f"Failed to save decision trace: {error_detail}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to save decision trace: {str(e)}")
+        raise SupabaseError(f"Failed to save decision trace: {str(e)}") from e
 
 
 async def save_decision_with_trace(decision: dict, trace: dict) -> dict:
@@ -360,7 +369,7 @@ async def save_decision_with_trace(decision: dict, trace: dict) -> dict:
         if "23505" in error_detail:
             raise SupabaseError(
                 f"Decision already exists for idea_id={decision['idea_id']} epoch={decision['decision_epoch']}"
-            )
-        raise SupabaseError(f"Failed to save decision with trace: {error_detail}")
+            ) from e
+        raise SupabaseError(f"Failed to save decision with trace: {error_detail}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to save decision with trace: {str(e)}")
+        raise SupabaseError(f"Failed to save decision with trace: {str(e)}") from e

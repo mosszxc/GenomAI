@@ -8,7 +8,7 @@ import os
 import httpx
 from src.core.http_client import get_http_client
 from src.core.supabase import get_supabase
-from fastapi import APIRouter, Header, HTTPException, Depends
+from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List, Literal
 
@@ -78,9 +78,7 @@ class RejectRequest(BaseModel):
 
 
 @router.post("/sources", response_model=UploadSourceResponse)
-async def upload_source(
-    request: UploadSourceRequest, _: bool = Depends(verify_api_key)
-):
+async def upload_source(request: UploadSourceRequest, _: bool = Depends(verify_api_key)):
     """
     POST /api/knowledge/sources
 
@@ -130,16 +128,14 @@ async def upload_source(
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start workflow: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to start workflow: {str(e)}") from e
 
 
 @router.get("/extractions")
 async def list_extractions(
     status: Optional[str] = "pending",
     knowledge_type: Optional[str] = None,
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=1000),
     _: bool = Depends(verify_api_key),
 ):
     """
@@ -157,7 +153,7 @@ async def list_extractions(
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     try:
         url = (
@@ -185,7 +181,7 @@ async def list_extractions(
         }
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e
 
 
 @router.get("/extractions/{extraction_id}")
@@ -198,7 +194,7 @@ async def get_extraction(extraction_id: str, _: bool = Depends(verify_api_key)):
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     try:
         client = get_http_client()
@@ -220,7 +216,7 @@ async def get_extraction(extraction_id: str, _: bool = Depends(verify_api_key)):
         return results[0]
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e
 
 
 @router.post("/extractions/{extraction_id}/approve")
@@ -261,9 +257,7 @@ async def approve_extraction(
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start workflow: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to start workflow: {str(e)}") from e
 
 
 @router.post("/extractions/{extraction_id}/reject")
@@ -280,7 +274,7 @@ async def reject_extraction(
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     from datetime import datetime
 
@@ -315,7 +309,7 @@ async def reject_extraction(
         }
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e
 
 
 @router.get("/sources/{source_id}")
@@ -328,7 +322,7 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     try:
         client = get_http_client()
@@ -353,16 +347,11 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
 
         # Get extractions for this source
         extractions_response = await client.get(
-            f"{sb.rest_url}/knowledge_extractions"
-            f"?source_id=eq.{source_id}&order=created_at.asc",
+            f"{sb.rest_url}/knowledge_extractions?source_id=eq.{source_id}&order=created_at.asc",
             headers=headers,
         )
 
-        extractions = (
-            extractions_response.json()
-            if extractions_response.status_code == 200
-            else []
-        )
+        extractions = extractions_response.json() if extractions_response.status_code == 200 else []
 
         return {
             "source": source,
@@ -371,4 +360,4 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
         }
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e

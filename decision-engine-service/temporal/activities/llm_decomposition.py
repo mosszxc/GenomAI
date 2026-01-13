@@ -173,7 +173,7 @@ async def decompose_creative(
             raise ApplicationError(
                 f"LLM returned invalid JSON: {e}",
                 type="SCHEMA_ERROR",
-            )
+            ) from e
 
         # Validate required fields
         missing_fields = [f for f in REQUIRED_FIELDS if f not in payload]
@@ -187,9 +187,7 @@ async def decompose_creative(
         payload["schema_version"] = SCHEMA_VERSION
 
         # Compute canonical hash for deduplication
-        canonical_hash = hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode()
-        ).hexdigest()
+        canonical_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
         activity.logger.info(f"Decomposition completed: hash={canonical_hash[:16]}...")
 
@@ -203,7 +201,7 @@ async def decompose_creative(
         raise ApplicationError(
             f"OpenAI API error: {e}",
             type="LLM_API_ERROR",
-        )
+        ) from e
 
 
 @activity.defn

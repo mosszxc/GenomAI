@@ -27,6 +27,7 @@
 | L022 | — | Temporal | Activities must be in separate file from workflow |
 | L023 | #256 | Temporal | No `datetime.utcnow()` in workflows — use `workflow.now()` |
 | L024 | #499 | Temporal | **Type changes in workflow Input models break running workflows.** Use `Union[old, new]` for backward compat. Temporal deserializer fails BEFORE `__post_init__`. |
+| L025 | #537 | Scripts | **PID файл может отсутствовать при работающем сервере.** task-done.sh находит динамический порт через `lsof -i -P -n \| grep python.*LISTEN`. Не использовать `--skip-tests` только из-за "no pid file". |
 
 ## Anti-Patterns
 

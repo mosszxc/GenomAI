@@ -11,7 +11,6 @@ Supports two transcription paths:
 """
 
 import os
-import re
 import time
 from typing import Optional
 from temporalio import activity
@@ -19,6 +18,7 @@ from temporalio.exceptions import ApplicationError
 
 from temporal.tracing import get_activity_logger
 from src.core.http_client import get_http_client
+from src.utils.safe_regex import safe_search, MAX_INPUT_LENGTH
 
 # Polling interval for transcription status (seconds)
 POLL_INTERVAL = 30
@@ -42,6 +42,8 @@ def extract_gdrive_file_id(url: str) -> Optional[str]:
     """
     Extract Google Drive file ID from various URL formats.
 
+    Uses safe_search with input length limit to prevent ReDoS attacks.
+
     Supports:
     - https://drive.google.com/file/d/{FILE_ID}/view...
     - https://drive.google.com/uc?export=download&id={FILE_ID}
@@ -51,12 +53,12 @@ def extract_gdrive_file_id(url: str) -> Optional[str]:
         File ID or None if not a Google Drive URL
     """
     # Pattern 1: /file/d/{ID}/
-    match = re.search(r"/file/d/([a-zA-Z0-9_-]+)", url)
+    match = safe_search(r"/file/d/([a-zA-Z0-9_-]+)", url)
     if match:
         return match.group(1)
 
     # Pattern 2: id={ID} in query string
-    match = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", url)
+    match = safe_search(r"[?&]id=([a-zA-Z0-9_-]+)", url)
     if match:
         return match.group(1)
 
@@ -66,6 +68,8 @@ def extract_gdrive_file_id(url: str) -> Optional[str]:
 def convert_to_direct_url(url: str) -> str:
     """
     Convert cloud storage URLs to direct download URLs.
+
+    Uses safe_search with input length limit to prevent ReDoS attacks.
 
     Supports:
     - Google Drive: /file/d/{ID}/view -> /uc?export=download&id={ID}
@@ -77,20 +81,23 @@ def convert_to_direct_url(url: str) -> str:
     Returns:
         Direct download URL (or original if not a known cloud storage URL)
     """
+    # ReDoS protection: limit input length
+    safe_url = url[:MAX_INPUT_LENGTH] if url else ""
+
     # Google Drive pattern: https://drive.google.com/file/d/{FILE_ID}/view...
     gdrive_pattern = r"https?://drive\.google\.com/file/d/([^/]+)"
-    gdrive_match = re.search(gdrive_pattern, url)
+    gdrive_match = safe_search(gdrive_pattern, safe_url)
     if gdrive_match:
         file_id = gdrive_match.group(1)
         return f"https://drive.google.com/uc?export=download&id={file_id}"
 
     # Dropbox pattern: change ?dl=0 to ?dl=1
-    if "dropbox.com" in url:
-        if "?dl=0" in url:
-            return url.replace("?dl=0", "?dl=1")
-        elif "dl=0" not in url and "dl=1" not in url:
-            separator = "&" if "?" in url else "?"
-            return f"{url}{separator}dl=1"
+    if "dropbox.com" in safe_url:
+        if "?dl=0" in safe_url:
+            return safe_url.replace("?dl=0", "?dl=1")
+        elif "dl=0" not in safe_url and "dl=1" not in safe_url:
+            separator = "&" if "?" in safe_url else "?"
+            return f"{safe_url}{separator}dl=1"
 
     # Return original if not a known cloud storage URL
     return url
@@ -123,9 +130,7 @@ async def transcribe_via_n8n(
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not supabase_key:
-        raise ApplicationError(
-            "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured"
-        )
+        raise ApplicationError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured")
 
     headers = {
         "apikey": supabase_key,
@@ -161,9 +166,7 @@ async def transcribe_via_n8n(
 
     # Get the created record ID
     created = insert_resp.json()
-    transcript_db_id = (
-        created[0]["id"] if isinstance(created, list) else created.get("id")
-    )
+    transcript_db_id = created[0]["id"] if isinstance(created, list) else created.get("id")
 
     if not transcript_db_id:
         # Fetch the latest transcript for this creative
@@ -363,9 +366,7 @@ async def transcribe_audio(
 
         if transcript.status == aai.TranscriptStatus.error:
             error_msg = transcript.error or "Unknown transcription error"
-            log.error(
-                "Transcription failed", error=error_msg, transcript_id=transcript_id
-            )
+            log.error("Transcription failed", error=error_msg, transcript_id=transcript_id)
             raise ApplicationError(
                 f"Transcription failed: {error_msg}",
                 type="TRANSCRIPTION_ERROR",
@@ -429,8 +430,6 @@ async def get_transcript(transcript_id: str) -> dict:
 
     return {
         "transcript_id": transcript_id,
-        "text": transcript.text
-        if transcript.status == aai.TranscriptStatus.completed
-        else None,
+        "text": transcript.text if transcript.status == aai.TranscriptStatus.completed else None,
         "status": str(transcript.status),
     }

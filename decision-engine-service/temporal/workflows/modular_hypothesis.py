@@ -91,8 +91,7 @@ class ModularHypothesisWorkflow:
         3. For each combination: LLM synthesis + save
         """
         workflow.logger.info(
-            f"Starting ModularHypothesisWorkflow for idea={input.idea_id}, "
-            f"count={input.count}"
+            f"Starting ModularHypothesisWorkflow for idea={input.idea_id}, count={input.count}"
         )
 
         # Step 1: Check readiness
@@ -184,8 +183,7 @@ class ModularHypothesisWorkflow:
                 )
 
                 workflow.logger.info(
-                    f"Hypothesis {hypothesis['id']} created "
-                    f"(review_status=pending_review)"
+                    f"Hypothesis {hypothesis['id']} created (review_status=pending_review)"
                 )
 
             except Exception as e:

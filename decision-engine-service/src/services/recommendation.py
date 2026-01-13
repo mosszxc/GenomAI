@@ -10,6 +10,7 @@ Includes Cross-Segment Transfer (Inspiration System):
 Issue: #124
 """
 
+import logging
 import os
 import random
 from src.core.http_client import get_http_client
@@ -25,6 +26,8 @@ from src.services.exploration import (
 from src.services.component_learning import TRACKABLE_COMPONENTS
 from src.services.cross_transfer import find_transfer_candidates, execute_cross_transfer
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -115,9 +118,7 @@ def generate_description(
     parts = []
 
     for comp in components[:5]:  # Top 5 components
-        readable_type = COMPONENT_DESCRIPTIONS.get(
-            comp.component_type, comp.component_type
-        )
+        readable_type = COMPONENT_DESCRIPTIONS.get(comp.component_type, comp.component_type)
         confidence_pct = int(comp.confidence * 100)
         parts.append(f"{comp.component_value} {readable_type} ({confidence_pct}%)")
 
@@ -284,8 +285,8 @@ async def generate_cross_transfer_recommendation(
             )
 
         return components, True
-    except Exception:
-        # On error, return empty to fallback to regular exploration
+    except Exception as e:
+        logger.warning(f"Cross-transfer recommendation failed, falling back to exploration: {e}")
         return [], False
 
 
@@ -301,9 +302,7 @@ async def generate_exploration_recommendation(
     """
     # Try cross-segment transfer first (10% of explorations)
     if random.random() < CROSS_TRANSFER_RATE:
-        transfer_components, success = await generate_cross_transfer_recommendation(
-            avatar_id, geo
-        )
+        transfer_components, success = await generate_cross_transfer_recommendation(avatar_id, geo)
         if success and transfer_components:
             return transfer_components, "cross_transfer"
 
@@ -387,9 +386,7 @@ async def save_recommendation(recommendation: Recommendation) -> str:
     payload = {k: v for k, v in payload.items() if v is not None}
 
     client = get_http_client()
-    response = await client.post(
-        f"{rest_url}/recommendations", headers=headers, json=payload
-    )
+    response = await client.post(f"{rest_url}/recommendations", headers=headers, json=payload)
     response.raise_for_status()
     data = response.json()
 
@@ -423,9 +420,7 @@ async def generate_recommendation(
     # Decide mode
     if force_exploration or should_explore():
         mode = "exploration"
-        components, exploration_type = await generate_exploration_recommendation(
-            avatar_id, geo
-        )
+        components, exploration_type = await generate_exploration_recommendation(avatar_id, geo)
     else:
         mode = "exploitation"
         components = await generate_exploitation_recommendation(avatar_id, geo)
@@ -473,9 +468,7 @@ async def generate_recommendation(
     return recommendation
 
 
-async def mark_recommendation_executed(
-    recommendation_id: str, creative_id: str
-) -> dict:
+async def mark_recommendation_executed(recommendation_id: str, creative_id: str) -> dict:
     """
     Mark recommendation as executed when buyer creates creative.
 
@@ -497,7 +490,8 @@ async def mark_recommendation_executed(
         },
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def record_recommendation_outcome(
@@ -531,7 +525,8 @@ async def record_recommendation_outcome(
         json=payload,
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def get_recommendation(recommendation_id: str) -> Optional[dict]:

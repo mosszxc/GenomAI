@@ -12,6 +12,9 @@ import re
 import uuid
 from typing import Any, Optional
 
+# Maximum input length for regex operations to prevent ReDoS
+MAX_URL_LENGTH = 2048
+
 # Valid characters for SHA256 hex string
 HEX_CHARS = set("0123456789abcdef")
 
@@ -72,9 +75,7 @@ def validate_sha256_hash(value: str, field_name: str = "canonical_hash") -> str:
     value = value.lower()
 
     if len(value) != 64:
-        raise ValueError(
-            f"{field_name} must be 64 characters (SHA256), got {len(value)}"
-        )
+        raise ValueError(f"{field_name} must be 64 characters (SHA256), got {len(value)}")
 
     if not all(c in HEX_CHARS for c in value):
         raise ValueError(f"{field_name} must contain only hex characters")
@@ -86,6 +87,8 @@ def validate_url(value: str, field_name: str = "url") -> str:
     """
     Validate URL format.
 
+    Includes input length limit to prevent ReDoS attacks.
+
     Args:
         value: String to validate
         field_name: Name of field for error messages
@@ -94,10 +97,14 @@ def validate_url(value: str, field_name: str = "url") -> str:
         Validated URL string
 
     Raises:
-        ValueError: If not a valid URL
+        ValueError: If not a valid URL or exceeds max length
     """
     if not value:
         raise ValueError(f"{field_name} cannot be empty")
+
+    # ReDoS protection: limit input length
+    if len(value) > MAX_URL_LENGTH:
+        raise ValueError(f"{field_name} exceeds maximum length of {MAX_URL_LENGTH}")
 
     if not URL_PATTERN.match(value):
         raise ValueError(f"{field_name} must be a valid HTTP/HTTPS URL, got: {value!r}")
@@ -105,9 +112,7 @@ def validate_url(value: str, field_name: str = "url") -> str:
     return value
 
 
-def validate_optional_uuid(
-    value: Optional[str], field_name: str = "id"
-) -> Optional[str]:
+def validate_optional_uuid(value: Optional[str], field_name: str = "id") -> Optional[str]:
     """
     Validate optional UUID string.
 
@@ -149,9 +154,7 @@ def validate_enum(
         raise ValueError(f"{field_name} cannot be empty")
 
     if value not in allowed_values:
-        raise ValueError(
-            f"{field_name} must be one of {sorted(allowed_values)}, got: {value!r}"
-        )
+        raise ValueError(f"{field_name} must be one of {sorted(allowed_values)}, got: {value!r}")
 
     return value
 
@@ -171,10 +174,68 @@ def validate_dict_payload(value: Any, field_name: str = "payload") -> dict:
         ValueError: If not a dict
     """
     if not isinstance(value, dict):
-        raise ValueError(
-            f"{field_name} must be a dict, got {type(value).__name__}: {value!r:.200}"
-        )
+        raise ValueError(f"{field_name} must be a dict, got {type(value).__name__}: {value!r:.200}")
     return value
+
+
+# Allowed characters for safe string interpolation in URLs
+# Alphanumeric, underscore, hyphen - safe for PostgREST query params
+SAFE_STRING_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def validate_safe_string(value: str, field_name: str = "value", max_length: int = 100) -> str:
+    """
+    Validate string is safe for URL interpolation (no injection risk).
+
+    Only allows alphanumeric characters, underscores, and hyphens.
+    This prevents PostgREST query manipulation and URL injection.
+
+    Args:
+        value: String to validate
+        field_name: Name of field for error messages
+        max_length: Maximum allowed length
+
+    Returns:
+        Validated string
+
+    Raises:
+        ValueError: If string contains unsafe characters
+    """
+    if not value:
+        raise ValueError(f"{field_name} cannot be empty")
+
+    if len(value) > max_length:
+        raise ValueError(f"{field_name} exceeds maximum length of {max_length}")
+
+    if not SAFE_STRING_PATTERN.match(value):
+        raise ValueError(
+            f"{field_name} contains unsafe characters, "
+            f"only alphanumeric, underscore and hyphen allowed: {value!r}"
+        )
+
+    return value
+
+
+def validate_optional_safe_string(
+    value: Optional[str], field_name: str = "value", max_length: int = 100
+) -> Optional[str]:
+    """
+    Validate optional string is safe for URL interpolation.
+
+    Args:
+        value: String to validate or None
+        field_name: Name of field for error messages
+        max_length: Maximum allowed length
+
+    Returns:
+        Validated string or None
+
+    Raises:
+        ValueError: If provided but contains unsafe characters
+    """
+    if value is None:
+        return None
+    return validate_safe_string(value, field_name, max_length)
 
 
 # Status enum values for validation

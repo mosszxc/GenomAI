@@ -41,9 +41,7 @@ def environment_weight(env_ctx: Optional[dict]) -> float:
     # Degraded environment - weight depends on outcome direction
     # Note: actual direction is applied in learning_loop.py
     # Here we return a marker that degraded = True
-    return (
-        0.3  # Will be adjusted based on outcome direction in apply_environment_weight
-    )
+    return 0.3  # Will be adjusted based on outcome direction in apply_environment_weight
 
 
 def apply_environment_weight(delta: float, env_ctx: Optional[dict]) -> float:

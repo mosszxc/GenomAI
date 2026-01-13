@@ -23,7 +23,7 @@ import os
 from src.core.http_client import get_http_client
 from typing import Optional
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.utils.errors import SupabaseError
 
@@ -51,6 +51,12 @@ DAYS_STALE_THRESHOLD = 14
 # Fatigue threshold for counting as "high fatigue"
 FATIGUE_THRESHOLD = 0.7
 
+# Total number of metrics tracked
+TOTAL_METRICS = 5
+
+# Quality threshold - if more than 50% metrics failed, quality is "low"
+QUALITY_FAILURE_THRESHOLD = 0.5
+
 
 @dataclass
 class StalenessMetrics:
@@ -71,6 +77,9 @@ class StalenessMetrics:
 
     # Error tracking - which metrics failed to fetch from DB
     error_sources: list = field(default_factory=list)
+
+    # Quality indicator: "high" if most metrics are real, "low" if too many fallbacks
+    quality: str = "high"
 
 
 def _get_credentials():
@@ -167,7 +176,7 @@ async def calculate_win_rate_trend(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     date_7d = (now - timedelta(days=7)).isoformat()
     date_30d = (now - timedelta(days=30)).isoformat()
 
@@ -188,9 +197,7 @@ async def calculate_win_rate_trend(
         return 0.0  # No data = neutral
 
     # Split into 7d and 30d
-    date_7d_dt = datetime.fromisoformat(
-        date_7d.replace("Z", "+00:00").replace("+00:00", "")
-    )
+    date_7d_dt = datetime.fromisoformat(date_7d.replace("Z", "+00:00"))
 
     wins_7d = 0
     total_7d = 0
@@ -213,9 +220,7 @@ async def calculate_win_rate_trend(
 
         # Check if in 7d window
         try:
-            row_date = datetime.fromisoformat(
-                created_at.replace("Z", "+00:00").replace("+00:00", "")
-            )
+            row_date = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             if row_date >= date_7d_dt:
                 total_7d += 1
                 if is_win:
@@ -298,9 +303,7 @@ async def calculate_fatigue_ratio(
 
     # Count high fatigue ideas
     high_fatigue_count = sum(
-        1
-        for fv in latest_fatigue.values()
-        if fv is not None and float(fv) > FATIGUE_THRESHOLD
+        1 for fv in latest_fatigue.values() if fv is not None and float(fv) > FATIGUE_THRESHOLD
     )
 
     # Ratio based on active ideas count
@@ -346,11 +349,12 @@ async def calculate_days_since_new_component(
         return DAYS_STALE_THRESHOLD * 2
 
     try:
-        last_dt = datetime.fromisoformat(
-            last_created.replace("Z", "+00:00").replace("+00:00", "")
-        )
-        now = datetime.utcnow()
-        delta = now - last_dt.replace(tzinfo=None)
+        last_dt = datetime.fromisoformat(last_created.replace("Z", "+00:00"))
+        # Ensure last_dt is timezone-aware (assume UTC if naive)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - last_dt
         return delta.days
     except (ValueError, TypeError):
         return DAYS_STALE_THRESHOLD
@@ -370,7 +374,7 @@ async def calculate_exploration_success_rate(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     date_30d = (now - timedelta(days=30)).isoformat()
 
     filters = [f"created_at=gte.{date_30d}"]
@@ -415,9 +419,7 @@ def compute_staleness_score(metrics: StalenessMetrics) -> float:
     fatigue_staleness = metrics.fatigue_ratio
 
     # Normalize days to 0..1 (cap at 2x threshold)
-    days_staleness = min(
-        1.0, metrics.days_since_new_component / (DAYS_STALE_THRESHOLD * 2)
-    )
+    days_staleness = min(1.0, metrics.days_since_new_component / (DAYS_STALE_THRESHOLD * 2))
 
     # Invert exploration success (high success = low staleness)
     exploration_staleness = 1.0 - metrics.exploration_success_rate
@@ -514,12 +516,25 @@ async def calculate_staleness_metrics(
         error_sources.append("exploration_success_rate")
         exploration = 0.5  # Neutral fallback
 
-    # Log warning if any metrics failed - indicates potential DB issues
-    if error_sources:
+    # Determine quality based on failure ratio
+    failed_count = len(error_sources)
+    failure_ratio = failed_count / TOTAL_METRICS
+    quality = "low" if failure_ratio > QUALITY_FAILURE_THRESHOLD else "high"
+
+    # Log appropriate warning based on quality
+    if quality == "low":
+        logger.warning(
+            "Staleness score UNRELIABLE: %d/%d metrics failed (>50%%). "
+            "Failed metrics: %s. Score should not be used for decisions.",
+            failed_count,
+            TOTAL_METRICS,
+            error_sources,
+        )
+    elif error_sources:
         logger.warning(
             "Staleness metrics calculated with %d/%d fallback values due to errors: %s",
-            len(error_sources),
-            5,
+            failed_count,
+            TOTAL_METRICS,
             error_sources,
         )
 
@@ -536,6 +551,7 @@ async def calculate_staleness_metrics(
         geo=geo,
         vertical=vertical,
         error_sources=error_sources,
+        quality=quality,
     )
 
     # Compute composite score
@@ -582,11 +598,10 @@ async def save_staleness_snapshot(
     payload = {k: v for k, v in payload.items() if v is not None}
 
     client = get_http_client()
-    response = await client.post(
-        f"{rest_url}/staleness_snapshots", headers=headers, json=payload
-    )
+    response = await client.post(f"{rest_url}/staleness_snapshots", headers=headers, json=payload)
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def get_latest_staleness(
@@ -655,6 +670,8 @@ async def check_staleness_and_act(
         # Error tracking - indicates which metrics used fallback values due to DB errors
         "has_db_errors": len(metrics.error_sources) > 0,
         "error_sources": metrics.error_sources,
+        # Quality indicator: "high" = reliable score, "low" = >50% metrics failed
+        "quality": metrics.quality,
     }
 
     if metrics.is_stale:
@@ -662,10 +679,16 @@ async def check_staleness_and_act(
         # Priority: cross_transfer (cheaper) > external_injection
         result["recommended_action"] = "cross_transfer"
 
-    # Save snapshot
+    # Save snapshot with quality metadata
     snapshot = await save_staleness_snapshot(
         metrics,
         action_taken="none",  # Action will be updated after actual injection
+        action_details={
+            "quality": metrics.quality,
+            "failed_metrics_count": len(metrics.error_sources),
+            "total_metrics": TOTAL_METRICS,
+            "error_sources": metrics.error_sources,
+        },
     )
     result["snapshot_id"] = snapshot.get("id")
 

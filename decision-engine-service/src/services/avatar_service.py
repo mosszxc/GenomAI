@@ -128,9 +128,7 @@ async def create_avatar(
         existing = await find_avatar_by_hash(canonical_hash)
         if existing:
             return existing
-        raise SupabaseError(
-            f"Avatar with hash {canonical_hash} already exists but not found"
-        )
+        raise SupabaseError(f"Avatar with hash {canonical_hash} already exists but not found")
 
     response.raise_for_status()
     data = response.json()

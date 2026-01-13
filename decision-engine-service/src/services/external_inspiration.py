@@ -13,13 +13,16 @@ Flow:
 Issue: Inspiration System
 """
 
+import logging
 import os
 from src.core.http_client import get_http_client
-from typing import Optional, List
+from typing import Any, Optional, List
 from dataclasses import dataclass
 from datetime import datetime
 
 from src.utils.errors import SupabaseError
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = "genomai"
@@ -142,7 +145,7 @@ async def update_external_inspiration(
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    payload = {}
+    payload: dict[str, Any] = {}
     if extracted_components is not None:
         payload["extracted_components"] = extracted_components
         payload["processed_at"] = datetime.utcnow().isoformat()
@@ -181,10 +184,7 @@ async def get_pending_inspirations(limit: int = 10) -> List[dict]:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/external_inspirations"
-        f"?status=eq.pending"
-        f"&order=created_at.asc"
-        f"&limit={limit}",
+        f"{rest_url}/external_inspirations?status=eq.pending&order=created_at.asc&limit={limit}",
         headers=headers,
     )
     response.raise_for_status()
@@ -203,10 +203,7 @@ async def get_extracted_inspirations(limit: int = 10) -> List[dict]:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/external_inspirations"
-        f"?status=eq.extracted"
-        f"&order=created_at.asc"
-        f"&limit={limit}",
+        f"{rest_url}/external_inspirations?status=eq.extracted&order=created_at.asc&limit={limit}",
         headers=headers,
     )
     response.raise_for_status()
@@ -276,9 +273,8 @@ async def inject_external_components(
             )
             injected.append(result)
             injected_components[component_type] = component_value
-        except Exception:
-            # Continue with other components
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to inject component {component_type}={component_value}: {e}")
 
     # Update inspiration status
     await update_external_inspiration(
@@ -310,7 +306,7 @@ async def get_inspiration_stats() -> dict:
     response.raise_for_status()
     data = response.json()
 
-    by_status = {}
+    by_status: dict[str, int] = {}
     for row in data:
         status = row.get("status", "unknown")
         by_status[status] = by_status.get(status, 0) + 1
@@ -323,7 +319,7 @@ async def get_inspiration_stats() -> dict:
     response.raise_for_status()
     data = response.json()
 
-    by_source = {}
+    by_source: dict[str, int] = {}
     for row in data:
         source = row.get("source_type", "unknown")
         by_source[source] = by_source.get(source, 0) + 1

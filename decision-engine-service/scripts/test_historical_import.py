@@ -58,9 +58,7 @@ async def main(buyer_id: str, keitaro_source: str):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print(
-            "Usage: python -m scripts.test_historical_import <buyer_id> <keitaro_source>"
-        )
+        print("Usage: python -m scripts.test_historical_import <buyer_id> <keitaro_source>")
         sys.exit(1)
 
     buyer_id = sys.argv[1]

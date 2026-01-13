@@ -186,7 +186,9 @@ def extract_events_emitted(nodes: list) -> list[str]:
         if "emit" in node_name:
             # Try to extract event type from node name
             # e.g., "Emit CreativeRegistered" -> "CreativeRegistered"
-            match = re.search(r"emit\s+([a-zA-Z]+)", node.get("name", ""), re.IGNORECASE)
+            match = re.search(
+                r"emit\s+([a-zA-Z]+)", node.get("name", ""), re.IGNORECASE
+            )
             if match:
                 events.append(match.group(1))
 
@@ -262,7 +264,7 @@ def generate_mermaid_diagram(workflows: dict) -> str:
 
     # Add subgraphs
     if groups["telegram"]:
-        lines.append("    subgraph Telegram[\"Telegram Entry Points\"]")
+        lines.append('    subgraph Telegram["Telegram Entry Points"]')
         for name in groups["telegram"]:
             short = name.replace("_", "")[:15]
             lines.append(f"        {short}[{name}]")
@@ -270,7 +272,7 @@ def generate_mermaid_diagram(workflows: dict) -> str:
         lines.append("")
 
     if groups["schedule"]:
-        lines.append("    subgraph Scheduled[\"Scheduled Jobs\"]")
+        lines.append('    subgraph Scheduled["Scheduled Jobs"]')
         for name in groups["schedule"]:
             short = name.replace("_", "")[:15]
             lines.append(f"        {short}[{name}]")

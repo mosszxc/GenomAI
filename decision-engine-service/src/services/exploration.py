@@ -242,11 +242,10 @@ async def log_exploration(
     payload = {k: v for k, v in payload.items() if v is not None}
 
     client = get_http_client()
-    response = await client.post(
-        f"{rest_url}/exploration_log", headers=headers, json=payload
-    )
+    response = await client.post(f"{rest_url}/exploration_log", headers=headers, json=payload)
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def record_exploration_outcome(
@@ -285,7 +284,8 @@ async def record_exploration_outcome(
         json=payload,
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def select_component_with_exploration(
@@ -339,20 +339,14 @@ async def select_component_with_exploration(
         )
 
     # Find best known option (highest win rate with sufficient samples)
-    confident_options = [
-        o for o in all_options if o.sample_size >= MIN_SAMPLES_FOR_CONFIDENCE
-    ]
+    confident_options = [o for o in all_options if o.sample_size >= MIN_SAMPLES_FOR_CONFIDENCE]
     exploitation_score = None
     if confident_options:
-        best_known = max(
-            confident_options, key=lambda o: o.win_count / max(o.sample_size, 1)
-        )
+        best_known = max(confident_options, key=lambda o: o.win_count / max(o.sample_size, 1))
         exploitation_score = best_known.win_count / max(best_known.sample_size, 1)
 
     # Thompson Sampling selection
-    selected, exploration_score, is_exploration = select_with_thompson_sampling(
-        all_options
-    )
+    selected, exploration_score, is_exploration = select_with_thompson_sampling(all_options)
 
     exploration_type = get_exploration_type(selected) if is_exploration else None
 

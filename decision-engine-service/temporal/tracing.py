@@ -34,9 +34,7 @@ import structlog
 from structlog.typing import EventDict, WrappedLogger
 
 
-def _add_timestamp(
-    logger: WrappedLogger, method_name: str, event_dict: EventDict
-) -> EventDict:
+def _add_timestamp(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
     """Add ISO timestamp to log events."""
     import datetime
 
@@ -44,17 +42,13 @@ def _add_timestamp(
     return event_dict
 
 
-def _add_log_level(
-    logger: WrappedLogger, method_name: str, event_dict: EventDict
-) -> EventDict:
+def _add_log_level(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
     """Add log level to event dict."""
     event_dict["level"] = method_name.upper()
     return event_dict
 
 
-def _rename_event_key(
-    logger: WrappedLogger, method_name: str, event_dict: EventDict
-) -> EventDict:
+def _rename_event_key(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
     """Rename 'event' to 'message' for consistency."""
     if "event" in event_dict:
         event_dict["message"] = event_dict.pop("event")
@@ -170,9 +164,7 @@ def get_activity_logger(**context: Any) -> structlog.stdlib.BoundLogger:
     return structlog.get_logger().bind(**bound_context)
 
 
-def get_logger(
-    name: Optional[str] = None, **context: Any
-) -> structlog.stdlib.BoundLogger:
+def get_logger(name: Optional[str] = None, **context: Any) -> structlog.stdlib.BoundLogger:
     """
     Get a generic structured logger with optional context binding.
 

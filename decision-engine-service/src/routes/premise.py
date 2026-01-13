@@ -7,7 +7,7 @@ Issue: #169
 import os
 from src.core.http_client import get_http_client
 from src.core.supabase import get_supabase
-from fastapi import APIRouter, Header, HTTPException, Depends
+from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional
 from dataclasses import asdict
@@ -135,9 +135,9 @@ async def select_premise(request: SelectRequest, _: bool = Depends(verify_api_ke
         return SelectResponse(**asdict(result))
 
     except SupabaseError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Selection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Selection failed: {str(e)}") from e
 
 
 @router.get("/top")
@@ -145,7 +145,7 @@ async def get_top(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
     avatar_id: Optional[str] = None,
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=1000),
     _: bool = Depends(verify_api_key),
 ):
     """
@@ -168,16 +168,16 @@ async def get_top(
         return {"premises": results, "count": len(results)}
 
     except SupabaseError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e
 
 
 @router.get("/active")
 async def get_active(
     vertical: Optional[str] = None,
     geo: Optional[str] = None,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=1000),
     _: bool = Depends(verify_api_key),
 ):
     """
@@ -197,15 +197,13 @@ async def get_active(
         return {"premises": results, "count": len(results)}
 
     except SupabaseError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e
 
 
 @router.post("/", response_model=PremiseResponse)
-async def create_premise(
-    request: CreatePremiseRequest, _: bool = Depends(verify_api_key)
-):
+async def create_premise(request: CreatePremiseRequest, _: bool = Depends(verify_api_key)):
     """
     POST /premise/
 
@@ -251,7 +249,7 @@ async def create_premise(
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Missing Supabase credentials")
+        raise HTTPException(status_code=500, detail="Missing Supabase credentials") from None
 
     try:
         headers = sb.get_headers(for_write=True)
@@ -289,7 +287,7 @@ async def create_premise(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Create failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Create failed: {str(e)}") from e
 
 
 @router.get("/{premise_id}")
@@ -302,15 +300,13 @@ async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Missing Supabase credentials")
+        raise HTTPException(status_code=500, detail="Missing Supabase credentials") from None
 
     try:
         headers = sb.get_headers()
 
         client = get_http_client()
-        response = await client.get(
-            f"{sb.rest_url}/premises?id=eq.{premise_id}", headers=headers
-        )
+        response = await client.get(f"{sb.rest_url}/premises?id=eq.{premise_id}", headers=headers)
         response.raise_for_status()
         data = response.json()
 
@@ -322,4 +318,4 @@ async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e
