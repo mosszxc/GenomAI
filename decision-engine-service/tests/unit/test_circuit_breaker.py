@@ -274,19 +274,16 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         recent_update = now - timedelta(minutes=5)
 
-        # Response for metrics query
-        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat()}])
+        # Response for raw_metrics_current table query (Issue #706)
+        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat() + "Z"}])
         # Response for circuit breaker state query
         circuit_response = create_mock_response(
             [{"value": {"state": "closed", "failure_count": 0}}]
         )
 
-        call_count = [0]
-
-        async def mock_get(*args, **kwargs):
-            call_count[0] += 1
-            # First call is for metrics, second is for circuit breaker
-            if "raw_metrics_current" in args[0]:
+        async def mock_get(url, *args, **kwargs):
+            # Distinguish between metrics and circuit breaker queries
+            if "raw_metrics_current" in url:
                 return metrics_response
             return circuit_response
 
@@ -309,13 +306,14 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         old_update = now - timedelta(minutes=45)
 
-        metrics_response = create_mock_response([{"updated_at": old_update.isoformat()}])
+        # Response for raw_metrics_current table query (Issue #706)
+        metrics_response = create_mock_response([{"updated_at": old_update.isoformat() + "Z"}])
         circuit_response = create_mock_response(
             [{"value": {"state": "closed", "failure_count": 0}}]
         )
 
-        async def mock_get(*args, **kwargs):
-            if "raw_metrics_current" in args[0]:
+        async def mock_get(url, *args, **kwargs):
+            if "raw_metrics_current" in url:
                 return metrics_response
             return circuit_response
 
@@ -337,7 +335,8 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         recent_update = now - timedelta(minutes=5)
 
-        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat()}])
+        # Response for raw_metrics_current table query (Issue #706)
+        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat() + "Z"}])
         circuit_response = create_mock_response(
             [
                 {
@@ -350,8 +349,8 @@ class TestMetricsStaleness:
             ]
         )
 
-        async def mock_get(*args, **kwargs):
-            if "raw_metrics_current" in args[0]:
+        async def mock_get(url, *args, **kwargs):
+            if "raw_metrics_current" in url:
                 return metrics_response
             return circuit_response
 

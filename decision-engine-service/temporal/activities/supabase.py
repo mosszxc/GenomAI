@@ -61,6 +61,7 @@ async def create_creative(
     buyer_id: Optional[str] = None,
     target_geo: Optional[str] = None,
     target_vertical: Optional[str] = None,
+    tracker_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Create new creative in Supabase.
@@ -71,6 +72,7 @@ async def create_creative(
         buyer_id: Optional buyer UUID
         target_geo: Optional target GEO
         target_vertical: Optional target vertical
+        tracker_id: Optional Keitaro campaign/tracker ID (Issue #709)
 
     Returns:
         Created creative dict with id
@@ -102,6 +104,8 @@ async def create_creative(
         creative["target_geo"] = target_geo
     if target_vertical:
         creative["target_vertical"] = target_vertical
+    if tracker_id:
+        creative["tracker_id"] = tracker_id.strip()
 
     client = get_http_client()
     response = await client.post(

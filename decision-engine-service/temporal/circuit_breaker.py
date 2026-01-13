@@ -84,6 +84,9 @@ RECOVERY_TIMEOUT_MINUTES = 5  # Time before attempting recovery (half-open)
 CONFIG_KEY = "keitaro_circuit_breaker"
 
 
+SCHEMA = "genomai"
+
+
 def _get_rest_url() -> str:
     """Get Supabase REST API URL"""
     return f"{settings.supabase.url}/rest/v1"
@@ -95,9 +98,11 @@ def _get_headers(for_write: bool = False) -> dict:
         "apikey": settings.supabase.service_role_key,
         "Authorization": f"Bearer {settings.supabase.service_role_key}",
         "Content-Type": "application/json",
+        "Accept-Profile": SCHEMA,
     }
     if for_write:
         headers["Prefer"] = "return=representation"
+        headers["Content-Profile"] = SCHEMA
     return headers
 
 
@@ -230,6 +235,9 @@ async def get_metrics_staleness() -> dict:
     """
     Get metrics staleness information for health check.
 
+    Issue #706: Uses direct table access with Accept-Profile header
+    for genomai schema. RPC approach had type mismatch issues.
+
     Returns:
         dict with staleness info and circuit breaker state
     """
@@ -237,7 +245,7 @@ async def get_metrics_staleness() -> dict:
         rest_url = _get_rest_url()
         headers = _get_headers()
 
-        # Get latest metrics timestamp
+        # Direct table access with Accept-Profile header for genomai schema
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{rest_url}/raw_metrics_current?select=updated_at&order=updated_at.desc&limit=1",

@@ -118,6 +118,34 @@ async def fetch_unprocessed_outcomes(limit: int = 100) -> list:
     return cast(list[Any], response.json())
 
 
+async def fetch_last_processed_at() -> Optional[str]:
+    """
+    Fetch timestamp of last processed outcome.
+
+    Returns:
+        ISO timestamp of the last outcome where learning_applied=true,
+        or None if no outcomes have been processed yet.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+
+    client = get_http_client()
+    response = await client.get(
+        f"{rest_url}/outcome_aggregates"
+        f"?learning_applied=eq.true"
+        f"&select=created_at"
+        f"&order=created_at.desc"
+        f"&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if data:
+        return data[0].get("created_at")
+    return None
+
+
 async def resolve_idea_for_outcome(outcome: dict) -> Optional[str]:
     """
     Resolve idea_id for an outcome via decomposed_creatives.

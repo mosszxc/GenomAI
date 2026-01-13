@@ -2,10 +2,15 @@
 Temporal Schedules Management
 
 Creates and manages scheduled workflows:
-- Keitaro Poller (every hour) → triggers metrics-processor → triggers learning-loop
+- Keitaro Poller (every hour) → triggers metrics-processor → learning-loop (as children)
+- Metrics Processor (every hour) — catch-up for missed snapshots
+- Learning Loop (every hour) — catch-up for missed outcomes
 - Daily Recommendations (09:00 UTC)
 - Maintenance (every 6 hours)
 - Health Check (every 3 hours)
+
+Note: metrics-processor and learning-loop run both as child workflows (from keitaro-poller)
+AND as independent schedules for recovery/catch-up scenarios.
 
 Usage:
     python -m temporal.schedules create
@@ -36,9 +41,11 @@ from temporal.workflows.recommendation import (
 )
 from temporal.workflows.maintenance import MaintenanceWorkflow, MaintenanceInput
 from temporal.workflows.health_check import HealthCheckWorkflow, HealthCheckInput
-
-# NOTE: MetricsProcessingWorkflow and LearningLoopWorkflow imports removed.
-# They are now triggered as child workflows from keitaro-poller, not scheduled separately.
+from temporal.workflows.metrics_processing import (
+    MetricsProcessingWorkflow,
+    MetricsProcessingInput,
+)
+from temporal.workflows.learning_loop import LearningLoopWorkflow, LearningLoopInput
 
 
 logging.basicConfig(
@@ -57,9 +64,27 @@ SCHEDULES = {
         "execution_timeout": timedelta(minutes=30),  # Issue #553: prevent unbounded execution
         "description": "Polls Keitaro hourly, then triggers metrics-processor → learning-loop chain",
     },
-    # NOTE: metrics-processor and learning-loop removed from schedules.
-    # They are now triggered as child workflows:
-    # keitaro-poller → metrics-processor (child) → learning-loop (child)
+    # metrics-processor and learning-loop are ALSO triggered as child workflows
+    # from keitaro-poller, but having them as separate schedules provides:
+    # 1. Catch-up for missed snapshots/outcomes (if child chain failed)
+    # 2. Independent operation for recovery scenarios
+    # 3. Ability to trigger processing without full keitaro poll
+    "metrics-processor": {
+        "workflow": MetricsProcessingWorkflow.run,
+        "args": [MetricsProcessingInput(batch_limit=50, trigger_learning=True)],
+        "task_queue": settings.temporal.TASK_QUEUE_METRICS,
+        "interval": timedelta(hours=1),
+        "execution_timeout": timedelta(minutes=15),
+        "description": "Processes snapshots into outcomes, triggers learning-loop",
+    },
+    "learning-loop": {
+        "workflow": LearningLoopWorkflow.run,
+        "args": [LearningLoopInput(batch_limit=100, process_individually=False)],
+        "task_queue": settings.temporal.TASK_QUEUE_METRICS,
+        "interval": timedelta(hours=1),
+        "execution_timeout": timedelta(minutes=20),
+        "description": "Applies learnings from outcomes to ideas",
+    },
     "daily-recommendations": {
         "workflow": DailyRecommendationWorkflow.run,
         "args": [DailyRecommendationInput(skip_existing=True, max_recommendations=0)],
