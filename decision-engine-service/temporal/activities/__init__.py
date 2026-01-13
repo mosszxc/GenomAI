@@ -103,6 +103,11 @@ from temporal.activities.module_learning import (
     update_compatibility_stats,
     process_module_learning,
 )
+from temporal.activities.module_snapshots import (
+    create_weekly_snapshots,
+    get_module_trend,
+    get_trending_modules,
+)
 
 __all__ = [
     # Supabase activities
@@ -190,4 +195,8 @@ __all__ = [
     "update_module_stats",
     "update_compatibility_stats",
     "process_module_learning",
+    # Module snapshots activities (CPA & Trend Tracking #601)
+    "create_weekly_snapshots",
+    "get_module_trend",
+    "get_trending_modules",
 ]

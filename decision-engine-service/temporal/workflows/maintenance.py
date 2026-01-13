@@ -48,6 +48,10 @@ with workflow.unsafe.imports_passed_through():
         retry_failed_hypotheses,
         cleanup_exhausted_hypotheses,
     )
+    from temporal.activities.module_snapshots import (
+        create_weekly_snapshots,
+        CreateWeeklySnapshotsInput,
+    )
     from temporal.workflows.creative_pipeline import CreativePipelineWorkflow
     from temporal.models.creative import CreativeInput
 
@@ -93,6 +97,9 @@ class MaintenanceInput:
     # Stuck recovery force threshold (Issue #481)
     # If stuck > this many minutes, force cancel + reset + restart
     stuck_recovery_force_threshold_minutes: int = 120  # 2 hours
+    # Module weekly snapshots (CPA & Trend Tracking #601)
+    # Runs on Mondays only (checked via workflow.now().weekday() == 0)
+    run_weekly_snapshots: bool = True
     # Continue-as-new state (Issue #555): track processed creative IDs
     # to avoid re-processing after continue-as-new
     _processed_stuck_ids: List[str] = field(default_factory=list)
@@ -133,6 +140,9 @@ class MaintenanceResult:
     # Failed creatives retry (Issue #472)
     failed_creatives_retried: int = 0
     failed_creatives_abandoned: int = 0
+    # Module weekly snapshots (CPA & Trend Tracking #601)
+    module_snapshots_created: int = 0
+    module_snapshots_updated: int = 0
 
 
 @workflow.defn
@@ -588,6 +598,32 @@ class MaintenanceWorkflow:
                 workflow.logger.error(f"Failed creatives retry failed: {e}")
                 result.integrity_issues.append(f"Failed retry error: {e}")
 
+        # Step 10b: Create weekly module snapshots (CPA & Trend Tracking #601)
+        # Only run on Mondays to create weekly snapshots
+        if input.run_weekly_snapshots and workflow.now().weekday() == 0:
+            try:
+                snapshot_result = await workflow.execute_activity(
+                    create_weekly_snapshots,
+                    CreateWeeklySnapshotsInput(),
+                    start_to_close_timeout=timedelta(seconds=300),  # 5 min for large module banks
+                    retry_policy=retry_policy,
+                )
+                result.module_snapshots_created = snapshot_result.snapshots_created
+                result.module_snapshots_updated = snapshot_result.snapshots_updated
+
+                total = snapshot_result.snapshots_created + snapshot_result.snapshots_updated
+                if total > 0:
+                    workflow.logger.info(
+                        f"Module snapshots: {snapshot_result.snapshots_created} created, "
+                        f"{snapshot_result.snapshots_updated} updated for week {snapshot_result.week_id}"
+                    )
+                if snapshot_result.errors:
+                    for err in snapshot_result.errors[:5]:  # Log first 5 errors
+                        workflow.logger.warning(f"Snapshot error: {err}")
+            except Exception as e:
+                workflow.logger.error(f"Weekly snapshots failed: {e}")
+                result.integrity_issues.append(f"Weekly snapshots error: {e}")
+
         # Step 11: Emit maintenance event
         result.completed_at = workflow.now().isoformat()
 
@@ -612,7 +648,8 @@ class MaintenanceWorkflow:
             f"stuck_recovered={result.stuck_creatives_recovered}, "
             f"orphaned_hypotheses={result.orphaned_hypotheses_deleted}, "
             f"failed_retried={result.failed_creatives_retried}, "
-            f"failed_abandoned={result.failed_creatives_abandoned}"
+            f"failed_abandoned={result.failed_creatives_abandoned}, "
+            f"module_snapshots={result.module_snapshots_created + result.module_snapshots_updated}"
         )
 
         # Issue #555: Continue-as-new if there are more creatives to process
