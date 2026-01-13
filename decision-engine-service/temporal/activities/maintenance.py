@@ -150,30 +150,35 @@ async def mark_stuck_transcriptions_failed(timeout_minutes: int = 10) -> int:
         activity.logger.info("No stuck transcriptions found")
         return 0
 
-    # Check which ones have transcripts
-    stuck_ids = []
-    for creative in registered_creatives:
-        transcript_resp = await client.get(
-            f"{rest_url}/transcripts?creative_id=eq.{creative['id']}&limit=1",
-            headers=_get_headers(supabase_key),
-        )
-        if transcript_resp.status_code == 200 and not transcript_resp.json():
-            stuck_ids.append(creative["id"])
+    # Batch check which ones have transcripts (O(1) instead of O(n))
+    creative_ids = [c["id"] for c in registered_creatives]
+    transcript_resp = await client.get(
+        f"{rest_url}/transcripts"
+        f"?creative_id=in.({','.join(creative_ids)})"
+        "&select=creative_id",
+        headers=_get_headers(supabase_key),
+    )
+
+    # Find creatives WITHOUT transcripts
+    creatives_with_transcripts = set()
+    if transcript_resp.status_code == 200:
+        creatives_with_transcripts = {t["creative_id"] for t in transcript_resp.json()}
+
+    stuck_ids = [cid for cid in creative_ids if cid not in creatives_with_transcripts]
 
     if not stuck_ids:
         activity.logger.info("No stuck transcriptions found")
         return 0
 
-    # Mark as transcription_failed
-    for creative_id in stuck_ids:
-        await client.patch(
-            f"{rest_url}/creatives?id=eq.{creative_id}",
-            headers=headers,
-            json={
-                "status": "transcription_failed",
-                "updated_at": datetime.utcnow().isoformat(),
-            },
-        )
+    # Batch update all stuck creatives (O(1) instead of O(n))
+    await client.patch(
+        f"{rest_url}/creatives?id=in.({','.join(stuck_ids)})",
+        headers=headers,
+        json={
+            "status": "transcription_failed",
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
 
     activity.logger.info(f"Marked {len(stuck_ids)} creatives as transcription_failed")
     return len(stuck_ids)
@@ -221,24 +226,18 @@ async def archive_failed_creatives(retention_days: int = 7) -> int:
         activity.logger.info("No old failed creatives found")
         return 0
 
-    # Archive them
-    archived_count = 0
-    for creative in failed_creatives:
-        archive_resp = await client.patch(
-            f"{rest_url}/creatives?id=eq.{creative['id']}",
-            headers=headers,
-            json={
-                "status": "archived",
-                "updated_at": datetime.utcnow().isoformat(),
-            },
-        )
-        if archive_resp.status_code in (200, 204):
-            archived_count += 1
-            activity.logger.info(
-                f"Archived creative {creative['id'][:8]} "
-                f"(failed since {creative['updated_at'][:10]})"
-            )
+    # Batch archive all failed creatives (O(1) instead of O(n))
+    creative_ids = [c["id"] for c in failed_creatives]
+    archive_resp = await client.patch(
+        f"{rest_url}/creatives?id=in.({','.join(creative_ids)})",
+        headers=headers,
+        json={
+            "status": "archived",
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
 
+    archived_count = len(creative_ids) if archive_resp.status_code in (200, 204) else 0
     activity.logger.info(f"Archived {archived_count} failed creatives")
     return archived_count
 
@@ -275,14 +274,23 @@ async def check_data_integrity() -> List[str]:
     if response.status_code == 200:
         old_ideas = response.json()
 
-        # Check which ones have decisions
-        for idea in old_ideas:
+        if old_ideas:
+            # Batch check which ideas have decisions (O(1) instead of O(n))
+            idea_ids = [idea["id"] for idea in old_ideas]
             decision_resp = await client.get(
-                f"{rest_url}/decisions?idea_id=eq.{idea['id']}&limit=1",
+                f"{rest_url}/decisions"
+                f"?idea_id=in.({','.join(idea_ids)})"
+                "&select=idea_id",
                 headers=headers,
             )
-            if decision_resp.status_code == 200 and not decision_resp.json():
-                issues.append(f"Idea {idea['id'][:8]} has no decision after 24h")
+
+            ideas_with_decisions = set()
+            if decision_resp.status_code == 200:
+                ideas_with_decisions = {d["idea_id"] for d in decision_resp.json()}
+
+            for idea in old_ideas:
+                if idea["id"] not in ideas_with_decisions:
+                    issues.append(f"Idea {idea['id'][:8]} has no decision after 24h")
 
     # Check 2: Pending hypotheses for > 1h without delivery
     # Only check hypotheses with status=pending (exclude failed/delivered)
@@ -357,19 +365,14 @@ async def cleanup_orphaned_hypotheses() -> int:
         activity.logger.info("No orphaned hypotheses found")
         return 0
 
-    # Delete orphaned hypotheses
+    # Batch delete all orphaned hypotheses (O(1) instead of O(n))
     orphan_ids = [h["id"] for h in orphaned]
-    deleted_count = 0
+    delete_resp = await client.delete(
+        f"{rest_url}/hypotheses?id=in.({','.join(orphan_ids)})",
+        headers=headers,
+    )
 
-    for orphan_id in orphan_ids:
-        delete_resp = await client.delete(
-            f"{rest_url}/hypotheses?id=eq.{orphan_id}",
-            headers=headers,
-        )
-        if delete_resp.status_code in (200, 204):
-            deleted_count += 1
-            activity.logger.info(f"Deleted orphaned hypothesis {orphan_id[:8]}")
-
+    deleted_count = len(orphan_ids) if delete_resp.status_code in (200, 204) else 0
     activity.logger.info(f"Deleted {deleted_count} orphaned hypotheses")
     return deleted_count
 
@@ -558,25 +561,36 @@ async def find_stuck_creatives(
     if response.status_code == 200:
         pending_creatives = response.json()
 
-        for creative in pending_creatives:
-            # Check if transcript exists
+        if pending_creatives:
+            # Batch check which creatives have transcripts (O(1) instead of O(n))
+            creative_ids = [c["id"] for c in pending_creatives]
             transcript_resp = await client.get(
-                f"{rest_url}/transcripts?creative_id=eq.{creative['id']}&limit=1",
+                f"{rest_url}/transcripts"
+                f"?creative_id=in.({','.join(creative_ids)})"
+                "&select=creative_id",
                 headers=headers,
             )
-            if transcript_resp.status_code == 200 and not transcript_resp.json():
-                stuck_since = creative["created_at"]
-                stuck_creatives.append(
-                    {
-                        "creative_id": creative["id"],
-                        "buyer_id": creative.get("buyer_id"),
-                        "stuck_reason": "transcription",
-                        "stuck_since": stuck_since,
-                        "stuck_duration_minutes": _calculate_stuck_duration_minutes(
-                            stuck_since
-                        ),
-                    }
-                )
+
+            creatives_with_transcripts = set()
+            if transcript_resp.status_code == 200:
+                creatives_with_transcripts = {
+                    t["creative_id"] for t in transcript_resp.json()
+                }
+
+            for creative in pending_creatives:
+                if creative["id"] not in creatives_with_transcripts:
+                    stuck_since = creative["created_at"]
+                    stuck_creatives.append(
+                        {
+                            "creative_id": creative["id"],
+                            "buyer_id": creative.get("buyer_id"),
+                            "stuck_reason": "transcription",
+                            "stuck_since": stuck_since,
+                            "stuck_duration_minutes": _calculate_stuck_duration_minutes(
+                                stuck_since
+                            ),
+                        }
+                    )
 
     # 2. Find creatives stuck on decomposition
     # Has transcript but no decomposed_creative AND transcript created > X minutes ago
@@ -591,39 +605,61 @@ async def find_stuck_creatives(
     if response.status_code == 200:
         transcripts = response.json()
 
-        for transcript in transcripts:
-            creative_id = transcript["creative_id"]
+        if transcripts:
+            # Batch check which transcripts have decomposed_creatives (O(1) instead of O(n))
+            transcript_creative_ids = [t["creative_id"] for t in transcripts]
 
-            # Check if decomposed_creative exists
             decomp_resp = await client.get(
-                f"{rest_url}/decomposed_creatives?creative_id=eq.{creative_id}&limit=1",
+                f"{rest_url}/decomposed_creatives"
+                f"?creative_id=in.({','.join(transcript_creative_ids)})"
+                "&select=creative_id",
                 headers=headers,
             )
 
-            if decomp_resp.status_code == 200 and not decomp_resp.json():
-                # Get buyer_id from creative
+            creatives_with_decomp = set()
+            if decomp_resp.status_code == 200:
+                creatives_with_decomp = {d["creative_id"] for d in decomp_resp.json()}
+
+            # Find stuck creative_ids (have transcript but no decomposition)
+            stuck_decomp_ids = [
+                t["creative_id"]
+                for t in transcripts
+                if t["creative_id"] not in creatives_with_decomp
+            ]
+
+            if stuck_decomp_ids:
+                # Batch get buyer_ids for all stuck creatives (O(1) instead of O(n))
                 creative_resp = await client.get(
-                    f"{rest_url}/creatives?id=eq.{creative_id}&select=buyer_id",
+                    f"{rest_url}/creatives"
+                    f"?id=in.({','.join(stuck_decomp_ids)})"
+                    "&select=id,buyer_id",
                     headers=headers,
                 )
-                buyer_id = None
-                if creative_resp.status_code == 200:
-                    creatives = creative_resp.json()
-                    if creatives:
-                        buyer_id = creatives[0].get("buyer_id")
 
-                stuck_since = transcript["created_at"]
-                stuck_creatives.append(
-                    {
-                        "creative_id": creative_id,
-                        "buyer_id": buyer_id,
-                        "stuck_reason": "decomposition",
-                        "stuck_since": stuck_since,
-                        "stuck_duration_minutes": _calculate_stuck_duration_minutes(
-                            stuck_since
-                        ),
+                buyer_id_map = {}
+                if creative_resp.status_code == 200:
+                    buyer_id_map = {
+                        c["id"]: c.get("buyer_id") for c in creative_resp.json()
                     }
-                )
+
+                # Build transcript lookup for stuck_since
+                transcript_map = {
+                    t["creative_id"]: t["created_at"] for t in transcripts
+                }
+
+                for creative_id in stuck_decomp_ids:
+                    stuck_since = transcript_map.get(creative_id, "")
+                    stuck_creatives.append(
+                        {
+                            "creative_id": creative_id,
+                            "buyer_id": buyer_id_map.get(creative_id),
+                            "stuck_reason": "decomposition",
+                            "stuck_since": stuck_since,
+                            "stuck_duration_minutes": _calculate_stuck_duration_minutes(
+                                stuck_since
+                            ),
+                        }
+                    )
 
     if stuck_creatives:
         activity.logger.warning(
