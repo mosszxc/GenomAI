@@ -1,3 +1,52 @@
+## [v1.2.0] - 2026-01-13
+
+### Changes
+- a152a5b Issue #706: /health/metrics возвращает 404 (#706) (#723)
+- bd56548 feat: complete issue #707 (#722)
+- 2429741 feat: complete issue #709 (#721)
+- d3dcb66 feat: complete issue #711 (#720)
+- 203454e feat: complete issue #714 (#719)
+- 79e5083 feat: complete issue #710 (#718)
+- 3a8a8d2 feat: complete issue #706 (#717)
+- a2c78bf feat: complete issue #705 (#716)
+- 2634d78 feat: complete issue #713 (#715)
+- df82a17 feat: complete issue #694 (#704)
+- d7ff3f1 feat: complete issue #693 (#703)
+- c8a5cf9 feat: complete issue #698 (#702)
+- 5a41c23 feat: complete issue #696 (#700)
+- cfe3271 feat: complete issue #697 (#701)
+
+### Issues
+- Closes #693
+- Closes #694
+- Closes #696
+- Closes #697
+- Closes #698
+- Closes #700
+- Closes #701
+- Closes #702
+- Closes #703
+- Closes #704
+- Closes #705
+- Closes #706
+- Closes #707
+- Closes #709
+- Closes #710
+- Closes #711
+- Closes #713
+- Closes #714
+- Closes #715
+- Closes #716
+- Closes #717
+- Closes #718
+- Closes #719
+- Closes #720
+- Closes #721
+- Closes #722
+- Closes #723
+
+---
+
 ## [v1.1.4] - 2026-01-13
 
 **4 issues closed**

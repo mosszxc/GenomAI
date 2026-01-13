@@ -5,7 +5,7 @@
 **GenomAI** — автономная система принятия решений в сфере маркетинга креативов.
 - Market = truth (реальные CPA данные определяют успех)
 - Deterministic + Traceable (каждое решение трассируемо)
-- 15 Temporal workflows, 24 activities, 38 сервисов, 12 API routes
+- 13 Temporal workflows, 23 activities, 29 сервисов, 13 API routers (35+ endpoints)
 
 ---
 
@@ -194,10 +194,10 @@ Task Queue: telegram
   ↓
 [5.2] State Machine (Temporal Signals):
 
-      AWAITING_NAME ─[signal: submit_name]→
-      AWAITING_GEO ─[signal: submit_geos]→
-      AWAITING_VERTICAL ─[signal: submit_vertical]→
-      AWAITING_KEITARO ─[signal: submit_keitaro_source]→
+      AWAITING_NAME ─[text message]→
+      AWAITING_GEO ─[text message]→
+      AWAITING_VERTICAL ─[text message]→
+      AWAITING_KEITARO ─[text message]→
         │
         ├─ Validation: check Keitaro campaigns exist
         │   (max 3 retries with error messages)
@@ -205,10 +205,17 @@ Task Queue: telegram
         └─ Valid:
            LOADING_HISTORY
              ↓
-           [5.3] Queue HistoricalImportWorkflow (child)
+           [5.3] get_campaigns_by_source(sub10):
+                 ├─ Fetch campaigns from Keitaro API
+                 ├─ Fetch metrics via /report/build API
+                 ├─ Select: TOP 10 by profit + LAST 20 by date
+                 └─ Queue HistoricalImportWorkflow (child)
              ↓
-           AWAITING_VIDEOS ─[signal: submit_video]→
-             (loop for each campaign without video)
+           AWAITING_VIDEOS ─[video URL / skip command]→
+             │
+             ├─ Video URL → save & start CreativeRegistrationWorkflow
+             ├─ "-" или "skip" → skip single campaign
+             └─ "--" или "skip all" → skip all remaining
              ↓
            COMPLETED
              ↓
@@ -218,14 +225,17 @@ Task Queue: telegram
 ```
 
 **Ключевые точки тестирования:**
-- Signal timeout: 5 minutes per step
+- Signal timeout: 60 minutes per step
 - State transitions: exact sequence
 - Keitaro source validation (sub10 format)
-- Geo validation (RU, KZ, etc.)
-- Vertical validation (nutra, gambling, etc.)
-- Video URL validation
-- Error message formatting
-- State persistence on timeout
+- Geo validation (list of country codes)
+- Vertical validation (nutra verticals)
+- Video URL validation (YouTube, Google Drive, Dropbox)
+- Skip commands: `-`, `--`, `skip`, `skip all`
+- Campaign selection: top 10 profit + last 20 recent
+- Metrics fetching from Keitaro /report/build
+- Error message formatting (HTML)
+- Timeout handling (60 min → TIMED_OUT state)
 
 ---
 
@@ -236,31 +246,38 @@ Trigger: Onboarding completion OR API POST
 Task Queue: telegram
 
 [6.1] HistoricalImportWorkflow:
-      ├─ keitaro.get_campaigns_by_source(sub10)
-      ├─ For each campaign (batched):
-      │    ├─ queue_historical_import()
+      ├─ keitaro.get_campaigns_by_source(sub10):
+      │    ├─ Fetch all campaigns with sub10 tag
+      │    ├─ Fetch metrics from /report/build
+      │    ├─ Calculate profit = revenue - cost
+      │    └─ Select: TOP 10 by profit + LAST 20 by created_at
+      │
+      ├─ For each selected campaign:
+      │    ├─ Create historical_import_queue record
+      │    │   (status: pending_video, metrics: {name, clicks, conversions, profit})
       │    └─ emit_event()
-      └─ continue-as-new (if > 500 campaigns)
+      │
+      └─ Return total_campaigns count
   ↓
-[6.2] HistoricalVideoHandlerWorkflow (per campaign):
-      ├─ Receive video URL via signal
-      ├─ Validate URL format
-      ├─ Create creative record
-      └─ Trigger CreativePipelineWorkflow
-  ↓
-[6.3] HistoricalBulkImportWorkflow (массовый):
-      └─ Process multiple campaigns in parallel
+[6.2] Video collection (in BuyerOnboardingWorkflow):
+      ├─ For each pending_video campaign:
+      │    ├─ Send campaign info (name, clicks, conversions)
+      │    ├─ Wait for video URL or skip command
+      │    ├─ Update historical_import_queue (video_url, status: ready)
+      │    └─ Start CreativeRegistrationWorkflow (child)
+      └─ Skip commands: "-" (single), "--" (all remaining)
 
 Выход: historical creatives queued for processing
 ```
 
 **Ключевые точки тестирования:**
-- Batch limit: 500 campaigns before continue-as-new
-- Campaign ID uniqueness
-- Video URL formats (YouTube, Drive, Dropbox)
-- Workflow chaining
-- Error handling per campaign
-- Progress tracking
+- Campaign selection: top 10 by profit + last 20 by date
+- Metrics: clicks, conversions, revenue, cost, profit
+- historical_import_queue statuses: pending_video → ready
+- Video URL validation
+- Skip functionality
+- CreativeRegistrationWorkflow triggering
+- Metrics display in Telegram messages
 
 ---
 
@@ -452,7 +469,7 @@ Task Queue: metrics
 
 ---
 
-### P12: Telegram Bot Commands (30 команд)
+### P12: Telegram Bot Commands (~20 команд)
 
 ```
 Trigger: Telegram message/command
@@ -466,14 +483,15 @@ Handler: /src/routes/telegram.py
 └─ /activity → активность покупателя
 
 АНАЛИТИКА:
-├─ /genome → тепловая карта генома
-├─ /confidence → уровень уверенности
-├─ /trends → тренды метрик
+├─ /genome [buyer_id] → тепловая карта генома
+├─ /confidence [idea_id] → уровень уверенности
+├─ /trends [days] → тренды метрик
 ├─ /drift → детектор дрейфа
-└─ /correlations → корреляции
+├─ /correlations → корреляции
+└─ /meta → Meta API dashboard
 
 УПРАВЛЕНИЕ:
-├─ /recommend → генерация рекомендации
+├─ /recommend [buyer_id] → генерация рекомендации
 ├─ /buyers → список покупателей
 ├─ /decisions → история решений
 ├─ /creatives → история креативов
@@ -485,16 +503,15 @@ Handler: /src/routes/telegram.py
 
 ИНТЕРАКТИВНЫЕ:
 ├─ /simulate → what-if симуляции
-├─ /feedback → обратная связь → GitHub Issue
-├─ Video URL detection → CreativePipelineWorkflow
-├─ Document upload → KnowledgeIngestionWorkflow
-└─ Callback queries → button handlers
+├─ /feedback {text} → GitHub Issue creation
+├─ Video URL detection → CreativeRegistrationWorkflow
+└─ Callback queries → inline button handlers
 
-MESSAGE HANDLERS:
-├─ handle_user_message() → onboarding signals
-├─ handle_video_url() → creative registration
-├─ handle_document_upload() → knowledge ingestion
-└─ handle_callback_query() → inline buttons
+MESSAGE HANDLERS (onboarding):
+├─ Text during AWAITING_* → state progression
+├─ Video URL during AWAITING_VIDEOS → save video
+├─ Skip commands ("-", "--") → skip campaigns
+└─ Unknown command → help message
 ```
 
 **Ключевые точки тестирования:**
@@ -504,9 +521,10 @@ MESSAGE HANDLERS:
 - Error tracking (WebhookErrorStats)
 - Chart generation (genome_heatmap, trends)
 - Inline keyboard callbacks
-- File upload handling
 - Video URL detection regex
 - GitHub issue creation from /feedback
+- Onboarding state machine integration
+- Skip commands in AWAITING_VIDEOS state
 
 ---
 
@@ -796,18 +814,16 @@ Task Queues:
 | KeitaroPollerWorkflow | Every 1 hour | metrics | Scheduled |
 | MetricsProcessingWorkflow | - | metrics | Child of KeitaroPoller |
 | LearningLoopWorkflow | - | metrics | Child of MetricsProcessing |
-| DailyRecommendationWorkflow | 09:00 UTC | metrics | Scheduled |
+| RecommendationWorkflow | 09:00 UTC | metrics | Scheduled |
 | MaintenanceWorkflow | Every 6 hours | metrics | Scheduled |
 | HealthCheckWorkflow | Every 3 hours | metrics | Scheduled |
 | CreativePipelineWorkflow | - | creative-pipeline | API/Webhook |
 | ModularHypothesisWorkflow | - | creative-pipeline | Optional child |
 | BuyerOnboardingWorkflow | - | telegram | Telegram /start |
 | HistoricalImportWorkflow | - | telegram | Child of Onboarding |
-| HistoricalVideoHandlerWorkflow | - | telegram | Signal |
 | KnowledgeIngestionWorkflow | - | knowledge | API/Telegram |
 | KnowledgeApplicationWorkflow | - | knowledge | Approval signal |
 | PremiseExtractionWorkflow | - | knowledge | Creative conclusion |
-| SingleRecommendationDeliveryWorkflow | - | metrics | Manual trigger |
 
 ---
 
@@ -838,10 +854,12 @@ Task Queues:
 - **Bank threshold**: minimum modules required
 
 ### R5: Onboarding Rules
-- **Signal Timeout**: 5 minutes per step
+- **Step Timeout**: 60 minutes per step
 - **Keitaro Validation**: max 3 retries
-- **Batch Limit**: 500 campaigns before continue-as-new
-- **Geo validation**: allowed list (RU, KZ, etc.)
+- **Campaign Selection**: top 10 by profit + last 20 by date
+- **Skip Commands**: `-` (single), `--` (all remaining)
+- **Geo validation**: list of country codes
+- **Vertical validation**: nutra verticals
 
 ### R6: Maintenance Rules
 - **Stale State**: 6 hours timeout
@@ -989,12 +1007,17 @@ USE_TEMPORAL_METRICS=<true|false>
 ## Итого
 
 **Найдено процессов:** 15 основных + 9 аналитических сервисов
-**Workflows:** 15 Temporal workflows
-**Activities:** 24 activity modules
-**API Routes:** 12 routers, 37+ endpoints
-**Telegram Commands:** 30 команд
+**Workflows:** 13 Temporal workflows
+**Activities:** 23 activity modules
+**Services:** 29 сервисов
+**API Routes:** 13 routers, 35+ endpoints
+**Telegram Commands:** ~20 команд
 **External Integrations:** 8 (Keitaro, Supabase, Telegram, AssemblyAI, OpenAI, n8n, GitHub, Temporal)
-**Database Tables:** 42 migrations
+**Database Migrations:** 51 миграций
 **Unit Tests:** 16 модулей
 
 Эта карта процессов является полной основой для создания Test Plan.
+
+---
+
+*Последнее обновление: 2025-01-13*
