@@ -47,6 +47,7 @@ class UpdateModuleStatsInput:
     is_win: bool
     spend: float = 0.0
     revenue: float = 0.0
+    conversions: int = 0  # For CPA tracking (#601)
 
 
 @dataclass
@@ -89,7 +90,7 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
     # First get current stats
     get_url = (
         f"{sb.rest_url}/module_bank"
-        f"?id=eq.{input.module_id}&select=sample_size,win_count,loss_count,total_spend,total_revenue"
+        f"?id=eq.{input.module_id}&select=sample_size,win_count,loss_count,total_spend,total_revenue,total_conversions"
     )
 
     try:
@@ -112,8 +113,9 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
         loss_count = (current.get("loss_count") or 0) + (0 if input.is_win else 1)
         total_spend = float(current.get("total_spend") or 0) + input.spend
         total_revenue = float(current.get("total_revenue") or 0) + input.revenue
+        total_conversions = (current.get("total_conversions") or 0) + input.conversions
 
-        # Update stats
+        # Update stats (avg_cpa is generated column - not updated directly)
         update_url = f"{sb.rest_url}/module_bank?id=eq.{input.module_id}"
         update_payload = {
             "sample_size": sample_size,
@@ -121,6 +123,7 @@ async def update_module_stats(input: UpdateModuleStatsInput) -> UpdateModuleStat
             "loss_count": loss_count,
             "total_spend": total_spend,
             "total_revenue": total_revenue,
+            "total_conversions": total_conversions,
             "updated_at": datetime.utcnow().isoformat(),
         }
 
@@ -498,6 +501,7 @@ class ProcessModuleLearningInput:
     is_win: bool
     spend: float = 0.0
     revenue: float = 0.0
+    conversions: int = 0  # For CPA tracking (#601)
 
 
 @dataclass
@@ -550,15 +554,21 @@ async def process_module_learning(
 
     spend_per_module = input.spend / module_count
     revenue_per_module = input.revenue / module_count
+    # Split conversions evenly across modules (rounded down, remainder distributed to first modules)
+    conversions_per_module = input.conversions // module_count
+    conversions_remainder = input.conversions % module_count
 
     # Update each module
-    for module_id in input.module_ids:
+    for idx, module_id in enumerate(input.module_ids):
+        # Distribute remainder conversions to first N modules
+        module_conversions = conversions_per_module + (1 if idx < conversions_remainder else 0)
         module_result = await update_module_stats(
             UpdateModuleStatsInput(
                 module_id=module_id,
                 is_win=input.is_win,
                 spend=spend_per_module,
                 revenue=revenue_per_module,
+                conversions=module_conversions,
             )
         )
         if module_result.success:
@@ -654,7 +664,7 @@ async def process_module_learning_batch(
             f"{sb.rest_url}/outcome_aggregates"
             f"?learning_applied=eq.true"
             f"&created_at=gte.{cutoff_iso}"
-            f"&select=creative_id,cpa,spend"
+            f"&select=creative_id,cpa,spend,conversions"
             f"&limit=100"
         )
         response = await client.get(outcomes_url, headers=headers, timeout=30.0)
@@ -684,6 +694,7 @@ async def process_module_learning_batch(
                 # Determine win/loss based on CPA
                 cpa = float(outcome.get("cpa") or 0)
                 spend = float(outcome.get("spend") or 0)
+                conversions = int(outcome.get("conversions") or 0)
                 is_win = cpa > 0 and cpa < TARGET_CPA
 
                 # Process module learning
@@ -694,6 +705,7 @@ async def process_module_learning_batch(
                         is_win=is_win,
                         spend=spend,
                         revenue=spend / cpa if cpa > 0 else 0,  # Estimate revenue
+                        conversions=conversions,
                     )
                 )
 

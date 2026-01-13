@@ -161,6 +161,13 @@ from temporal.activities.module_learning import (
     process_module_learning_batch,
 )
 
+# Import activities - Module Snapshots (CPA & Trend Tracking #601)
+from temporal.activities.module_snapshots import (
+    create_weekly_snapshots,
+    get_module_trend,
+    get_trending_modules,
+)
+
 # Import activities - Recommendation
 from temporal.activities.recommendation import (
     get_active_buyers,
@@ -419,6 +426,10 @@ async def run_all_workers():
             update_compatibility_stats,
             process_module_learning,
             process_module_learning_batch,
+            # Module snapshots activities (CPA & Trend Tracking #601)
+            create_weekly_snapshots,
+            get_module_trend,
+            get_trending_modules,
             # Recommendation activities
             get_active_buyers,
             generate_recommendation_for_buyer,
