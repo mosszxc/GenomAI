@@ -2030,13 +2030,15 @@ def format_admin_notification(event_type: str, data: dict) -> str:
     return ""
 
 
-# Admin telegram IDs (for knowledge extraction)
-ADMIN_TELEGRAM_IDS = ["291678304"]
+# Admin telegram IDs (from environment variable)
+ADMIN_TELEGRAM_IDS = [
+    aid.strip() for aid in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if aid.strip()
+]
 
 
 def is_admin(telegram_id: str) -> bool:
     """Check if user is admin."""
-    return telegram_id in ADMIN_TELEGRAM_IDS
+    return bool(telegram_id and telegram_id in ADMIN_TELEGRAM_IDS)
 
 
 async def handle_knowledge_command(message: TelegramMessage) -> None:
