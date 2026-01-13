@@ -1,25 +1,18 @@
+# Issue #706: /health/metrics возвращает 404
+
 ## Что изменено
 
-Issue #706: `/health/metrics` возвращал 404 при попытке обратиться к таблице `raw_metrics_current`.
+- `circuit_breaker.py`: Изменён `get_metrics_staleness()` — использует прямой запрос к таблице с `Accept-Profile: genomai` header
 
-**Причина:** PostgREST возвращает 404 при обращении к таблице напрямую (возможно проблема с schema cache).
+## Причина
 
-**Решение:**
-1. Создана RPC функция `genomai.get_metrics_staleness()` для надёжного доступа к данным
-2. Изменён `circuit_breaker.py` — использует RPC вместо прямого запроса к таблице
+- Таблица `raw_metrics_current` находится в схеме `genomai`
+- PostgREST по умолчанию ищет в `public` схеме
+- Для доступа к `genomai` нужен header `Accept-Profile: genomai`
 
 ## Файлы
 
-- `infrastructure/migrations/047_raw_metrics_genomai_schema.sql` — миграция с RPC функцией
 - `decision-engine-service/temporal/circuit_breaker.py` — изменён `get_metrics_staleness()`
-
-## Применение миграции
-
-**ВАЖНО:** Перед тестированием применить миграцию в Supabase:
-
-1. Открыть https://supabase.com/dashboard/project/ftrerelppsnbdcmtcwya/sql/new
-2. Скопировать содержимое `infrastructure/migrations/047_raw_metrics_genomai_schema.sql`
-3. Выполнить SQL
 
 ## Test
 
