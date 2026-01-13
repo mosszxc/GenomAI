@@ -323,7 +323,9 @@ class LogInteractionInput:
 
     telegram_id: str
     direction: str  # "in" or "out"
-    message_type: str  # "bot", "user", "system", "command"
+    message_type: (
+        str  # "text", "video", "photo", "document", "command", "callback", "system"
+    )
     content: str
     context: Optional[dict] = None
     buyer_id: Optional[str] = None
