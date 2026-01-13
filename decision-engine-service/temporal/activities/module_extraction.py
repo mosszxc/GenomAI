@@ -21,28 +21,63 @@ from temporal.tracing import get_activity_logger
 SCHEMA = "genomai"
 
 # Module type definitions with fields to extract from decomposed payload
-# Based on Canonical Schema v2 (see MODULAR_CREATIVE_SYSTEM.md)
+# Based on 7 Independent Variables (see VISION.md and issue #596)
+#
+# Each module type has:
+#   - primary_field: The main field to extract
+#   - fallback_field: Alternative field if primary is missing
+#   - related_fields: Additional context fields to store in content
+#   - key_fields: Fields used for deduplication hash
+#   - text_field: Optional field for human-readable text_content
 MODULE_FIELDS = {
-    "hook": {
-        "fields": ["hooks", "hook_mechanism", "hook_stopping_power", "opening_type"],
-        "key_fields": ["hook_mechanism", "opening_type"],
-        "text_field": "hooks",  # For human-readable text_content
+    "hook_mechanism": {
+        "primary_field": "hook_mechanism",
+        "fallback_field": "opening_type",
+        "related_fields": ["hooks", "hook_stopping_power"],
+        "key_fields": ["hook_mechanism"],
+        "text_field": "hooks",
     },
-    "promise": {
-        "fields": [
-            "promise_type",
-            "core_belief",
-            "state_before",
-            "state_after",
-            "ump_type",
-            "ums_type",
-        ],
-        "key_fields": ["promise_type", "core_belief", "state_before", "state_after"],
+    "angle_type": {
+        "primary_field": "angle_type",
+        "fallback_field": "emotional_trigger",
+        "related_fields": [],
+        "key_fields": ["angle_type"],
         "text_field": None,
     },
-    "proof": {
-        "fields": ["proof_type", "proof_source", "social_proof_pattern", "story_type"],
-        "key_fields": ["proof_type", "proof_source"],
+    "message_structure": {
+        "primary_field": "message_structure",
+        "fallback_field": "story_type",
+        "related_fields": [],
+        "key_fields": ["message_structure"],
+        "text_field": None,
+    },
+    "ump_type": {
+        "primary_field": "ump_type",
+        "fallback_field": "ums_type",
+        "related_fields": ["core_belief"],
+        "key_fields": ["ump_type"],
+        "text_field": None,
+    },
+    "promise_type": {
+        "primary_field": "promise_type",
+        "fallback_field": None,  # Fallback uses state_before + state_after
+        "fallback_composite": ["state_before", "state_after"],
+        "related_fields": ["state_before", "state_after"],
+        "key_fields": ["promise_type"],
+        "text_field": None,
+    },
+    "proof_type": {
+        "primary_field": "proof_type",
+        "fallback_field": "proof_source",
+        "related_fields": ["social_proof_pattern"],
+        "key_fields": ["proof_type"],
+        "text_field": None,
+    },
+    "cta_style": {
+        "primary_field": "cta_style",
+        "fallback_field": "risk_reversal_type",
+        "related_fields": [],
+        "key_fields": ["cta_style"],
         "text_field": None,
     },
 }
@@ -78,20 +113,22 @@ def compute_module_key(module_type: str, content: dict) -> str:
     """
     Compute SHA256 hash for module deduplication.
 
-    Uses only key_fields defined in MODULE_FIELDS to ensure
-    semantically identical modules get the same key.
+    Uses primary_field value for deduplication. If fallback was used,
+    the value is still stored under primary_field name.
 
     Args:
-        module_type: hook, promise, or proof
-        content: Module content dict
+        module_type: One of 7 module types
+        content: Module content dict (with primary_field value)
 
     Returns:
         SHA256 hex digest
     """
-    key_fields = MODULE_FIELDS[module_type]["key_fields"]
+    config = MODULE_FIELDS[module_type]
+    primary_field = config["primary_field"]
 
-    # Build canonical dict with only key fields
-    canonical = {field: content.get(field) for field in key_fields}
+    # Build canonical dict with primary field only
+    # Note: content already has value under primary_field (even if fallback was used)
+    canonical = {primary_field: content.get(primary_field)}
 
     # Sort keys and serialize for consistent hashing
     canonical_str = json.dumps(canonical, sort_keys=True)
@@ -101,20 +138,44 @@ def compute_module_key(module_type: str, content: dict) -> str:
 
 def extract_module_content(payload: dict, module_type: str) -> Dict[str, Any]:
     """
-    Extract module content from decomposed payload.
+    Extract module content from decomposed payload with fallback support.
+
+    Uses primary_field first, then fallback_field or fallback_composite.
+    Also includes related_fields for additional context.
 
     Args:
-        payload: Decomposed creative payload (Canonical Schema v2)
-        module_type: hook, promise, or proof
+        payload: Decomposed creative payload
+        module_type: One of 7 module types (hook_mechanism, angle_type, etc.)
 
     Returns:
         Dict with extracted fields for this module type
     """
-    fields = MODULE_FIELDS[module_type]["fields"]
+    config = MODULE_FIELDS[module_type]
+    primary_field = config["primary_field"]
+    fallback_field = config.get("fallback_field")
+    fallback_composite = config.get("fallback_composite", [])
+    related_fields = config.get("related_fields", [])
 
-    content = {}
-    for field in fields:
-        if field in payload:
+    content: Dict[str, Any] = {}
+
+    # 1. Try primary field first
+    if primary_field in payload and payload[primary_field]:
+        content[primary_field] = payload[primary_field]
+    # 2. Try fallback field
+    elif fallback_field and fallback_field in payload and payload[fallback_field]:
+        # Store under primary field name for consistency
+        content[primary_field] = payload[fallback_field]
+        content["_fallback_used"] = fallback_field
+    # 3. Try composite fallback (e.g., state_before + state_after -> promise_type)
+    elif fallback_composite:
+        composite_values = [payload.get(f) for f in fallback_composite if payload.get(f)]
+        if composite_values:
+            content[primary_field] = " → ".join(str(v) for v in composite_values)
+            content["_fallback_used"] = "+".join(fallback_composite)
+
+    # 4. Add related fields for context
+    for field in related_fields:
+        if field in payload and payload[field]:
             content[field] = payload[field]
 
     return content
@@ -344,6 +405,18 @@ async def upsert_module(
     return data[0]
 
 
+# All 7 module types in extraction order
+MODULE_TYPES = [
+    "hook_mechanism",
+    "angle_type",
+    "message_structure",
+    "ump_type",
+    "promise_type",
+    "proof_type",
+    "cta_style",
+]
+
+
 @activity.defn
 async def extract_modules_from_decomposition(
     creative_id: str,
@@ -353,9 +426,18 @@ async def extract_modules_from_decomposition(
     geo: Optional[str] = None,
 ) -> Dict[str, Optional[str]]:
     """
-    Extract Hook, Promise, Proof modules from decomposed payload.
+    Extract all 7 module types from decomposed payload.
 
-    Main activity for Modular Creative System Phase 2.
+    Main activity for Modular Creative System.
+
+    7 Variables (from VISION.md):
+    1. hook_mechanism - How to grab attention
+    2. angle_type - Emotional angle/trigger
+    3. message_structure - Narrative structure
+    4. ump_type - Unique mechanism promise
+    5. promise_type - Type of promise made
+    6. proof_type - Type of proof/social validation
+    7. cta_style - Call to action style
 
     Cold Start Strategy:
     - New modules inherit metrics from source creative
@@ -364,12 +446,21 @@ async def extract_modules_from_decomposition(
     Args:
         creative_id: Source creative UUID
         decomposed_id: Decomposed creative UUID
-        payload: Decomposed creative payload (Canonical Schema v2)
+        payload: Decomposed creative payload
         vertical: Optional target vertical
         geo: Optional target GEO
 
     Returns:
-        Dict with module IDs: {"hook_id": uuid, "promise_id": uuid, "proof_id": uuid}
+        Dict with module IDs for each type:
+        {
+            "hook_mechanism_id": uuid,
+            "angle_type_id": uuid,
+            "message_structure_id": uuid,
+            "ump_type_id": uuid,
+            "promise_type_id": uuid,
+            "proof_type_id": uuid,
+            "cta_style_id": uuid,
+        }
     """
     log = get_activity_logger(
         creative_id=creative_id,
@@ -377,26 +468,28 @@ async def extract_modules_from_decomposition(
         vertical=vertical,
         geo=geo,
     )
-    log.info("Extracting modules from decomposition")
+    log.info("Extracting 7 module types from decomposition")
 
     # 1. Get parent creative metrics for cold start
     metrics = await get_creative_metrics(creative_id)
     log.info("Source creative metrics loaded", metrics=metrics)
 
-    result = {
-        "hook_id": None,
-        "promise_id": None,
-        "proof_id": None,
-    }
+    # Initialize result with all 7 module types
+    result: Dict[str, Optional[str]] = {f"{mt}_id": None for mt in MODULE_TYPES}
+
+    extracted_count = 0
 
     # 2. Extract each module type
-    for module_type in ["hook", "promise", "proof"]:
-        # Extract content from payload
+    for module_type in MODULE_TYPES:
+        # Extract content from payload (with fallback support)
         content = extract_module_content(payload, module_type)
 
-        # Skip if no meaningful content
-        if not content or all(v is None for v in content.values()):
-            log.warning("No content for module type", module_type=module_type)
+        # Get primary field to check for meaningful content
+        primary_field = MODULE_FIELDS[module_type]["primary_field"]
+
+        # Skip if no primary field value extracted
+        if not content.get(primary_field):
+            log.debug("No content for module type", module_type=module_type)
             continue
 
         # Compute deduplication key
@@ -404,6 +497,14 @@ async def extract_modules_from_decomposition(
 
         # Get text content for human readability
         text_content = get_text_content(payload, module_type)
+
+        # Log if fallback was used
+        if "_fallback_used" in content:
+            log.info(
+                "Used fallback for module",
+                module_type=module_type,
+                fallback=content["_fallback_used"],
+            )
 
         # Upsert module
         module = await upsert_module(
@@ -419,11 +520,12 @@ async def extract_modules_from_decomposition(
         )
 
         result[f"{module_type}_id"] = module["id"]
+        extracted_count += 1
 
     log.info(
         "Module extraction complete",
-        hook_id=result["hook_id"],
-        promise_id=result["promise_id"],
-        proof_id=result["proof_id"],
+        extracted_count=extracted_count,
+        total_types=len(MODULE_TYPES),
+        modules=result,
     )
     return result
