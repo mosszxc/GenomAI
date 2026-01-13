@@ -133,5 +133,20 @@ def load_settings() -> Settings:
     )
 
 
-# Singleton settings instance
-settings = load_settings()
+# Lazy singleton - validated on first access, not on import
+_settings: Optional[Settings] = None
+
+
+def get_settings() -> Settings:
+    """Get settings singleton. Validates required env vars on first call."""
+    global _settings
+    if _settings is None:
+        _settings = load_settings()
+    return _settings
+
+
+def __getattr__(name: str):
+    """Lazy loading for backward compatibility with `from temporal.config import settings`."""
+    if name == "settings":
+        return get_settings()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
