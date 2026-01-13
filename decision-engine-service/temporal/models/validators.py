@@ -12,6 +12,9 @@ import re
 import uuid
 from typing import Any, Optional
 
+# Maximum input length for regex operations to prevent ReDoS
+MAX_URL_LENGTH = 2048
+
 # Valid characters for SHA256 hex string
 HEX_CHARS = set("0123456789abcdef")
 
@@ -84,6 +87,8 @@ def validate_url(value: str, field_name: str = "url") -> str:
     """
     Validate URL format.
 
+    Includes input length limit to prevent ReDoS attacks.
+
     Args:
         value: String to validate
         field_name: Name of field for error messages
@@ -92,10 +97,14 @@ def validate_url(value: str, field_name: str = "url") -> str:
         Validated URL string
 
     Raises:
-        ValueError: If not a valid URL
+        ValueError: If not a valid URL or exceeds max length
     """
     if not value:
         raise ValueError(f"{field_name} cannot be empty")
+
+    # ReDoS protection: limit input length
+    if len(value) > MAX_URL_LENGTH:
+        raise ValueError(f"{field_name} exceeds maximum length of {MAX_URL_LENGTH}")
 
     if not URL_PATTERN.match(value):
         raise ValueError(f"{field_name} must be a valid HTTP/HTTPS URL, got: {value!r}")

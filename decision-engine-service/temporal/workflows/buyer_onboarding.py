@@ -137,6 +137,9 @@ MESSAGES = {
     ),
 }
 
+# Maximum input length for regex operations (ReDoS protection)
+MAX_INPUT_LENGTH = 2048
+
 # Video URL patterns
 VIDEO_URL_PATTERNS = [
     r"youtube\.com/watch",
@@ -152,11 +155,16 @@ VIDEO_URL_PATTERNS = [
 
 
 def is_video_url(text: str) -> bool:
-    """Check if text contains a video URL."""
+    """
+    Check if text contains a video URL.
+
+    Includes input length limit to prevent ReDoS attacks.
+    """
     if not text:
         return False
-    text_lower = text.lower()
-    return any(re.search(pattern, text_lower) for pattern in VIDEO_URL_PATTERNS)
+    # ReDoS protection: limit input length
+    safe_text = text[:MAX_INPUT_LENGTH].lower()
+    return any(re.search(pattern, safe_text) for pattern in VIDEO_URL_PATTERNS)
 
 
 @dataclass(frozen=True)
