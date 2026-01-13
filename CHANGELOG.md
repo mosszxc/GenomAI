@@ -1,3 +1,233 @@
+## [v1.1.3] - 2026-01-13
+
+### Changes
+- 953d96b feat(telegram): add progress notifications during creative processing (#685)
+- 48a42c8 feat: complete issue #676 (#684)
+- 3b2da3e feat: complete issue #673 (#683)
+- 85f9894 feat(telegram): improve Welcome message with value proposition (#679)
+- a44bf7b feat: complete issue #672 (#682)
+- 002ff4b feat: complete issue #671 (#681)
+- 60e4f72 feat: complete issue #670 (#680)
+- 5a3e075 feat: complete issue #598 (#669)
+- 8170afd feat: complete issue #604 (#659)
+- b74b872 fix(types): use Optional[dict] for Python 3.9 compatibility (#668)
+- e7581c7 feat: complete issue #601 (#667)
+- c6aadbc feat: complete issue #602 (#656)
+- f6ede39 feat: complete issue #599 (#666)
+- 000745a fix(temporal): add fail-fast validation for required env vars (#651)
+- 214ba3f feat: complete issue #598 (#665)
+- 9821822 feat: complete issue #662 (#663)
+- 82ebef2 feat: complete issue #597 (#660)
+- 1785e32 feat: complete issue #603 (#658)
+- 318a0c6 feat: complete issue #600 (#657)
+- 37e386f feat: complete issue #575 (#655)
+- 3c86b94 Issue #568: Missing env vars validation в temporal/config.p (#568) (#654)
+- 124e9b4 feat: complete issue #567 (#653)
+- cd644db feat: complete issue #576 (#652)
+- d9aa981 feat: complete issue #555 (#650)
+- cd462e1 feat: complete issue #587 (#649)
+- 367b040 Issue #535: Callback query input injection vulnerability (#535) (#648)
+- bdc0a64 feat: complete issue #563 (#647)
+- 29ddf2e fix(types): resolve mypy errors across codebase (#646)
+- faf1d66 feat: complete issue #564 (#645)
+- 72d8701 feat: complete issue #562 (#644)
+- cf7ab1f feat: complete issue #554 (#643)
+- b54c49d feat: complete issue #548 (#642)
+- 2413961 feat: complete issue #552 (#641)
+- 0049933 test: update callback_data tests for UUID validation
+- 177539a feat: complete issue #546 (#639)
+- a2d5ac3 Issue #549: Replace unsafe args unpacking in check_staleness (#549) (#625)
+- 94733a3 fix(security): add type-specific validation to callback_data
+- da75fd5 feat: complete issue #536 (#637)
+- 82f5a91 docs: update L025 lesson - lsof for port detection (#638)
+- bf6b333 fix(scripts): detect FastAPI port via lsof (#636)
+- 8e043fb docs: add L025 lesson about pid file fallback (#635)
+- 5ed11af feat: complete issue #630 (#633)
+- 30da949 fix(scripts): add port probing fallback when pid file missing (#634)
+- f468d27 feat: complete issue #547 (#632)
+- 97bfdfc feat: complete issue #537 (#631)
+- c8dc500 feat: complete issue #545 (#629)
+- 8931455 feat: complete issue #539 (#627)
+- 2347d4b feat: complete issue #540 (#626)
+- 5b44bd2 fix(security): add ReDoS protection to URL regex patterns (#624)
+- 387a777 fix(telegram): replace broad exception handling with specific RPCError handling (#538) (#622)
+- d0cc1c4 feat: complete issue #542 (#621)
+- d7ff104 feat: complete issue #543 (#620)
+- c4d6cf1 feat: complete issue #558 (#619)
+- 7c39d1f feat: complete issue #572 (#618)
+- 00f6838 feat: complete issue #559 (#617)
+- bdf3544 Issue #560: Unhandled child workflow error types в maintena (#560) (#616)
+- 0859987 Issue #579: INSERT операции без ON CONFLICT — � (#579) (#610)
+- 16da695 Issue #571: Валидация callback_data в Telegram han (#571) (#614)
+- 3b68e2c fix: add max limit validation to API endpoints (#573) (#609)
+- e900547 fix(temporal): add error handling for PATCH operations (#551) (#608)
+- dba1518 fix(scripts): detect main repo root from worktree context
+- 66c9302 feat: complete issue #566
+- c795f43 fix(scripts): use nullglob for pid file detection in task-done.sh
+- b428db1 feat: complete issue #550 (#605)
+- c725e0e chore: run ruff format on entire codebase (#613)
+- cbeddf6 fix(lint): add 'from e' to all raise in except blocks + clean up ruff config
+- b4079aa fix(scripts): use dynamic FastAPI port in task-done.sh
+- 731a76f feat: complete issue #556 (#606)
+- b081801 fix(scripts): close issue immediately after CI passes
+- 27e175a Revert "docs: add mandatory issue closure rule after CI success"
+- e4821b2 feat: complete issue #588 (#607)
+- 38a2f83 docs: add mandatory issue closure rule after CI success
+- 6ed4e5d feat: add bug prevention system (mypy, ruff rules, workflow improvements)
+- 859ff6e fix: prevent ZeroDivisionError in feature_correlation (#583)
+- 84af416 Issue #577: N+1 queries в maintenance activities (#577) (#595)
+- 0e38fd8 fix(scripts): run qa-notes test in worktree, not PROJECT_ROOT
+- e1fa1b3 feat: complete issue #590 (#594)
+- 6ee01e0 feat: complete issue #586 (#593)
+- 2298c17 feat: complete issue #589 (#592)
+- 0a4fc13 fix(temporal): make retry_failed_hypotheses idempotent (#578) (#591)
+- dcdc82d docs: add .env.example files for security best practices (#580)
+- f59df38 feat: complete issue #574 (#581)
+- 76db914 feat: complete issue #557 (#584)
+- d845261 feat: complete issue #553
+- e65df79 feat: complete issue #534 (#582)
+- 31c0bb9 feat: complete issue #553
+- 8a04df4 feat: complete issue #553
+
+### Issues
+- Closes #534
+- Closes #535
+- Closes #536
+- Closes #537
+- Closes #538
+- Closes #539
+- Closes #540
+- Closes #542
+- Closes #543
+- Closes #545
+- Closes #546
+- Closes #547
+- Closes #548
+- Closes #549
+- Closes #550
+- Closes #551
+- Closes #552
+- Closes #553
+- Closes #554
+- Closes #555
+- Closes #556
+- Closes #557
+- Closes #558
+- Closes #559
+- Closes #560
+- Closes #562
+- Closes #563
+- Closes #564
+- Closes #566
+- Closes #567
+- Closes #568
+- Closes #571
+- Closes #572
+- Closes #573
+- Closes #574
+- Closes #575
+- Closes #576
+- Closes #577
+- Closes #578
+- Closes #579
+- Closes #580
+- Closes #581
+- Closes #582
+- Closes #583
+- Closes #584
+- Closes #585
+- Closes #586
+- Closes #587
+- Closes #588
+- Closes #589
+- Closes #590
+- Closes #591
+- Closes #592
+- Closes #593
+- Closes #594
+- Closes #595
+- Closes #597
+- Closes #598
+- Closes #599
+- Closes #600
+- Closes #601
+- Closes #602
+- Closes #603
+- Closes #604
+- Closes #605
+- Closes #606
+- Closes #607
+- Closes #608
+- Closes #609
+- Closes #610
+- Closes #613
+- Closes #614
+- Closes #615
+- Closes #616
+- Closes #617
+- Closes #618
+- Closes #619
+- Closes #620
+- Closes #621
+- Closes #622
+- Closes #624
+- Closes #625
+- Closes #626
+- Closes #627
+- Closes #629
+- Closes #630
+- Closes #631
+- Closes #632
+- Closes #633
+- Closes #634
+- Closes #635
+- Closes #636
+- Closes #637
+- Closes #638
+- Closes #639
+- Closes #640
+- Closes #641
+- Closes #642
+- Closes #643
+- Closes #644
+- Closes #645
+- Closes #646
+- Closes #647
+- Closes #648
+- Closes #649
+- Closes #650
+- Closes #651
+- Closes #652
+- Closes #653
+- Closes #654
+- Closes #655
+- Closes #656
+- Closes #657
+- Closes #658
+- Closes #659
+- Closes #660
+- Closes #662
+- Closes #663
+- Closes #665
+- Closes #666
+- Closes #667
+- Closes #668
+- Closes #669
+- Closes #670
+- Closes #671
+- Closes #672
+- Closes #673
+- Closes #676
+- Closes #679
+- Closes #680
+- Closes #681
+- Closes #682
+- Closes #683
+- Closes #684
+- Closes #685
+
+---
+
 ## [v1.1.2] - 2026-01-12
 
 ### Changes
