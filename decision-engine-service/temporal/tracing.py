@@ -35,10 +35,22 @@ from structlog.typing import EventDict, WrappedLogger
 
 
 def _add_timestamp(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
-    """Add ISO timestamp to log events."""
-    import datetime
+    """Add ISO timestamp to log events.
 
-    event_dict["timestamp"] = datetime.datetime.utcnow().isoformat() + "Z"
+    Note: In Temporal workflow context, we use workflow.now() for determinism.
+    Outside workflow context, we use datetime.now(timezone.utc).
+    """
+    try:
+        from temporalio import workflow
+
+        # Check if we're in a workflow context
+        workflow.info()  # Raises if not in workflow
+        event_dict["timestamp"] = workflow.now().isoformat() + "Z"
+    except Exception:
+        # Not in workflow context - use standard datetime
+        from datetime import datetime, timezone
+
+        event_dict["timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     return event_dict
 
 
