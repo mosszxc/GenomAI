@@ -405,8 +405,22 @@ async def check_active_onboarding(telegram_id: str) -> Optional[str]:
         return None
 
 
+# Maximum input length for regex operations (ReDoS protection)
+MAX_INPUT_LENGTH = 2048
+
+
 def extract_video_url(text: str) -> Optional[str]:
-    """Extract video URL from text."""
+    """
+    Extract video URL from text.
+
+    Includes input length limit to prevent ReDoS attacks.
+    """
+    if not text:
+        return None
+
+    # ReDoS protection: limit input length
+    safe_text = text[:MAX_INPUT_LENGTH]
+
     # Common video URL patterns
     patterns = [
         r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)/\S+",
@@ -418,13 +432,13 @@ def extract_video_url(text: str) -> Optional[str]:
     ]
 
     for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = re.search(pattern, safe_text, re.IGNORECASE)
         if match:
             return match.group(0)
 
     # Check if entire text is a URL
-    if text.startswith("http://") or text.startswith("https://"):
-        return text.strip()
+    if safe_text.startswith("http://") or safe_text.startswith("https://"):
+        return safe_text.strip()
 
     return None
 

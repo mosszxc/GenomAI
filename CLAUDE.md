@@ -111,6 +111,12 @@ curl -sf localhost:10000/endpoint -d '{"geo": "INVALID"}' || echo "OK: rejected"
 
 ## Issue Closure Report (ПОКАЗАТЬ ПОЛЬЗОВАТЕЛЮ)
 
+**⚠️ ВАЖНО: Показывать отчёт ТОЛЬКО после:**
+1. `./scripts/task-done.sh <issue-number>` успешно выполнен
+2. PR создан или коммит сделан
+
+Отчёт = подтверждение ПОСЛЕ факта, не до.
+
 ```
 ═══════════════════════════════════════════════════════
 ISSUE #XXX CLOSED
