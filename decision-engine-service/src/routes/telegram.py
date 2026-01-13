@@ -16,6 +16,7 @@ import os
 import re
 import logging
 import asyncio
+import uuid
 from datetime import datetime
 from html import escape as html_escape
 from typing import Any, Optional
@@ -151,6 +152,18 @@ def parse_callback_data(data: str) -> tuple[str, str]:
 
     if not action or not identifier:
         raise CallbackDataError("Empty action or identifier")
+
+    # Strict type validation based on action
+    if action in ("ke_approve", "ke_reject", "ke_skip"):
+        try:
+            uuid.UUID(identifier)
+        except ValueError:
+            raise CallbackDataError(
+                f"Invalid UUID format for {action}: {identifier[:20]}"
+            ) from None
+    elif action == "chat":
+        if not identifier.isdigit():
+            raise CallbackDataError(f"Invalid telegram_id format: {identifier[:20]}")
 
     return action, identifier
 
