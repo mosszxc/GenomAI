@@ -308,15 +308,35 @@ async def upsert_module(
     if geo:
         module["geo"] = geo
 
+    # Use on_conflict for idempotent retry handling (Issue #579)
+    # UNIQUE constraint: (module_type, module_key)
+    upsert_headers = {
+        **headers,
+        "Prefer": "resolution=ignore-duplicates,return=representation",
+    }
     response = await client.post(
-        f"{rest_url}/module_bank",
-        headers=headers,
+        f"{rest_url}/module_bank?on_conflict=module_type,module_key",
+        headers=upsert_headers,
         json=module,
     )
     response.raise_for_status()
     data = response.json()
 
     if not data:
+        # Conflict occurred (retry case) - fetch existing module
+        response = await client.get(
+            f"{rest_url}/module_bank"
+            f"?module_type=eq.{module_type}"
+            f"&module_key=eq.{module_key}"
+            f"&select=id,sample_size",
+            headers=_get_headers(supabase_key),
+        )
+        response.raise_for_status()
+        existing = response.json()
+        if existing:
+            log = get_activity_logger(module_type=module_type)
+            log.info("Module already exists (retry case)", module_id=existing[0]["id"])
+            return existing[0]
         raise RuntimeError("Failed to insert module: no data returned")
 
     log = get_activity_logger(module_type=module_type)
