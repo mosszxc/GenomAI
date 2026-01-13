@@ -249,12 +249,12 @@ async def send_recommendation_to_telegram(
         raise ApplicationError(
             "Telegram API timeout",
             type="TELEGRAM_TIMEOUT",
-        )
+        ) from None
     except httpx.RequestError as e:
         raise ApplicationError(
             f"Telegram request error: {e}",
             type="TELEGRAM_REQUEST_ERROR",
-        )
+        ) from e
 
 
 def _format_recommendation_message(

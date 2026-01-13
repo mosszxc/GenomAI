@@ -88,12 +88,12 @@ async def send_hypothesis_to_telegram(
         raise ApplicationError(
             "Telegram API timeout",
             type="TELEGRAM_TIMEOUT",
-        )
+        ) from None
     except httpx.RequestError as e:
         raise ApplicationError(
             f"Telegram request error: {e}",
             type="TELEGRAM_REQUEST_ERROR",
-        )
+        ) from e
 
 
 def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> str:

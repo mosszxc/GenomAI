@@ -135,9 +135,9 @@ async def select_premise(request: SelectRequest, _: bool = Depends(verify_api_ke
         return SelectResponse(**asdict(result))
 
     except SupabaseError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Selection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Selection failed: {str(e)}") from e
 
 
 @router.get("/top")
@@ -168,9 +168,9 @@ async def get_top(
         return {"premises": results, "count": len(results)}
 
     except SupabaseError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e
 
 
 @router.get("/active")
@@ -197,9 +197,9 @@ async def get_active(
         return {"premises": results, "count": len(results)}
 
     except SupabaseError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e
 
 
 @router.post("/", response_model=PremiseResponse)
@@ -251,7 +251,7 @@ async def create_premise(
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Missing Supabase credentials")
+        raise HTTPException(status_code=500, detail="Missing Supabase credentials") from None
 
     try:
         headers = sb.get_headers(for_write=True)
@@ -289,7 +289,7 @@ async def create_premise(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Create failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Create failed: {str(e)}") from e
 
 
 @router.get("/{premise_id}")
@@ -302,7 +302,7 @@ async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Missing Supabase credentials")
+        raise HTTPException(status_code=500, detail="Missing Supabase credentials") from None
 
     try:
         headers = sb.get_headers()
@@ -322,4 +322,4 @@ async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e

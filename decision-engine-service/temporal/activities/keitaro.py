@@ -288,7 +288,7 @@ async def get_campaigns_by_source(
         except ValueError:
             raise ApplicationError(
                 f"Invalid date format: {input.date_from}", non_retryable=True
-            )
+            ) from None
     else:
         cutoff = datetime.utcnow() - timedelta(days=30)
 

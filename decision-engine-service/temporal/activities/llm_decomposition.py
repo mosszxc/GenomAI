@@ -173,7 +173,7 @@ async def decompose_creative(
             raise ApplicationError(
                 f"LLM returned invalid JSON: {e}",
                 type="SCHEMA_ERROR",
-            )
+            ) from e
 
         # Validate required fields
         missing_fields = [f for f in REQUIRED_FIELDS if f not in payload]
@@ -203,7 +203,7 @@ async def decompose_creative(
         raise ApplicationError(
             f"OpenAI API error: {e}",
             type="LLM_API_ERROR",
-        )
+        ) from e
 
 
 @activity.defn

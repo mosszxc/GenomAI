@@ -231,7 +231,7 @@ async def synthesize_hypothesis_text(
         except json.JSONDecodeError as e:
             raise ApplicationError(
                 f"LLM returned invalid JSON: {e}", type="SCHEMA_ERROR"
-            )
+            ) from e
 
         # Validate structure
         if "text" not in result:
@@ -245,7 +245,7 @@ async def synthesize_hypothesis_text(
         return synthesized_text
 
     except openai.APIError as e:
-        raise ApplicationError(f"OpenAI API error: {e}", type="LLM_API_ERROR")
+        raise ApplicationError(f"OpenAI API error: {e}", type="LLM_API_ERROR") from e
 
 
 @activity.defn

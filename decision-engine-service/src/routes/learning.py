@@ -75,7 +75,7 @@ async def process_learning(_: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -83,7 +83,7 @@ async def process_learning(_: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.get("/status")
@@ -109,7 +109,7 @@ async def learning_status(_: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -117,4 +117,4 @@ async def learning_status(_: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e

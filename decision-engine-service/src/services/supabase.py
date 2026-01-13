@@ -146,9 +146,9 @@ async def load_idea(idea_id: str) -> dict | None:
 
         return idea
     except httpx.HTTPStatusError as e:
-        raise SupabaseError(f"Failed to load idea: HTTP {e.response.status_code}")
+        raise SupabaseError(f"Failed to load idea: HTTP {e.response.status_code}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to load idea: {str(e)}")
+        raise SupabaseError(f"Failed to load idea: {str(e)}") from e
 
 
 async def load_system_state() -> dict:
@@ -177,7 +177,7 @@ async def load_system_state() -> dict:
             "current_state": "exploit",
         }
     except Exception as e:
-        raise SupabaseError(f"Failed to load system state: {str(e)}")
+        raise SupabaseError(f"Failed to load system state: {str(e)}") from e
 
 
 async def get_existing_decision(idea_id: str, decision_epoch: int) -> dict | None:
@@ -261,9 +261,9 @@ async def save_decision(decision: dict) -> dict:
         return data[0]
     except httpx.HTTPStatusError as e:
         error_detail = e.response.text
-        raise SupabaseError(f"Failed to save decision: {error_detail}")
+        raise SupabaseError(f"Failed to save decision: {error_detail}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to save decision: {str(e)}")
+        raise SupabaseError(f"Failed to save decision: {str(e)}") from e
 
 
 async def delete_decision(decision_id: str) -> None:
@@ -301,9 +301,9 @@ async def save_decision_trace(trace: dict) -> dict:
         return data[0]
     except httpx.HTTPStatusError as e:
         error_detail = e.response.text
-        raise SupabaseError(f"Failed to save decision trace: {error_detail}")
+        raise SupabaseError(f"Failed to save decision trace: {error_detail}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to save decision trace: {str(e)}")
+        raise SupabaseError(f"Failed to save decision trace: {str(e)}") from e
 
 
 async def save_decision_with_trace(decision: dict, trace: dict) -> dict:
@@ -360,7 +360,7 @@ async def save_decision_with_trace(decision: dict, trace: dict) -> dict:
         if "23505" in error_detail:
             raise SupabaseError(
                 f"Decision already exists for idea_id={decision['idea_id']} epoch={decision['decision_epoch']}"
-            )
-        raise SupabaseError(f"Failed to save decision with trace: {error_detail}")
+            ) from e
+        raise SupabaseError(f"Failed to save decision with trace: {error_detail}") from e
     except Exception as e:
-        raise SupabaseError(f"Failed to save decision with trace: {str(e)}")
+        raise SupabaseError(f"Failed to save decision with trace: {str(e)}") from e

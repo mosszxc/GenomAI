@@ -326,7 +326,7 @@ async def extract_premises_via_llm(data: CreativeData) -> List[ExtractedPremise]
         return []
     except openai.APIError as e:
         activity.logger.error(f"OpenAI API error: {e}")
-        raise ApplicationError(f"LLM extraction failed: {e}")
+        raise ApplicationError(f"LLM extraction failed: {e}") from e
 
 
 @activity.defn

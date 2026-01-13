@@ -384,7 +384,7 @@ async def register_idea(
         try:
             payload = json.loads(payload)
         except json.JSONDecodeError as e:
-            raise IdeaRegistryError(f"Failed to parse payload: {e}")
+            raise IdeaRegistryError(f"Failed to parse payload: {e}") from e
 
     # Step 4: Compute canonical hash
     canonical_hash = compute_canonical_hash(payload)

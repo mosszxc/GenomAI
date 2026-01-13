@@ -7,7 +7,7 @@ repos:
 
       - id: ruff-check
         name: ruff lint
-        entry: python3 -m ruff check decision-engine-service/ --fix
+        entry: python3 -m ruff check decision-engine-service/
         language: system
         pass_filenames: false
         types: [python]

@@ -124,7 +124,7 @@ async def generate_hypotheses(
             raise ApplicationError(
                 f"LLM returned invalid JSON: {e}",
                 type="SCHEMA_ERROR",
-            )
+            ) from e
 
         # Validate structure
         if "hypotheses" not in result:
@@ -156,7 +156,7 @@ async def generate_hypotheses(
         raise ApplicationError(
             f"OpenAI API error: {e}",
             type="LLM_API_ERROR",
-        )
+        ) from e
 
 
 def _build_generation_prompt(payload: dict) -> str:

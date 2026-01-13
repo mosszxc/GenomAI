@@ -183,7 +183,7 @@ async def find_similar_ideas(
 
         # Extract component values from payload
         creative_components = set()
-        for comp_type, comp_value in payload.items():
+        for _comp_type, comp_value in payload.items():
             if isinstance(comp_value, str):
                 creative_components.add(comp_value.lower())
 
@@ -362,7 +362,7 @@ def calculate_predicted_win_rate(
 
     # Method 2: From component averages
     component_rates = []
-    for comp, stats in component_stats.items():
+    for _comp, stats in component_stats.items():
         win_rate = stats.get("win_rate")
         sample = stats.get("sample_size", 0)
         if win_rate is not None and sample >= MIN_SAMPLES_FOR_PREDICTION:

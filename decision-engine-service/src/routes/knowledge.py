@@ -132,7 +132,7 @@ async def upload_source(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start workflow: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/extractions")
@@ -157,7 +157,7 @@ async def list_extractions(
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     try:
         url = (
@@ -185,7 +185,7 @@ async def list_extractions(
         }
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e
 
 
 @router.get("/extractions/{extraction_id}")
@@ -198,7 +198,7 @@ async def get_extraction(extraction_id: str, _: bool = Depends(verify_api_key)):
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     try:
         client = get_http_client()
@@ -220,7 +220,7 @@ async def get_extraction(extraction_id: str, _: bool = Depends(verify_api_key)):
         return results[0]
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e
 
 
 @router.post("/extractions/{extraction_id}/approve")
@@ -263,7 +263,7 @@ async def approve_extraction(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start workflow: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/extractions/{extraction_id}/reject")
@@ -280,7 +280,7 @@ async def reject_extraction(
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     from datetime import datetime
 
@@ -315,7 +315,7 @@ async def reject_extraction(
         }
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e
 
 
 @router.get("/sources/{source_id}")
@@ -328,7 +328,7 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
     try:
         sb = get_supabase()
     except RuntimeError:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+        raise HTTPException(status_code=500, detail="Supabase not configured") from None
 
     try:
         client = get_http_client()
@@ -371,4 +371,4 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
         }
 
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}") from e

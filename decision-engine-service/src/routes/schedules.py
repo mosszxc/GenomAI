@@ -173,7 +173,7 @@ async def list_schedules() -> ScheduleListResponse:
         return ScheduleListResponse(success=True, schedules=schedules)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list schedules: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list schedules: {e}") from e
 
 
 @router.get(
@@ -252,8 +252,8 @@ async def get_schedule(schedule_id: str) -> ScheduleDetailResponse:
         if "not found" in error_str or "does not exist" in error_str:
             raise HTTPException(
                 status_code=404, detail=f"Schedule '{schedule_id}' not found"
-            )
-        raise HTTPException(status_code=500, detail=f"Failed to get schedule: {e}")
+            ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to get schedule: {e}") from e
 
 
 @router.post(
@@ -289,5 +289,5 @@ async def trigger_schedule(
         if "not found" in error_str or "does not exist" in error_str:
             raise HTTPException(
                 status_code=404, detail=f"Schedule '{schedule_id}' not found"
-            )
-        raise HTTPException(status_code=500, detail=f"Failed to trigger schedule: {e}")
+            ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to trigger schedule: {e}") from e

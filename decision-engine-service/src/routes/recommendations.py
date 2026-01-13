@@ -123,7 +123,7 @@ async def generate(request: GenerateRequest, _: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -131,7 +131,7 @@ async def generate(request: GenerateRequest, _: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.get("/stats")
@@ -153,7 +153,7 @@ async def stats(_: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -161,7 +161,7 @@ async def stats(_: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.get("/")
@@ -188,7 +188,7 @@ async def list_pending(
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -196,7 +196,7 @@ async def list_pending(
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 # Dynamic routes with path parameters come after static routes
@@ -228,7 +228,7 @@ async def mark_executed(
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -236,7 +236,7 @@ async def mark_executed(
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.post("/{recommendation_id}/outcome")
@@ -272,7 +272,7 @@ async def record_outcome(
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -280,7 +280,7 @@ async def record_outcome(
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e
 
 
 @router.get("/{recommendation_id}")
@@ -307,7 +307,7 @@ async def get_one(recommendation_id: str, _: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "SUPABASE_ERROR", "message": str(e)},
             },
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -315,4 +315,4 @@ async def get_one(recommendation_id: str, _: bool = Depends(verify_api_key)):
                 "success": False,
                 "error": {"code": "INTERNAL_ERROR", "message": str(e)},
             },
-        )
+        ) from e
