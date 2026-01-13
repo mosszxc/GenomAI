@@ -386,7 +386,8 @@ async def update_idea_death_state(idea_id: str, death_state: str) -> dict:
         json={"death_state": death_state},
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def mark_outcome_processed(outcome_id: str) -> None:

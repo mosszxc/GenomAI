@@ -487,7 +487,8 @@ async def mark_recommendation_executed(recommendation_id: str, creative_id: str)
         },
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def record_recommendation_outcome(
@@ -521,7 +522,8 @@ async def record_recommendation_outcome(
         json=payload,
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def get_recommendation(recommendation_id: str) -> Optional[dict]:

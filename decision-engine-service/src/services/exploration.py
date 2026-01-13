@@ -244,7 +244,8 @@ async def log_exploration(
     client = get_http_client()
     response = await client.post(f"{rest_url}/exploration_log", headers=headers, json=payload)
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def record_exploration_outcome(
@@ -283,7 +284,8 @@ async def record_exploration_outcome(
         json=payload,
     )
     response.raise_for_status()
-    return response.json()[0] if response.json() else {}
+    data = response.json()
+    return data[0] if data else {}
 
 
 async def select_component_with_exploration(
