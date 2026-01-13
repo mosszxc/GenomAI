@@ -443,7 +443,8 @@ async def save_decomposed_creative(
     # Input validation
     creative_id = validate_uuid(creative_id, "creative_id")
     canonical_hash = validate_sha256_hash(canonical_hash, "canonical_hash")
-    transcript_id = validate_optional_uuid(transcript_id, "transcript_id")
+    # Note: transcript_id is accepted but not stored in DB (see comment below)
+    # Skip UUID validation since transcripts.id is bigint, not UUID
     payload = validate_dict_payload(payload, "payload")
 
     rest_url, supabase_key = _get_credentials()
