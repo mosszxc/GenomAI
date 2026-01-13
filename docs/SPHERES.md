@@ -153,7 +153,7 @@
 - **n8n:** `Buyer Test Conclusion Checker` (4uluD04qYHhsetBy)
 - **n8n:** `Buyer Daily Digest` (WkS1fPSxZaLmWcYy)
 - **n8n:** `Buyer Stats Command` (rHuT8dYyIXoiHMAV)
-- **Таблицы:** `buyers`, `buyer_states`, `component_learnings`
+- **Таблицы:** `buyers`, `component_learnings`
 
 ## Граф зависимостей
 

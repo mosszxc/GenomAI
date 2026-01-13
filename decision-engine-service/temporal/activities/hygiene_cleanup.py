@@ -8,7 +8,6 @@ Cleanup operations:
 - Expired historical_import_queue entries
 - Rejected knowledge_extractions
 - Orphan raw_metrics_current
-- Idle buyer_states
 - Old staleness_snapshots
 """
 
@@ -212,44 +211,6 @@ async def cleanup_orphan_raw_metrics() -> int:
 
 
 @activity.defn
-async def cleanup_idle_buyer_states(retention_days: int = 30) -> int:
-    """
-    Delete buyer_states that have been idle for too long.
-
-    Args:
-        retention_days: Days to keep idle states
-
-    Returns:
-        Number of records deleted
-    """
-    rest_url, supabase_key = _get_credentials()
-    headers = _get_headers(supabase_key, for_write=True)
-
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
-    cutoff_iso = cutoff.isoformat()
-
-    activity.logger.info(f"Cleaning idle buyer_states older than {cutoff_iso}")
-
-    client = get_http_client()
-    response = await client.delete(
-        f"{rest_url}/buyer_states?state=eq.idle&updated_at=lt.{cutoff_iso}",
-        headers=headers,
-    )
-
-    if response.status_code == 404:
-        activity.logger.info("Table buyer_states not found")
-        return 0
-
-    if response.status_code not in (200, 204):
-        activity.logger.warning(f"Error cleaning buyer_states: {response.text}")
-        return 0
-
-    count = _extract_delete_count(response)
-    activity.logger.info(f"Deleted {count} idle buyer states")
-    return count
-
-
-@activity.defn
 async def archive_staleness_snapshots(retention_days: int = 90) -> int:
     """
     Delete old staleness_snapshots.
@@ -291,7 +252,6 @@ async def archive_staleness_snapshots(retention_days: int = 90) -> int:
 async def run_all_cleanup(
     import_queue_days: int = 7,
     knowledge_days: int = 30,
-    buyer_states_days: int = 30,
     staleness_days: int = 90,
 ) -> Dict[str, int]:
     """
@@ -304,7 +264,6 @@ async def run_all_cleanup(
         "import_queue": 0,
         "knowledge": 0,
         "raw_metrics": 0,
-        "buyer_states": 0,
         "staleness": 0,
     }
 
@@ -323,11 +282,6 @@ async def run_all_cleanup(
         stats["raw_metrics"] = await cleanup_orphan_raw_metrics()
     except Exception as e:
         activity.logger.error(f"raw_metrics cleanup failed: {e}")
-
-    try:
-        stats["buyer_states"] = await cleanup_idle_buyer_states(buyer_states_days)
-    except Exception as e:
-        activity.logger.error(f"buyer_states cleanup failed: {e}")
 
     try:
         stats["staleness"] = await archive_staleness_snapshots(staleness_days)

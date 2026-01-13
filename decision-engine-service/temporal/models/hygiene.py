@@ -24,7 +24,6 @@ class CleanupStats:
     import_queue_deleted: int = 0
     knowledge_deleted: int = 0
     raw_metrics_deleted: int = 0
-    buyer_states_deleted: int = 0
     staleness_archived: int = 0
 
     def total(self) -> int:
@@ -32,7 +31,6 @@ class CleanupStats:
             self.import_queue_deleted
             + self.knowledge_deleted
             + self.raw_metrics_deleted
-            + self.buyer_states_deleted
             + self.staleness_archived
         )
 
@@ -41,7 +39,6 @@ class CleanupStats:
             "import_queue": self.import_queue_deleted,
             "knowledge": self.knowledge_deleted,
             "raw_metrics": self.raw_metrics_deleted,
-            "buyer_states": self.buyer_states_deleted,
             "staleness": self.staleness_archived,
         }
 
@@ -150,7 +147,6 @@ class CleanupInput:
     run_cleanup: bool = True
     import_queue_retention_days: int = 7
     knowledge_retention_days: int = 30
-    buyer_states_retention_days: int = 30
     staleness_archive_days: int = 90
 
 

@@ -21,7 +21,7 @@
 |----------|-------|---------|------------|-------------------|
 | CreativePipelineWorkflow | creative-pipeline | webhook | multiple | creatives, transcripts, ideas |
 | ModularHypothesisWorkflow | creative-pipeline | programmatic | none | hypotheses (generation_mode='modular') |
-| BuyerOnboardingWorkflow | telegram | /start | none | buyers, buyer_states |
+| BuyerOnboardingWorkflow | telegram | /start | none | buyers |
 | HistoricalImportWorkflow | telegram | post-onboard | none | historical_import_queue |
 | CreativeRegistrationWorkflow | telegram | video URL | `CreativeRegistered` | creatives |
 | HistoricalVideoHandlerWorkflow | telegram | API | `HistoricalCreativeRegistered` | historical_import_queue |
@@ -285,13 +285,6 @@ SELECT
   COUNT(*) FILTER (WHERE name IS NULL OR name = '') as missing_name
 FROM genomai.buyers;
 
--- Stuck buyer states
-SELECT
-  COUNT(*) as total_states,
-  COUNT(*) FILTER (WHERE state != 'idle') as active_states,
-  COUNT(*) FILTER (WHERE state != 'idle' AND updated_at < now() - interval '1 hour') as stuck_states
-FROM genomai.buyer_states;
-
 -- Historical import queue
 SELECT COUNT(*) as stuck_pending_video
 FROM genomai.historical_import_queue
@@ -370,17 +363,6 @@ WHERE event_type IN ('TranscriptCreated', 'CreativeDecomposed', 'IdeaRegistered'
   AND occurred_at > now() - interval '7 days'
 GROUP BY event_type;
 -- PASS: All event types present OR INFO (no creatives)
-```
-
-### BuyerOnboardingWorkflow
-
-```sql
--- Check for stuck onboarding states
-SELECT COUNT(*) as stuck_onboarding
-FROM genomai.buyer_states
-WHERE state NOT IN ('idle', 'completed')
-  AND updated_at < now() - interval '1 hour';
--- PASS: stuck_onboarding = 0
 ```
 
 ### HistoricalImportWorkflow
