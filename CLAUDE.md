@@ -109,15 +109,6 @@ curl -sf localhost:10000/endpoint -d '{"geo": "INVALID"}' || echo "OK: rejected"
 3. Выполняет на localhost
 4. exit code != 0 → стоп
 
-## Issue Closure (ОБЯЗАТЕЛЬНО)
-
-**После успешного CI:**
-```bash
-gh issue close <issue-number> --comment "Fixed in #<PR-number>"
-```
-
-Только после этого — показать отчёт. Отчёт = факт, не желаемое.
-
 ## Issue Closure Report (ПОКАЗАТЬ ПОЛЬЗОВАТЕЛЮ)
 
 ```
