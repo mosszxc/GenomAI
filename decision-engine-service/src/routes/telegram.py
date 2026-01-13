@@ -10,6 +10,8 @@ Routes:
     Video/URL → CreativeRegistrationWorkflow or signal to active onboarding
 """
 
+from __future__ import annotations
+
 import os
 import re
 import logging
@@ -65,6 +67,58 @@ class WebhookErrorStats:
 
 
 webhook_error_stats = WebhookErrorStats()
+
+
+# Callback data validation constants
+CALLBACK_DATA_MAX_LENGTH = 64  # Telegram limit
+CALLBACK_DATA_PATTERN = re.compile(r"^[a-z_]+_[a-zA-Z0-9\-]+$")
+
+
+class CallbackDataError(ValueError):
+    """Raised when callback_data validation fails."""
+
+    pass
+
+
+def parse_callback_data(data: str) -> tuple[str, str]:
+    """Parse and validate callback_data from Telegram inline button.
+
+    Expected formats:
+    - ke_approve_{uuid}
+    - ke_reject_{uuid}
+    - ke_skip_{uuid}
+    - chat_{telegram_id}
+
+    Args:
+        data: Raw callback_data string from Telegram
+
+    Returns:
+        Tuple of (action, id) where action is the prefix and id is the identifier
+
+    Raises:
+        CallbackDataError: If validation fails
+    """
+    if not data:
+        raise CallbackDataError("Empty callback data")
+
+    if len(data) > CALLBACK_DATA_MAX_LENGTH:
+        raise CallbackDataError(f"Callback data exceeds {CALLBACK_DATA_MAX_LENGTH} chars")
+
+    if not CALLBACK_DATA_PATTERN.match(data):
+        raise CallbackDataError("Invalid callback data format")
+
+    # Split on last underscore to get action and id
+    last_underscore = data.rfind("_")
+    if last_underscore == -1:
+        raise CallbackDataError("Invalid callback format: missing underscore")
+
+    action = data[:last_underscore]
+    identifier = data[last_underscore + 1 :]
+
+    if not action or not identifier:
+        raise CallbackDataError("Empty action or identifier")
+
+    return action, identifier
 
 
 class TelegramUpdate(BaseModel):
@@ -2274,22 +2328,24 @@ async def handle_callback_query(update: dict) -> None:
     if not is_admin(user_id):
         return
 
-    # Parse callback data
-    if data.startswith("ke_approve_"):
-        extraction_id = data.replace("ke_approve_", "")
-        await handle_extraction_approve(chat_id, message_id, extraction_id, user_id)
+    # Parse and validate callback data
+    try:
+        action, identifier = parse_callback_data(data)
+    except CallbackDataError as e:
+        logger.warning(f"Invalid callback_data from user {user_id}: {e}")
+        return
 
-    elif data.startswith("ke_reject_"):
-        extraction_id = data.replace("ke_reject_", "")
-        await handle_extraction_reject(chat_id, message_id, extraction_id, user_id)
-
-    elif data.startswith("ke_skip_"):
-        # Just show next extraction
+    # Route to appropriate handler
+    if action == "ke_approve":
+        await handle_extraction_approve(chat_id, message_id, identifier, user_id)
+    elif action == "ke_reject":
+        await handle_extraction_reject(chat_id, message_id, identifier, user_id)
+    elif action == "ke_skip":
         await send_telegram_message(chat_id, "Пропущено. Используйте /knowledge для следующего.")
-
-    elif data.startswith("chat_"):
-        buyer_telegram_id = data.replace("chat_", "")
-        await handle_chat_history(chat_id, buyer_telegram_id)
+    elif action == "chat":
+        await handle_chat_history(chat_id, identifier)
+    else:
+        logger.warning(f"Unknown callback action: {action}")
 
 
 async def handle_extraction_approve(
