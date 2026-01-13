@@ -73,6 +73,9 @@ webhook_error_stats = WebhookErrorStats()
 CALLBACK_DATA_MAX_LENGTH = 64  # Telegram limit
 CALLBACK_DATA_PATTERN = re.compile(r"^[a-z_]+_[a-zA-Z0-9\-]+$")
 
+# Input length validation constants
+MAX_FEEDBACK_LENGTH = 500  # Max chars for /feedback text
+
 
 class CallbackDataError(ValueError):
     """Raised when callback_data validation fails."""
@@ -2151,6 +2154,13 @@ async def handle_feedback_command(message: TelegramMessage) -> None:
         await send_telegram_message(
             message.chat_id,
             "Текст слишком короткий (минимум 10 символов).",
+        )
+        return
+
+    if len(feedback_text) > MAX_FEEDBACK_LENGTH:
+        await send_telegram_message(
+            message.chat_id,
+            f"❌ Текст слишком длинный (максимум {MAX_FEEDBACK_LENGTH} символов).",
         )
         return
 
