@@ -96,6 +96,7 @@ class BuyerMessage:
     """Signal message from user during onboarding."""
 
     text: str
+    telegram_id: str  # Required for security validation
     message_id: Optional[int] = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
