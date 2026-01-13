@@ -16,13 +16,11 @@ GenomAI использует Temporal для оркестрации бизнес
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │                    Schedules                         │   │
 │  │  • keitaro-poller (1 hour) → chain trigger          │   │
+│  │  • metrics-processor (1 hour) → catch-up/recovery   │   │
+│  │  • learning-loop (1 hour) → catch-up/recovery       │   │
 │  │  • daily-recommendations (09:00 UTC)                │   │
 │  │  • maintenance (6 hours)                            │   │
 │  │  • health-check (3 hours)                           │   │
-│  │                                                      │   │
-│  │  Child workflows (not scheduled):                   │   │
-│  │  • metrics-processor (child of keitaro)             │   │
-│  │  • learning-loop (child of metrics-processor)       │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                           │                                  │
 │                           ▼                                  │
@@ -150,7 +148,7 @@ class ModularHypothesisWorkflow:
 ### MetricsProcessingWorkflow
 
 **Queue:** `metrics`
-**Schedule:** Child workflow of KeitaroPollerWorkflow (triggers learning-loop)
+**Schedule:** Every 1 hour (also triggered as child of KeitaroPollerWorkflow)
 
 Обработка метрик:
 1. Получить unprocessed snapshots
@@ -160,7 +158,7 @@ class ModularHypothesisWorkflow:
 ### LearningLoopWorkflow
 
 **Queue:** `metrics`
-**Schedule:** Child workflow of MetricsProcessingWorkflow
+**Schedule:** Every 1 hour (also triggered as child of MetricsProcessingWorkflow)
 
 Обновление scores:
 1. Получить unprocessed outcomes
@@ -405,13 +403,17 @@ Multi-agent task distribution supervisor:
 | Schedule ID | Workflow | Interval | Description |
 |-------------|----------|----------|-------------|
 | `keitaro-poller` | KeitaroPollerWorkflow | 1 hour | Collect Keitaro metrics, triggers chain |
+| `metrics-processor` | MetricsProcessingWorkflow | 1 hour | Process snapshots → outcomes, triggers learning |
+| `learning-loop` | LearningLoopWorkflow | 1 hour | Apply learnings from outcomes |
 | `daily-recommendations` | DailyRecommendationWorkflow | 09:00 UTC | Generate daily recommendations |
 | `maintenance` | MaintenanceWorkflow | 6 hours | Cleanup and integrity checks |
 | `health-check` | HealthCheckWorkflow | 3 hours | Health monitoring + alerts |
 
-**Child workflows (not scheduled separately):**
-- `metrics-processor` — triggered by keitaro-poller after snapshots created
-- `learning-loop` — triggered by metrics-processor after outcomes created
+**Note:** `metrics-processor` and `learning-loop` are also triggered as child workflows
+from `keitaro-poller`, but having them as separate schedules provides:
+1. Catch-up for missed snapshots/outcomes (if child chain failed)
+2. Independent operation for recovery scenarios
+3. Ability to trigger processing without full keitaro poll
 
 ### Schedule Management
 

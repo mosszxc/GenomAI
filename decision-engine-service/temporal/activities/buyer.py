@@ -476,6 +476,9 @@ async def get_pending_video_campaigns(buyer_id: str) -> List[dict]:
     """
     Get campaigns waiting for video (status=pending_video) for onboarding.
 
+    Note: Campaign selection (top 10 by profit + last 20 by date) happens
+    during import in keitaro.py. This function returns all pending campaigns.
+
     Args:
         buyer_id: Buyer UUID
 
@@ -492,7 +495,7 @@ async def get_pending_video_campaigns(buyer_id: str) -> List[dict]:
         f"{base_url}/historical_import_queue"
         f"?buyer_id=eq.{buyer_id}"
         f"&status=eq.pending_video"
-        f"&order=created_at.asc"
+        f"&order=created_at.desc"
         f"&select=id,campaign_id,metrics,status",
         headers=headers,
         timeout=30.0,
@@ -500,7 +503,7 @@ async def get_pending_video_campaigns(buyer_id: str) -> List[dict]:
     response.raise_for_status()
     data = cast(List[dict[str, Any]], response.json())
 
-    activity.logger.info(f"Found {len(data)} campaigns waiting for video")
+    activity.logger.info(f"Found {len(data)} pending video campaigns")
     return data
 
 

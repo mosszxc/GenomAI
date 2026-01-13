@@ -115,7 +115,8 @@ MESSAGES = {
         "{num}️⃣ <b>Кампания:</b> {name}\n"
         "🆔 ID: <code>{campaign_id}</code>\n"
         "📊 Клики: {clicks} | Конверсии: {conversions}\n\n"
-        "<i>Скинь URL видео:</i>"
+        "<i>Скинь URL видео:</i>\n"
+        "<code>-</code> пропустить | <code>--</code> пропустить все"
     ),
     "video_received": ("✅ Видео получено, запускаю анализ..."),
     "no_campaigns": (
@@ -123,6 +124,8 @@ MESSAGES = {
         "Можешь скидывать видео позже через обычные сообщения."
     ),
     "invalid_video_url": ("❌ Не распознал ссылку на видео.\nОтправь URL (YouTube, .mp4 и т.д.)"),
+    "video_skipped": ("⏭️ Пропущено. Переходим к следующей..."),
+    "all_videos_skipped": ("⏭️ Пропущены все оставшиеся кампании ({remaining} шт)."),
     "validating_sub10": ("🔍 Проверяю sub10 <code>{sub10}</code> в Keitaro..."),
     "sub10_found": (
         "✅ Найдено <b>{count}</b> кампаний с sub10='{sub10}'\n\nПродолжаю настройку..."
@@ -735,6 +738,35 @@ class BuyerOnboardingWorkflow:
 
                         text = msg_text.strip()
                         await self._log_incoming(text, f"video_input_{i}")
+
+                        # Handle skip commands
+                        if text in ("-", "skip", "пропустить"):
+                            # Skip single campaign
+                            await workflow.execute_activity(
+                                send_telegram_message,
+                                args=[self._chat_id, MESSAGES["video_skipped"]],
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=default_retry,
+                            )
+                            await self._log_outgoing(
+                                MESSAGES["video_skipped"], f"video_skipped_{i}"
+                            )
+                            break  # Move to next campaign
+
+                        if text in ("--", "skip all", "пропустить все", "все"):
+                            # Skip all remaining campaigns
+                            remaining = total_campaigns - i + 1
+                            skip_msg = MESSAGES["all_videos_skipped"].format(remaining=remaining)
+                            await workflow.execute_activity(
+                                send_telegram_message,
+                                args=[self._chat_id, skip_msg],
+                                start_to_close_timeout=timedelta(seconds=30),
+                                retry_policy=default_retry,
+                            )
+                            await self._log_outgoing(skip_msg, "all_videos_skipped")
+                            # Exit the for loop completely
+                            pending_campaigns.clear()
+                            break
 
                         if is_video_url(text):
                             # Update import record with video URL

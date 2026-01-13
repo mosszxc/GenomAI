@@ -273,6 +273,12 @@ class CampaignInfo:
     cost: float = 0.0
     offer_id: Optional[str] = None
     landing_id: Optional[str] = None
+    created_at: Optional[str] = None
+
+    @property
+    def profit(self) -> float:
+        """Calculate profit (revenue - cost)"""
+        return self.revenue - self.cost
 
     def to_dict(self) -> dict:
         return {
@@ -282,6 +288,8 @@ class CampaignInfo:
             "conversions": self.conversions,
             "revenue": self.revenue,
             "cost": self.cost,
+            "profit": self.profit,
+            "created_at": self.created_at,
         }
 
 
@@ -364,21 +372,101 @@ async def get_campaigns_by_source(
             CampaignInfo(
                 campaign_id=str(c.get("id", "")),
                 name=name,
-                clicks=0,  # Will be populated by metrics if needed
+                clicks=0,
                 conversions=0,
                 revenue=0.0,
                 cost=0.0,
+                created_at=created_at,
             )
         )
 
+    if not campaigns:
+        return GetCampaignsBySourceOutput(campaigns=[], total=0, source=input.source)
+
+    # Step 4: Fetch metrics for all campaigns in one request
+    activity.logger.info(f"Fetching metrics for {len(campaigns)} campaigns...")
+
+    campaign_ids = [c.campaign_id for c in campaigns]
+    metrics_url = _get_keitaro_url("/report/build")
+
+    # Get metrics for last 30 days with campaign_id dimension
+    metrics_payload = {
+        "range": {"interval": "last_30_days"},
+        "metrics": ["clicks", "conversions", "revenue", "cost"],
+        "dimensions": ["campaign_id"],
+        "filters": [
+            {
+                "name": "campaign_id",
+                "operator": "IN_LIST",
+                "expression": campaign_ids,
+            }
+        ],
+    }
+
+    try:
+        metrics_response = await client.post(
+            metrics_url, headers=headers, json=metrics_payload, timeout=120.0
+        )
+        if metrics_response.is_success:
+            metrics_data = metrics_response.json()
+            metrics_rows = metrics_data.get("rows", [])
+
+            # Build lookup dict by campaign_id
+            metrics_by_id = {}
+            for row in metrics_rows:
+                cid = str(row.get("campaign_id", ""))
+                if cid:
+                    metrics_by_id[cid] = {
+                        "clicks": safe_int(row.get("clicks", 0)),
+                        "conversions": safe_int(row.get("conversions", 0)),
+                        "revenue": safe_float(row.get("revenue", 0.0)),
+                        "cost": safe_float(row.get("cost", 0.0)),
+                    }
+
+            # Merge metrics into campaigns
+            for camp in campaigns:
+                if camp.campaign_id in metrics_by_id:
+                    m = metrics_by_id[camp.campaign_id]
+                    camp.clicks = int(m["clicks"])
+                    camp.conversions = int(m["conversions"])
+                    camp.revenue = float(m["revenue"])
+                    camp.cost = float(m["cost"])
+
+            activity.logger.info(f"Merged metrics for {len(metrics_by_id)} campaigns")
+        else:
+            activity.logger.warning(f"Failed to fetch metrics: {metrics_response.status_code}")
+    except Exception as e:
+        activity.logger.warning(f"Error fetching metrics (continuing without): {e}")
+
+    # Step 5: Select top campaigns
+    # - Top 10 by profit (revenue - cost)
+    # - Last 20 by creation date
+    total_before_filter = len(campaigns)
+
+    # Top 10 by profit
+    top_by_profit = sorted(campaigns, key=lambda c: c.profit, reverse=True)[:10]
+    top_profit_ids = {c.campaign_id for c in top_by_profit}
+
+    # Last 20 by creation date (most recent first)
+    sorted_by_date = sorted(
+        campaigns,
+        key=lambda c: c.created_at or "",
+        reverse=True,
+    )[:20]
+
+    # Combine without duplicates (profit campaigns first, then recent ones)
+    selected: list[CampaignInfo] = list(top_by_profit)
+    for camp in sorted_by_date:
+        if camp.campaign_id not in top_profit_ids:
+            selected.append(camp)
+
     activity.logger.info(
-        f"Found {len(campaigns)} campaigns for source '{input.source}' "
-        f"(created after {cutoff.date()})"
+        f"Found {total_before_filter} campaigns for source '{input.source}' "
+        f"(created after {cutoff.date()}), selected {len(selected)} "
+        f"(top 10 profit + last 20 recent)"
     )
 
-    return GetCampaignsBySourceOutput(
-        campaigns=campaigns, total=len(campaigns), source=input.source
-    )
+    return GetCampaignsBySourceOutput(campaigns=selected, total=len(selected), source=input.source)
 
 
 @dataclass
