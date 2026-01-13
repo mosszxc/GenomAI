@@ -106,7 +106,7 @@ if [ "$SKIP_TESTS" != "true" ]; then
     echo "Command: $TEST_CMD"
     echo ""
 
-    cd "$PROJECT_ROOT"
+    cd "$WORKTREE_PATH"
     if eval "$TEST_CMD"; then
         echo ""
         echo "✓ Functional test passed"
