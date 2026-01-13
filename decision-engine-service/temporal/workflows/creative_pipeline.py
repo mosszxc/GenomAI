@@ -12,7 +12,7 @@ Main workflow that processes a creative through the entire pipeline:
 Replaces 6 n8n workflows with single durable workflow.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -49,6 +49,9 @@ class CreativePipelineWorkflow:
         self._hypothesis_count: int = 0
         self._error: Optional[str] = None
         self._log = None  # Initialized in run() with context
+        self._operation_start_time: Optional[datetime] = (
+            None  # For deterministic completed_at
+        )
 
     @workflow.run
     async def run(self, input: CreativeInput) -> PipelineResult:
@@ -63,6 +66,10 @@ class CreativePipelineWorkflow:
         """
         self._creative_id = input.creative_id
         self._status = "started"
+
+        # Capture start time BEFORE try block for deterministic completed_at
+        # This ensures workflow.now() is called in deterministic execution path
+        self._operation_start_time = workflow.now()
 
         # Initialize structured logger with trace context
         self._log = get_workflow_logger(
@@ -502,6 +509,9 @@ class CreativePipelineWorkflow:
         hypothesis_id: Optional[str] = None,
     ) -> PipelineResult:
         """Build pipeline result."""
+        # Use pre-captured time to ensure determinism during replay
+        # workflow.now() in exception handlers can cause non-determinism errors
+        completed_at = self._operation_start_time or workflow.now()
         return PipelineResult(
             creative_id=self._creative_id or "",
             idea_id=self._idea_id,
@@ -510,7 +520,7 @@ class CreativePipelineWorkflow:
             decision_type=self._decision,
             hypothesis_id=hypothesis_id,
             hypothesis_count=self._hypothesis_count,
-            completed_at=workflow.now(),  # Use workflow.now() for determinism
+            completed_at=completed_at,
             error=self._error,
         )
 
