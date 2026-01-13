@@ -7,10 +7,8 @@ Provides input length limits and safe pattern matching functions.
 Issue #541: Potential ReDoS in URL regex patterns
 """
 
-from __future__ import annotations
-
 import re
-from typing import List, Optional, Pattern, Union
+from typing import Optional, Pattern
 
 # Maximum input length for regex operations
 # Prevents exponential backtracking on long malicious strings
@@ -18,7 +16,7 @@ MAX_INPUT_LENGTH = 2048
 
 
 def safe_search(
-    pattern: Union[str, Pattern[str]],
+    pattern: str | Pattern[str],
     text: str,
     flags: int = 0,
     max_length: int = MAX_INPUT_LENGTH,
@@ -51,7 +49,7 @@ def safe_search(
 
 
 def safe_match(
-    pattern: Union[str, Pattern[str]],
+    pattern: str | Pattern[str],
     text: str,
     flags: int = 0,
     max_length: int = MAX_INPUT_LENGTH,
@@ -79,7 +77,7 @@ def safe_match(
 
 
 def safe_any_match(
-    patterns: List[str],
+    patterns: list[str],
     text: str,
     flags: int = 0,
     max_length: int = MAX_INPUT_LENGTH,
