@@ -274,10 +274,13 @@ class CampaignInfo:
     offer_id: Optional[str] = None
     landing_id: Optional[str] = None
     created_at: Optional[str] = None
+    confirmed_profit: float = 0.0  # From Keitaro confirmed_profit metric
 
     @property
     def profit(self) -> float:
-        """Calculate profit (revenue - cost)"""
+        """Return confirmed_profit from Keitaro (or fallback to revenue - cost)"""
+        if self.confirmed_profit != 0.0:
+            return self.confirmed_profit
         return self.revenue - self.cost
 
     def to_dict(self) -> dict:
@@ -418,6 +421,7 @@ async def get_campaigns_by_source(
                         "conversions": safe_int(row.get("sales", 0)),  # Keitaro uses "sales"
                         "revenue": safe_float(row.get("confirmed_revenue", 0.0)),
                         "cost": safe_float(row.get("cost", 0.0)),
+                        "profit": safe_float(row.get("confirmed_profit", 0.0)),
                     }
 
             # Merge metrics into campaigns
@@ -428,6 +432,7 @@ async def get_campaigns_by_source(
                     camp.conversions = int(m["conversions"])
                     camp.revenue = float(m["revenue"])
                     camp.cost = float(m["cost"])
+                    camp.confirmed_profit = float(m["profit"])
 
             activity.logger.info(f"Merged metrics for {len(metrics_by_id)} campaigns")
         else:
