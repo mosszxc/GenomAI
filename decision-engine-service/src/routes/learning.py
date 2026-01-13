@@ -87,20 +87,27 @@ async def process_learning(_: bool = Depends(verify_api_key)):
 
 
 @router.get("/status")
-async def learning_status(_: bool = Depends(verify_api_key)):
+async def learning_status():
     """
-    GET /learning/status
+    GET /learning/status (public endpoint)
 
-    Get count of pending outcomes to process.
+    Get count of pending outcomes to process and last processing time.
 
     Returns:
         dict: Status info
             - pending_outcomes: Number of outcomes waiting for processing
+            - last_processed_at: Timestamp of last processed outcome (ISO format)
     """
+    from src.services.learning_loop import fetch_last_processed_at
+
     try:
         outcomes = await fetch_unprocessed_outcomes(limit=1000)
+        last_processed = await fetch_last_processed_at()
 
-        return {"success": True, "data": {"pending_outcomes": len(outcomes)}}
+        return {
+            "pending_outcomes": len(outcomes),
+            "last_processed_at": last_processed,
+        }
 
     except SupabaseError as e:
         raise HTTPException(
