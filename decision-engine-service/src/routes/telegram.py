@@ -2744,10 +2744,14 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
     """Handle video URL - start creative registration."""
     from temporal.workflows.historical_import import CreativeRegistrationWorkflow
 
+    # DEBUG: Log entry point (ERROR level to ensure visibility in Render)
+    logger.error(f"DEBUG handle_video_url: ENTRY user_id={message.user_id} url={video_url[:50]}")
+
     # Check if user is registered
     try:
         sb = get_supabase()
     except RuntimeError:
+        logger.error("DEBUG handle_video_url: Supabase not available")
         await send_telegram_message(message.chat_id, "Сервис временно недоступен.")
         return
 
@@ -2761,7 +2765,10 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
         )
         buyers = safe_json_response(buyer_resp, "Get buyer for creative", [])
 
+        logger.error(f"DEBUG handle_video_url: buyers={buyers}")
+
         if not buyers:
+            logger.error("DEBUG handle_video_url: No buyer found, sending registration message")
             await send_telegram_message(
                 message.chat_id,
                 "Сначала нужно зарегистрироваться. Отправьте /start.",
@@ -2769,13 +2776,16 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             return
 
         buyer_id = buyers[0]["id"]
+        logger.error(f"DEBUG handle_video_url: buyer_id={buyer_id}")
 
         # Start creative registration workflow
         client = await get_temporal_client()
+        logger.error("DEBUG handle_video_url: Got Temporal client")
 
         import uuid
 
         workflow_id = f"creative-reg-{uuid.uuid4().hex[:8]}"
+        logger.error(f"DEBUG handle_video_url: Starting workflow {workflow_id}")
 
         await client.start_workflow(
             CreativeRegistrationWorkflow.run,
@@ -2784,6 +2794,8 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             task_queue="telegram",
         )
 
+        logger.error(f"DEBUG handle_video_url: Workflow started successfully: {workflow_id}")
+
         await send_telegram_message(
             message.chat_id,
             f"Видео получено!\n\n"
@@ -2791,9 +2803,10 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             f"Обработка скоро начнётся. Уведомлю когда будет готово.",
         )
 
-        logger.info(f"Started creative registration: {workflow_id}")
+        logger.error("DEBUG handle_video_url: Telegram message sent")
 
     except Exception as e:
+        logger.error(f"DEBUG handle_video_url: EXCEPTION {type(e).__name__}: {e}")
         record_handler_error(e, "Failed to register creative")
         await send_telegram_message(
             message.chat_id, "Не удалось обработать видео. Попробуйте снова."

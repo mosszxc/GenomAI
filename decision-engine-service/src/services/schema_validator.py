@@ -4,7 +4,7 @@ Schema Validator Service — Validates LLM output against JSON Schema
 
 import json
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 from pathlib import Path
 from jsonschema import Draft7Validator, ValidationError as JsonSchemaValidationError
 
@@ -16,7 +16,7 @@ class ValidationError:
     field: str
     message: str
     code: str
-    value: Optional[any] = None
+    value: Optional[Any] = None
 
 
 @dataclass
@@ -87,7 +87,7 @@ class SchemaValidator:
             ValueError: If schema version not found
         """
         if schema_version in self._schema_cache:
-            return self._schema_cache[schema_version]
+            return cast(dict[Any, Any], self._schema_cache[schema_version])
 
         if schema_version not in self.SCHEMA_FILES:
             raise ValueError(
@@ -103,7 +103,7 @@ class SchemaValidator:
             schema = json.load(f)
 
         self._schema_cache[schema_version] = schema
-        return schema
+        return cast(dict[Any, Any], schema)
 
     def _extract_field_path(self, error: JsonSchemaValidationError) -> str:
         """Extract field path from validation error"""
@@ -160,7 +160,7 @@ class SchemaValidator:
         if validator == "additionalProperties":
             return f"Unexpected field: {field}"
 
-        return error.message
+        return cast(str, error.message)
 
     def validate(self, payload: dict, schema_version: str = "v1") -> ValidationResult:
         """

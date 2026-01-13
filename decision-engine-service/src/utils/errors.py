@@ -6,7 +6,7 @@ Custom Error Classes
 class DecisionEngineError(Exception):
     """Base exception for Decision Engine errors"""
 
-    def __init__(self, code: str, message: str, details: dict = None):
+    def __init__(self, code: str, message: str, details: dict | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
@@ -25,7 +25,7 @@ class IdeaNotFoundError(DecisionEngineError):
 class InvalidInputError(DecisionEngineError):
     """Raised when input validation fails"""
 
-    def __init__(self, message: str, details: dict = None):
+    def __init__(self, message: str, details: dict | None = None):
         super().__init__("INVALID_INPUT", message, details or {})
         self.status_code = 400
 
@@ -33,6 +33,6 @@ class InvalidInputError(DecisionEngineError):
 class SupabaseError(DecisionEngineError):
     """Raised when Supabase operation fails"""
 
-    def __init__(self, message: str, details: dict = None):
+    def __init__(self, message: str, details: dict | None = None):
         super().__init__("SUPABASE_ERROR", f"Supabase error: {message}", details or {})
         self.status_code = 500

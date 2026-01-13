@@ -58,9 +58,10 @@ async def get_temporal_client() -> Client:
 
 
 async def close_temporal_client() -> None:
-    """Close the Temporal client connection."""
-    global _client
+    """Close the Temporal client connection.
 
-    if _client is not None:
-        await _client.close()
-        _client = None
+    Note: Temporal SDK Client doesn't have a close() method.
+    This function just clears the singleton reference.
+    """
+    global _client
+    _client = None
