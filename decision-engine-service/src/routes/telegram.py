@@ -19,7 +19,8 @@ import asyncio
 from datetime import datetime
 from html import escape as html_escape
 from typing import Optional
-from fastapi import APIRouter, Request, BackgroundTasks
+import secrets
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from src.utils.parsing import safe_float
@@ -38,6 +39,34 @@ TELEGRAM_BASE_DELAY = 1.0  # seconds
 TELEGRAM_MAX_DELAY = 10.0  # seconds
 
 router = APIRouter()
+
+# Telegram webhook security header
+TELEGRAM_SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
+
+
+def verify_webhook_secret(request: Request) -> None:
+    """Verify Telegram webhook secret token.
+
+    Telegram sends secret_token in X-Telegram-Bot-Api-Secret-Token header
+    when configured via setWebhook API with secret_token parameter.
+
+    Raises:
+        HTTPException: 401 if secret is configured but not provided/invalid
+    """
+    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+    if not webhook_secret:
+        # Secret not configured - skip verification (backwards compatible)
+        return
+
+    provided_secret = request.headers.get(TELEGRAM_SECRET_HEADER, "")
+    if not provided_secret:
+        logger.warning("Telegram webhook request missing secret token")
+        raise HTTPException(status_code=401, detail="Missing webhook secret")
+
+    # Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(webhook_secret, provided_secret):
+        logger.warning("Telegram webhook request with invalid secret token")
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
 
 # Webhook error tracking for monitoring
@@ -2687,7 +2716,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     Telegram webhook endpoint.
 
     Receives updates from Telegram Bot API and processes them asynchronously.
+    Verifies X-Telegram-Bot-Api-Secret-Token header if TELEGRAM_WEBHOOK_SECRET is set.
     """
+    # Verify webhook secret before processing
+    verify_webhook_secret(request)
+
     try:
         update = await request.json()
         logger.debug(f"Received Telegram update: {update.get('update_id')}")
