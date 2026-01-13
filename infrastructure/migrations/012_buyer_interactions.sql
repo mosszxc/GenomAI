@@ -6,6 +6,7 @@
 CREATE TABLE IF NOT EXISTS genomai.buyer_interactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   telegram_id TEXT NOT NULL,
+  buyer_id UUID REFERENCES genomai.buyers(id),  -- связь с buyers (опционально)
   direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),  -- in = от байера, out = от бота
   message_type TEXT NOT NULL CHECK (message_type IN ('text', 'video', 'photo', 'document', 'command', 'callback', 'system')),
   content TEXT,  -- текст сообщения или описание действия
@@ -22,6 +23,9 @@ CREATE INDEX IF NOT EXISTS idx_buyer_interactions_created_at
 
 CREATE INDEX IF NOT EXISTS idx_buyer_interactions_telegram_created
   ON genomai.buyer_interactions(telegram_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_buyer_interactions_buyer_id
+  ON genomai.buyer_interactions(buyer_id);
 
 -- Комментарии
 COMMENT ON TABLE genomai.buyer_interactions IS 'Append-only log of all buyer-bot interactions. Used for chat history and analytics.';
