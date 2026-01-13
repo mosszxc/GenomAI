@@ -36,6 +36,7 @@ from temporal.activities.telegram import (
     get_buyer_chat_id,
     update_hypothesis_delivery_status,
     emit_delivery_event,
+    send_status_notification,
 )
 from temporal.activities.keitaro import (
     get_all_trackers,
@@ -138,6 +139,7 @@ __all__ = [
     "get_buyer_chat_id",
     "update_hypothesis_delivery_status",
     "emit_delivery_event",
+    "send_status_notification",
     # Keitaro activities
     "get_all_trackers",
     "get_tracker_metrics",
