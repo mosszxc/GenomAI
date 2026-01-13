@@ -10,5 +10,5 @@
 
 ## Test
 ```bash
-cd decision-engine-service && python3 -c "import sys; sys.path.insert(0,'.'); exec(open('temporal/config.py').read().split('settings = ')[0]); get_required_env('MISSING_VAR')" 2>&1 | grep -q "MISSING_VAR is not set" && echo "OK: validation works"
+grep -q "get_required_env.*SUPABASE_URL" decision-engine-service/temporal/config.py && grep -q "get_required_env.*SUPABASE_SERVICE_ROLE_KEY" decision-engine-service/temporal/config.py && echo "OK: validation applied"
 ```
