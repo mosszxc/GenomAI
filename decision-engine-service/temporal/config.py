@@ -21,21 +21,27 @@ External APIs:
 """
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+
+def _is_test_environment() -> bool:
+    """Check if running in test environment (pytest)."""
+    return "pytest" in sys.modules or any("pytest" in arg for arg in sys.argv)
 
 
 def get_required_env(key: str, default: str = "") -> str:
     """Get required environment variable or raise ValueError.
 
     Provides fail-fast behavior at startup instead of silent failures later.
-    In test environment (PYTEST_CURRENT_TEST set), returns default to allow tests to run.
+    In test environment (pytest), returns default to allow tests to run.
     """
     value = os.getenv(key)
     if not value:
         # Skip validation during pytest runs
-        if os.getenv("PYTEST_CURRENT_TEST"):
+        if _is_test_environment():
             return default
         raise ValueError(f"Required environment variable {key} is not set")
     return value
