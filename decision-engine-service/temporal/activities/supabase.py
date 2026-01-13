@@ -693,15 +693,36 @@ async def save_transcript(
     if assemblyai_transcript_id:
         transcript["assemblyai_transcript_id"] = assemblyai_transcript_id
 
+    # Use on_conflict for idempotent retry handling (Issue #579)
+    # UNIQUE constraint: (creative_id, version)
+    upsert_headers = {
+        **headers,
+        "Prefer": "resolution=ignore-duplicates,return=representation",
+    }
     response = await client.post(
-        f"{rest_url}/transcripts",
-        headers=headers,
+        f"{rest_url}/transcripts?on_conflict=creative_id,version",
+        headers=upsert_headers,
         json=transcript,
     )
     response.raise_for_status()
     data = response.json()
 
     if not data:
+        # Conflict occurred (retry case) - fetch existing transcript
+        response = await client.get(
+            f"{rest_url}/transcripts"
+            f"?creative_id=eq.{creative_id}"
+            f"&version=eq.{next_version}"
+            f"&select=*",
+            headers=read_headers,
+        )
+        response.raise_for_status()
+        existing = response.json()
+        if existing:
+            activity.logger.info(
+                f"Transcript already exists (retry case) creative={creative_id}, version={next_version}"
+            )
+            return existing[0]
         raise RuntimeError("Failed to save transcript: no data returned")
 
     activity.logger.info(f"Saved transcript for creative={creative_id}, version={next_version}")
