@@ -241,7 +241,8 @@ async def upsert_premise_learning(
             },
         )
         response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+        data = response.json()
+        return data[0] if data else {}
     else:
         # Insert new record (win_rate and avg_roi are generated columns)
         response = await client.post(
@@ -260,7 +261,8 @@ async def upsert_premise_learning(
             },
         )
         response.raise_for_status()
-        return response.json()[0] if response.json() else {}
+        data = response.json()
+        return data[0] if data else {}
 
 
 async def process_premise_learning(
