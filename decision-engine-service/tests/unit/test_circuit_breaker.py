@@ -274,24 +274,32 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         recent_update = now - timedelta(minutes=5)
 
-        # Response for metrics query
-        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat()}])
+        # Response for RPC get_metrics_staleness call (Issue #706)
+        rpc_response = create_mock_response(
+            [
+                {
+                    "latest_updated_at": recent_update.isoformat(),
+                    "staleness_minutes": 5.0,
+                    "is_stale": False,
+                }
+            ]
+        )
         # Response for circuit breaker state query
         circuit_response = create_mock_response(
             [{"value": {"state": "closed", "failure_count": 0}}]
         )
 
-        call_count = [0]
+        async def mock_post(*args, **kwargs):
+            # RPC call for get_metrics_staleness
+            return rpc_response
 
         async def mock_get(*args, **kwargs):
-            call_count[0] += 1
-            # First call is for metrics, second is for circuit breaker
-            if "raw_metrics_current" in args[0]:
-                return metrics_response
+            # Circuit breaker state query
             return circuit_response
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
+            mock_client.post = mock_post
             mock_client.get = mock_get
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -309,18 +317,29 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         old_update = now - timedelta(minutes=45)
 
-        metrics_response = create_mock_response([{"updated_at": old_update.isoformat()}])
+        # Response for RPC get_metrics_staleness call (Issue #706)
+        rpc_response = create_mock_response(
+            [
+                {
+                    "latest_updated_at": old_update.isoformat(),
+                    "staleness_minutes": 45.0,
+                    "is_stale": True,
+                }
+            ]
+        )
         circuit_response = create_mock_response(
             [{"value": {"state": "closed", "failure_count": 0}}]
         )
 
+        async def mock_post(*args, **kwargs):
+            return rpc_response
+
         async def mock_get(*args, **kwargs):
-            if "raw_metrics_current" in args[0]:
-                return metrics_response
             return circuit_response
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
+            mock_client.post = mock_post
             mock_client.get = mock_get
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
@@ -337,7 +356,16 @@ class TestMetricsStaleness:
         now = datetime.utcnow()
         recent_update = now - timedelta(minutes=5)
 
-        metrics_response = create_mock_response([{"updated_at": recent_update.isoformat()}])
+        # Response for RPC get_metrics_staleness call (Issue #706)
+        rpc_response = create_mock_response(
+            [
+                {
+                    "latest_updated_at": recent_update.isoformat(),
+                    "staleness_minutes": 5.0,
+                    "is_stale": False,
+                }
+            ]
+        )
         circuit_response = create_mock_response(
             [
                 {
@@ -350,13 +378,15 @@ class TestMetricsStaleness:
             ]
         )
 
+        async def mock_post(*args, **kwargs):
+            return rpc_response
+
         async def mock_get(*args, **kwargs):
-            if "raw_metrics_current" in args[0]:
-                return metrics_response
             return circuit_response
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
+            mock_client.post = mock_post
             mock_client.get = mock_get
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=None)
