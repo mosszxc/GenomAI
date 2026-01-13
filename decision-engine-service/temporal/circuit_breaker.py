@@ -9,11 +9,13 @@ Implements circuit breaker pattern to handle Keitaro API failures gracefully:
 State is persisted in Supabase config table for cross-restart persistence.
 """
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
 
+import httpx
 from temporalio import activity
 
 from temporal.config import settings
@@ -82,11 +84,21 @@ RECOVERY_TIMEOUT_MINUTES = 5  # Time before attempting recovery (half-open)
 CONFIG_KEY = "keitaro_circuit_breaker"
 
 
-def _get_supabase_client():
-    """Get Supabase client for circuit breaker state storage"""
-    from supabase import create_client
+def _get_rest_url() -> str:
+    """Get Supabase REST API URL"""
+    return f"{settings.supabase.url}/rest/v1"
 
-    return create_client(settings.supabase.url, settings.supabase.service_role_key)
+
+def _get_headers(for_write: bool = False) -> dict:
+    """Get headers for Supabase REST API requests"""
+    headers = {
+        "apikey": settings.supabase.service_role_key,
+        "Authorization": f"Bearer {settings.supabase.service_role_key}",
+        "Content-Type": "application/json",
+    }
+    if for_write:
+        headers["Prefer"] = "return=representation"
+    return headers
 
 
 async def get_circuit_state() -> CircuitBreakerState:
@@ -96,18 +108,19 @@ async def get_circuit_state() -> CircuitBreakerState:
     Returns default (closed) state if no state exists.
     """
     try:
-        client = _get_supabase_client()
-        result = (
-            client.schema("genomai")
-            .table("config")
-            .select("value")
-            .eq("key", CONFIG_KEY)
-            .maybe_single()
-            .execute()
-        )
+        rest_url = _get_rest_url()
+        headers = _get_headers()
 
-        if result.data:
-            return CircuitBreakerState.from_dict(result.data["value"])
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{rest_url}/config?key=eq.{CONFIG_KEY}&select=value",
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        if data:
+            return CircuitBreakerState.from_dict(data[0]["value"])
 
         return CircuitBreakerState.default()
     except Exception as e:
@@ -119,11 +132,18 @@ async def get_circuit_state() -> CircuitBreakerState:
 async def save_circuit_state(state: CircuitBreakerState) -> None:
     """Save circuit breaker state to Supabase"""
     try:
-        client = _get_supabase_client()
-        client.schema("genomai").table("config").upsert(
-            {"key": CONFIG_KEY, "value": state.to_dict()},
-            on_conflict="key",
-        ).execute()
+        rest_url = _get_rest_url()
+        headers = _get_headers(for_write=True)
+        # Add upsert header for conflict resolution
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{rest_url}/config",
+                headers=headers,
+                content=json.dumps({"key": CONFIG_KEY, "value": state.to_dict()}),
+            )
+            response.raise_for_status()
     except Exception as e:
         # Log but don't fail - state will be recalculated on next run
         activity.logger.warning(f"Failed to save circuit breaker state: {e}")
@@ -214,24 +234,24 @@ async def get_metrics_staleness() -> dict:
         dict with staleness info and circuit breaker state
     """
     try:
-        client = _get_supabase_client()
+        rest_url = _get_rest_url()
+        headers = _get_headers()
 
         # Get latest metrics timestamp
-        result = (
-            client.schema("genomai")
-            .table("raw_metrics_current")
-            .select("updated_at")
-            .order("updated_at", desc=True)
-            .limit(1)
-            .execute()
-        )
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{rest_url}/raw_metrics_current?select=updated_at&order=updated_at.desc&limit=1",
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.json()
 
         cb_state = await get_circuit_state()
         now = datetime.utcnow()
 
-        if result.data:
+        if data:
             latest_update = datetime.fromisoformat(
-                result.data[0]["updated_at"].replace("Z", "+00:00")
+                data[0]["updated_at"].replace("Z", "+00:00")
             ).replace(tzinfo=None)
             staleness_minutes = (now - latest_update).total_seconds() / 60
             is_stale = staleness_minutes > 30
