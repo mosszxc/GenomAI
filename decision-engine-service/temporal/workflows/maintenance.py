@@ -13,6 +13,7 @@ Tasks:
 Schedule: Every 6 hours
 """
 
+import asyncio
 from datetime import timedelta
 from dataclasses import dataclass
 from typing import List, Optional, Dict
@@ -439,30 +440,22 @@ class MaintenanceWorkflow:
                                 )
 
                         except workflow.ChildWorkflowError as e:
-                            if "already started" in str(e).lower():
-                                workflow.logger.info(
-                                    f"Creative {creative_id[:8]} workflow already running, "
-                                    f"skipping recovery"
-                                )
-                            else:
-                                result.stuck_creatives_failed += 1
-                                workflow.logger.error(
-                                    f"Failed to recover creative {creative_id[:8]}: {e}"
-                                )
+                            # Child workflow failed to start or already exists
+                            result.stuck_creatives_failed += 1
+                            workflow.logger.warning(
+                                f"Child workflow error for creative {creative_id[:8]}: {e}"
+                            )
+                        except asyncio.CancelledError:
+                            # Workflow was cancelled, re-raise to allow proper cancellation
+                            workflow.logger.info(
+                                f"Recovery cancelled for creative {creative_id[:8]}"
+                            )
+                            raise
                         except Exception as e:
-                            if (
-                                "already started" in str(e).lower()
-                                or "already running" in str(e).lower()
-                            ):
-                                workflow.logger.info(
-                                    f"Creative {creative_id[:8]} workflow already running, "
-                                    f"skipping recovery"
-                                )
-                            else:
-                                result.stuck_creatives_failed += 1
-                                workflow.logger.error(
-                                    f"Failed to recover creative {creative_id[:8]}: {e}"
-                                )
+                            result.stuck_creatives_failed += 1
+                            workflow.logger.exception(
+                                f"Unexpected error recovering creative {creative_id[:8]}: {e}"
+                            )
 
                     workflow.logger.info(
                         f"Recovery complete: {result.stuck_creatives_recovered} recovered, "

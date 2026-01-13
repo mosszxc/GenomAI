@@ -37,16 +37,14 @@ class DbAssertions:
     async def creative_exists(self, tracker_id: str) -> bool:
         """Check if creative exists by tracker_id."""
         result = await self._query_single(
-            "creatives",
-            f"tracker_id=eq.{tracker_id}&select=id"
+            "creatives", f"tracker_id=eq.{tracker_id}&select=id"
         )
         return result is not None
 
     async def get_creative(self, tracker_id: str) -> Optional[dict]:
         """Get creative by tracker_id."""
         return await self._query_single(
-            "creatives",
-            f"tracker_id=eq.{tracker_id}&select=*"
+            "creatives", f"tracker_id=eq.{tracker_id}&select=*"
         )
 
     async def creative_has_status(self, tracker_id: str, status: str) -> bool:
@@ -59,16 +57,14 @@ class DbAssertions:
     async def transcript_exists(self, creative_id: str) -> bool:
         """Check if transcript exists for creative."""
         result = await self._query_single(
-            "transcripts",
-            f"creative_id=eq.{creative_id}&select=id"
+            "transcripts", f"creative_id=eq.{creative_id}&select=id"
         )
         return result is not None
 
     async def get_transcript(self, creative_id: str) -> Optional[dict]:
         """Get transcript by creative_id."""
         return await self._query_single(
-            "transcripts",
-            f"creative_id=eq.{creative_id}&select=*"
+            "transcripts", f"creative_id=eq.{creative_id}&select=*"
         )
 
     # ==================== Decomposed Creatives ====================
@@ -76,40 +72,35 @@ class DbAssertions:
     async def decomposed_exists(self, creative_id: str) -> bool:
         """Check if decomposed creative exists."""
         result = await self._query_single(
-            "decomposed_creatives",
-            f"creative_id=eq.{creative_id}&select=id"
+            "decomposed_creatives", f"creative_id=eq.{creative_id}&select=id"
         )
         return result is not None
 
     async def get_decomposed(self, creative_id: str) -> Optional[dict]:
         """Get decomposed creative."""
         return await self._query_single(
-            "decomposed_creatives",
-            f"creative_id=eq.{creative_id}&select=*"
+            "decomposed_creatives", f"creative_id=eq.{creative_id}&select=*"
         )
 
     # ==================== Ideas ====================
 
     async def idea_exists(self, idea_id: str) -> bool:
         """Check if idea exists."""
-        result = await self._query_single(
-            "ideas",
-            f"id=eq.{idea_id}&select=id"
-        )
+        result = await self._query_single("ideas", f"id=eq.{idea_id}&select=id")
         return result is not None
 
     async def get_idea_by_hash(self, canonical_hash: str) -> Optional[dict]:
         """Get idea by canonical hash."""
         return await self._query_single(
-            "ideas",
-            f"canonical_hash=eq.{canonical_hash}&select=*"
+            "ideas", f"canonical_hash=eq.{canonical_hash}&select=*"
         )
 
-    async def idea_has_death_state(self, idea_id: str, death_state: Optional[str]) -> bool:
+    async def idea_has_death_state(
+        self, idea_id: str, death_state: Optional[str]
+    ) -> bool:
         """Check if idea has specific death_state."""
         result = await self._query_single(
-            "ideas",
-            f"id=eq.{idea_id}&select=death_state"
+            "ideas", f"id=eq.{idea_id}&select=death_state"
         )
         if result is None:
             return False
@@ -120,16 +111,14 @@ class DbAssertions:
     async def decision_exists(self, idea_id: str) -> bool:
         """Check if decision exists for idea."""
         result = await self._query_single(
-            "decisions",
-            f"idea_id=eq.{idea_id}&select=id"
+            "decisions", f"idea_id=eq.{idea_id}&select=id"
         )
         return result is not None
 
     async def get_decision(self, idea_id: str) -> Optional[dict]:
         """Get latest decision for idea."""
         results = await self._query(
-            "decisions",
-            f"idea_id=eq.{idea_id}&select=*&order=created_at.desc&limit=1"
+            "decisions", f"idea_id=eq.{idea_id}&select=*&order=created_at.desc&limit=1"
         )
         return results[0] if results else None
 
@@ -143,25 +132,20 @@ class DbAssertions:
     async def hypothesis_exists(self, idea_id: str) -> bool:
         """Check if hypothesis exists for idea."""
         result = await self._query_single(
-            "hypotheses",
-            f"idea_id=eq.{idea_id}&select=id"
+            "hypotheses", f"idea_id=eq.{idea_id}&select=id"
         )
         return result is not None
 
     async def get_hypothesis(self, idea_id: str) -> Optional[dict]:
         """Get hypothesis for idea."""
-        return await self._query_single(
-            "hypotheses",
-            f"idea_id=eq.{idea_id}&select=*"
-        )
+        return await self._query_single("hypotheses", f"idea_id=eq.{idea_id}&select=*")
 
     # ==================== Outcome Aggregates ====================
 
     async def outcome_exists(self, creative_id: str) -> bool:
         """Check if outcome aggregate exists for creative."""
         result = await self._query_single(
-            "outcome_aggregates",
-            f"creative_id=eq.{creative_id}&select=id"
+            "outcome_aggregates", f"creative_id=eq.{creative_id}&select=id"
         )
         return result is not None
 
@@ -169,14 +153,13 @@ class DbAssertions:
         """Get outcome aggregate for creative."""
         return await self._query_single(
             "outcome_aggregates",
-            f"creative_id=eq.{creative_id}&select=*&order=created_at.desc"
+            f"creative_id=eq.{creative_id}&select=*&order=created_at.desc",
         )
 
     async def outcome_is_processed(self, outcome_id: str) -> bool:
         """Check if outcome has been processed by learning loop."""
         result = await self._query_single(
-            "outcome_aggregates",
-            f"id=eq.{outcome_id}&select=learning_applied"
+            "outcome_aggregates", f"id=eq.{outcome_id}&select=learning_applied"
         )
         return result is not None and result.get("learning_applied") is True
 
@@ -186,7 +169,7 @@ class DbAssertions:
         """Get latest confidence version for idea."""
         results = await self._query(
             "idea_confidence_versions",
-            f"idea_id=eq.{idea_id}&select=*&order=version.desc&limit=1"
+            f"idea_id=eq.{idea_id}&select=*&order=version.desc&limit=1",
         )
         return results[0] if results else None
 
@@ -195,8 +178,7 @@ class DbAssertions:
     async def raw_metrics_exists(self, creative_id: str) -> bool:
         """Check if raw metrics exist for creative."""
         result = await self._query_single(
-            "raw_metrics_current",
-            f"creative_id=eq.{creative_id}&select=creative_id"
+            "raw_metrics_current", f"creative_id=eq.{creative_id}&select=creative_id"
         )
         return result is not None
 
@@ -206,7 +188,7 @@ class DbAssertions:
         """Check if daily snapshot exists for creative and date."""
         result = await self._query_single(
             "daily_metrics_snapshot",
-            f"creative_id=eq.{creative_id}&snapshot_date=eq.{date}&select=id"
+            f"creative_id=eq.{creative_id}&snapshot_date=eq.{date}&select=id",
         )
         return result is not None
 
@@ -216,7 +198,7 @@ class DbAssertions:
         """Check if event was emitted for entity."""
         result = await self._query_single(
             "event_log",
-            f"event_type=eq.{event_type}&entity_id=eq.{entity_id}&select=id"
+            f"event_type=eq.{event_type}&entity_id=eq.{entity_id}&select=id",
         )
         return result is not None
 
@@ -224,7 +206,7 @@ class DbAssertions:
         """Get events for entity."""
         return await self._query(
             "event_log",
-            f"entity_id=eq.{entity_id}&select=*&order=created_at.desc&limit={limit}"
+            f"entity_id=eq.{entity_id}&select=*&order=created_at.desc&limit={limit}",
         )
 
     # ==================== Buyers ====================
@@ -232,16 +214,14 @@ class DbAssertions:
     async def buyer_exists(self, telegram_id: str) -> bool:
         """Check if buyer exists by telegram_id."""
         result = await self._query_single(
-            "buyers",
-            f"telegram_id=eq.{telegram_id}&select=id"
+            "buyers", f"telegram_id=eq.{telegram_id}&select=id"
         )
         return result is not None
 
     async def get_buyer(self, telegram_id: str) -> Optional[dict]:
         """Get buyer by telegram_id."""
         return await self._query_single(
-            "buyers",
-            f"telegram_id=eq.{telegram_id}&select=*"
+            "buyers", f"telegram_id=eq.{telegram_id}&select=*"
         )
 
     # ==================== Cleanup ====================
@@ -281,7 +261,7 @@ async def wait_for_condition(
     condition_fn,
     timeout: float = 60.0,
     interval: float = 2.0,
-    message: str = "Condition not met"
+    message: str = "Condition not met",
 ) -> bool:
     """
     Wait for a condition to become true.

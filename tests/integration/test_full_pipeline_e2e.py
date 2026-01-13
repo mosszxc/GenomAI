@@ -35,7 +35,9 @@ from tests.integration.assertions.db_assertions import DbAssertions, wait_for_co
 # Test configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://ftrerelppsnbdcmtcwya.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-N8N_WEBHOOK_BASE = os.getenv("N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook")
+N8N_WEBHOOK_BASE = os.getenv(
+    "N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook"
+)
 DE_API_URL = os.getenv("DE_API_URL", "https://genomai.onrender.com")
 API_KEY = os.getenv("API_KEY", "")
 
@@ -87,7 +89,9 @@ class TestFullPipelineE2E:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step1_creative_registration(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step1_creative_registration(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 1: Creative Registration (T+0)
 
@@ -100,26 +104,33 @@ class TestFullPipelineE2E:
         creative = await db.get_creative(tracker_id)
 
         if creative is None:
-            pytest.skip(f"No creative with tracker_id={tracker_id}. "
-                       "Send a test creative first via Telegram.")
+            pytest.skip(
+                f"No creative with tracker_id={tracker_id}. "
+                "Send a test creative first via Telegram."
+            )
 
         # Store for subsequent tests
         pipeline_state.creative_id = creative["id"]
 
         # Verify status
         status = creative.get("status")
-        assert status in ["pending", "registered", "transcribed", "decomposed"], \
+        assert status in ["pending", "registered", "transcribed", "decomposed"], (
             f"Creative status should indicate registration. Got: {status}"
+        )
 
         # Verify buyer_id is set
-        assert creative.get("buyer_id") is not None or creative.get("source_type") == "system", \
-            "Creative should have buyer_id or be system-sourced"
+        assert (
+            creative.get("buyer_id") is not None
+            or creative.get("source_type") == "system"
+        ), "Creative should have buyer_id or be system-sourced"
 
     # ==================== Step 2: Transcription ====================
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step2_transcription(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step2_transcription(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 2: Transcription (T+2min)
 
@@ -140,20 +151,26 @@ class TestFullPipelineE2E:
         transcript = await db.get_transcript(creative_id)
 
         if transcript is None:
-            pytest.skip(f"No transcript yet for creative {creative_id}. "
-                       "Wait for transcription workflow to complete (~2 min).")
+            pytest.skip(
+                f"No transcript yet for creative {creative_id}. "
+                "Wait for transcription workflow to complete (~2 min)."
+            )
 
         # Verify transcript has text
-        assert transcript.get("transcript_text") is not None, \
+        assert transcript.get("transcript_text") is not None, (
             "Transcript should have text"
-        assert len(transcript.get("transcript_text", "")) > 0, \
+        )
+        assert len(transcript.get("transcript_text", "")) > 0, (
             "Transcript text should not be empty"
+        )
 
     # ==================== Step 3: Decomposition ====================
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step3_decomposition(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step3_decomposition(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 3: Decomposition (T+3min)
 
@@ -174,8 +191,10 @@ class TestFullPipelineE2E:
         decomposed = await db.get_decomposed(creative_id)
 
         if decomposed is None:
-            pytest.skip(f"No decomposed creative yet for {creative_id}. "
-                       "Wait for decomposition workflow to complete (~1 min).")
+            pytest.skip(
+                f"No decomposed creative yet for {creative_id}. "
+                "Wait for decomposition workflow to complete (~1 min)."
+            )
 
         # Verify payload exists
         payload = decomposed.get("payload")
@@ -192,7 +211,9 @@ class TestFullPipelineE2E:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step4_idea_creation(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step4_idea_creation(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 4: Idea Creation (T+4min)
 
@@ -237,7 +258,9 @@ class TestFullPipelineE2E:
     @pytest.mark.integration
     @pytest.mark.slow
     @pytest.mark.requires_de
-    async def test_step5_decision_engine(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step5_decision_engine(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 5: Decision Engine (T+5min)
 
@@ -262,20 +285,22 @@ class TestFullPipelineE2E:
         decision = await db.get_decision(idea_id)
 
         if decision is None:
-            pytest.skip(f"No decision yet for idea {idea_id}. "
-                       "Wait for decision workflow or trigger manually.")
+            pytest.skip(
+                f"No decision yet for idea {idea_id}. "
+                "Wait for decision workflow or trigger manually."
+            )
 
         pipeline_state.decision_id = decision["id"]
 
         # Verify decision type
         decision_type = decision.get("decision")
-        assert decision_type in ["approve", "reject", "defer"], \
+        assert decision_type in ["approve", "reject", "defer"], (
             f"Decision should be approve/reject/defer. Got: {decision_type}"
+        )
 
         # Check for decision trace
         traces = await db._query(
-            "decision_traces",
-            f"decision_id=eq.{decision['id']}&select=*"
+            "decision_traces", f"decision_id=eq.{decision['id']}&select=*"
         )
 
         if traces:
@@ -286,7 +311,9 @@ class TestFullPipelineE2E:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step6_hypothesis_generation(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step6_hypothesis_generation(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 6: Hypothesis Generation (T+6min)
 
@@ -304,15 +331,19 @@ class TestFullPipelineE2E:
             pytest.skip("No decision yet")
 
         if decision.get("decision") != "approve":
-            pytest.skip(f"Decision was {decision.get('decision')}, not approve. "
-                       "Hypothesis only generated for approved ideas.")
+            pytest.skip(
+                f"Decision was {decision.get('decision')}, not approve. "
+                "Hypothesis only generated for approved ideas."
+            )
 
         # Check for hypothesis
         hypothesis = await db.get_hypothesis(idea_id)
 
         if hypothesis is None:
-            pytest.skip(f"No hypothesis yet for idea {idea_id}. "
-                       "Wait for hypothesis workflow to complete (~30 sec).")
+            pytest.skip(
+                f"No hypothesis yet for idea {idea_id}. "
+                "Wait for hypothesis workflow to complete (~30 sec)."
+            )
 
         pipeline_state.hypothesis_id = hypothesis["id"]
 
@@ -323,14 +354,17 @@ class TestFullPipelineE2E:
 
         # Verify status
         status = hypothesis.get("status")
-        assert status in ["pending", "ready_for_launch", "delivered", "failed"], \
+        assert status in ["pending", "ready_for_launch", "delivered", "failed"], (
             f"Invalid hypothesis status: {status}"
+        )
 
     # ==================== Step 7: Telegram Delivery ====================
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step7_telegram_delivery(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step7_telegram_delivery(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 7: Telegram Delivery (T+7min)
 
@@ -365,20 +399,23 @@ class TestFullPipelineE2E:
 
         # Check deliveries table
         deliveries = await db._query(
-            "deliveries",
-            f"idea_id=eq.{idea_id}&select=*&order=sent_at.desc&limit=1"
+            "deliveries", f"idea_id=eq.{idea_id}&select=*&order=sent_at.desc&limit=1"
         )
 
         if deliveries:
             delivery = deliveries[0]
-            assert delivery.get("channel") == "telegram", "Delivery channel should be telegram"
+            assert delivery.get("channel") == "telegram", (
+                "Delivery channel should be telegram"
+            )
             assert delivery.get("status") == "sent", "Delivery status should be sent"
 
     # ==================== Step 8: Keitaro Metrics ====================
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step8_keitaro_metrics(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step8_keitaro_metrics(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 8: Keitaro Metrics (T+1hour)
 
@@ -389,13 +426,14 @@ class TestFullPipelineE2E:
 
         # Check raw_metrics_current
         metrics = await db._query(
-            "raw_metrics_current",
-            f"tracker_id=eq.{tracker_id}&select=*"
+            "raw_metrics_current", f"tracker_id=eq.{tracker_id}&select=*"
         )
 
         if not metrics:
-            pytest.skip(f"No metrics yet for tracker_id={tracker_id}. "
-                       "Wait for Keitaro poller to run (~hourly).")
+            pytest.skip(
+                f"No metrics yet for tracker_id={tracker_id}. "
+                "Wait for Keitaro poller to run (~hourly)."
+            )
 
         metric = metrics[0]
 
@@ -407,7 +445,9 @@ class TestFullPipelineE2E:
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step9_snapshot_and_outcome(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step9_snapshot_and_outcome(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 9: Snapshot & Outcome (T+1hour)
 
@@ -427,7 +467,7 @@ class TestFullPipelineE2E:
         today = datetime.now().strftime("%Y-%m-%d")
         snapshots = await db._query(
             "daily_metrics_snapshot",
-            f"tracker_id=eq.{tracker_id}&select=*&order=created_at.desc&limit=1"
+            f"tracker_id=eq.{tracker_id}&select=*&order=created_at.desc&limit=1",
         )
 
         if not snapshots:
@@ -442,14 +482,18 @@ class TestFullPipelineE2E:
         pipeline_state.outcome_id = outcome["id"]
 
         # Verify outcome has required fields
-        assert outcome.get("window_start") is not None, "Outcome should have window_start"
+        assert outcome.get("window_start") is not None, (
+            "Outcome should have window_start"
+        )
         assert outcome.get("window_end") is not None, "Outcome should have window_end"
 
     # ==================== Step 10: Learning Loop ====================
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_step10_learning_loop(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_step10_learning_loop(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Step 10: Learning Loop (T+1hour)
 
@@ -481,16 +525,20 @@ class TestFullPipelineE2E:
             confidence = await db.get_current_confidence(idea_id)
 
             if confidence:
-                assert confidence.get("source_outcome_id") is not None, \
+                assert confidence.get("source_outcome_id") is not None, (
                     "Confidence should have source_outcome_id"
-                assert confidence.get("change_reason") is not None, \
+                )
+                assert confidence.get("change_reason") is not None, (
                     "Confidence should have change_reason"
+                )
 
     # ==================== Master Verification ====================
 
     @pytest.mark.integration
     @pytest.mark.slow
-    async def test_master_verification_query(self, db: DbAssertions, pipeline_state: PipelineState):
+    async def test_master_verification_query(
+        self, db: DbAssertions, pipeline_state: PipelineState
+    ):
         """
         Master Verification Query.
 
@@ -520,7 +568,9 @@ class TestFullPipelineE2E:
         # All stages complete
         assert all(result.values()), "All pipeline stages should be complete"
 
-    async def _run_master_verification(self, db: DbAssertions, tracker_id: str) -> Dict[str, bool]:
+    async def _run_master_verification(
+        self, db: DbAssertions, tracker_id: str
+    ) -> Dict[str, bool]:
         """Run master verification checks."""
         result = {
             "creative_exists": False,
@@ -566,12 +616,13 @@ class TestFullPipelineE2E:
                             result["hypothesis_generated"] = True
 
                             # 7. Delivered
-                            result["delivered"] = hypothesis.get("status") == "delivered"
+                            result["delivered"] = (
+                                hypothesis.get("status") == "delivered"
+                            )
 
             # 8. Metrics received
             metrics = await db._query(
-                "raw_metrics_current",
-                f"tracker_id=eq.{tracker_id}&select=tracker_id"
+                "raw_metrics_current", f"tracker_id=eq.{tracker_id}&select=tracker_id"
             )
             result["metrics_received"] = len(metrics) > 0
 
@@ -618,8 +669,7 @@ class TestPipelineHealthChecks:
 
         for status in stuck_statuses:
             stuck = await db._query(
-                "creatives",
-                f"status=eq.{status}&select=id,created_at&limit=10"
+                "creatives", f"status=eq.{status}&select=id,created_at&limit=10"
             )
 
             for creative in stuck:
@@ -627,8 +677,9 @@ class TestPipelineHealthChecks:
                 if created_at:
                     # Parse and check age
                     # Note: This is simplified - actual implementation should use proper datetime parsing
-                    assert len(stuck) < 5, \
+                    assert len(stuck) < 5, (
                         f"Too many creatives stuck in '{status}' state: {len(stuck)}"
+                    )
 
 
 class TestPipelineRegressions:
@@ -642,15 +693,11 @@ class TestPipelineRegressions:
         Related issue: #80 (idea_not_found)
         """
         # Query ideas without linked decomposed_creatives
-        orphan_ideas = await db._query(
-            "ideas",
-            "select=id,canonical_hash&limit=50"
-        )
+        orphan_ideas = await db._query("ideas", "select=id,canonical_hash&limit=50")
 
         for idea in orphan_ideas:
             linked = await db._query(
-                "decomposed_creatives",
-                f"idea_id=eq.{idea['id']}&select=id&limit=1"
+                "decomposed_creatives", f"idea_id=eq.{idea['id']}&select=id&limit=1"
             )
             # Allow orphans for now, but log warning
             if not linked:
@@ -665,21 +712,20 @@ class TestPipelineRegressions:
         """
         # Get recent decisions
         decisions = await db._query(
-            "decisions",
-            "select=id&order=created_at.desc&limit=10"
+            "decisions", "select=id&order=created_at.desc&limit=10"
         )
 
         decisions_without_trace = 0
         for decision in decisions:
             traces = await db._query(
-                "decision_traces",
-                f"decision_id=eq.{decision['id']}&select=id&limit=1"
+                "decision_traces", f"decision_id=eq.{decision['id']}&select=id&limit=1"
             )
             if not traces:
                 decisions_without_trace += 1
 
-        assert decisions_without_trace == 0, \
+        assert decisions_without_trace == 0, (
             f"Found {decisions_without_trace} decisions without traces"
+        )
 
     @pytest.mark.integration
     async def test_approved_ideas_have_hypothesis(self, db: DbAssertions):
@@ -691,7 +737,7 @@ class TestPipelineRegressions:
         # Get recent APPROVE decisions
         approved = await db._query(
             "decisions",
-            "decision=eq.approve&select=id,idea_id&order=created_at.desc&limit=10"
+            "decision=eq.approve&select=id,idea_id&order=created_at.desc&limit=10",
         )
 
         missing_hypothesis = 0
@@ -703,5 +749,6 @@ class TestPipelineRegressions:
                     missing_hypothesis += 1
 
         # Allow some slack for in-progress generation
-        assert missing_hypothesis <= 2, \
+        assert missing_hypothesis <= 2, (
             f"Found {missing_hypothesis} approved ideas without hypothesis"
+        )

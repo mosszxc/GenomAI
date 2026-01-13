@@ -13,7 +13,9 @@ import httpx
 # Test configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://ftrerelppsnbdcmtcwya.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-N8N_WEBHOOK_BASE = os.getenv("N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook")
+N8N_WEBHOOK_BASE = os.getenv(
+    "N8N_WEBHOOK_BASE", "https://kazamaqwe.app.n8n.cloud/webhook"
+)
 DE_API_URL = os.getenv("DE_API_URL", "https://genomai.onrender.com")
 DE_API_KEY = os.getenv("API_KEY", "")
 
@@ -73,12 +75,8 @@ def test_video_url() -> str:
 
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "integration: mark test as integration test"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow (timeout > 30s)"
-    )
+    config.addinivalue_line("markers", "integration: mark test as integration test")
+    config.addinivalue_line("markers", "slow: mark test as slow (timeout > 30s)")
     config.addinivalue_line(
         "markers", "requires_n8n: mark test as requiring n8n access"
     )
