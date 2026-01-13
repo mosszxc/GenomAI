@@ -23,6 +23,22 @@ jobs:
       - name: Format check
         run: python3 -m ruff format decision-engine-service/ --check
 
+  type-check:
+    name: Type Check (mypy)
+    runs-on: self-hosted
+    continue-on-error: true  # Gradual adoption - не блокирует merge
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mypy
+        run: python3 -m pip install --user mypy types-requests
+
+      - name: Run mypy
+        working-directory: decision-engine-service
+        run: |
+          python3 -m mypy src/ --config-file=pyproject.toml || echo "::warning::mypy found type errors (non-blocking)"
+
   test:
     name: Unit Tests
     runs-on: self-hosted

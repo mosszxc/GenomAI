@@ -29,6 +29,15 @@ repos:
         types: [python]
         stages: [pre-commit]
 
+      - id: mypy-check
+        name: mypy type check
+        entry: bash -c "cd decision-engine-service && python3 -m mypy src/ --config-file=pyproject.toml --no-error-summary 2>/dev/null || true"
+        language: system
+        pass_filenames: false
+        types: [python]
+        stages: [pre-commit]
+        verbose: true
+
       # === PRE-PUSH (~60s) ===
 
       - id: all-unit-tests

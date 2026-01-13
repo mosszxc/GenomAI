@@ -5,445 +5,690 @@
 ## Mode
 
 ```
-$ARGUMENTS = [--quick] [--skip-telegram]
+$ARGUMENTS = [--prod] [--quick] [--skip-telegram] [--security] [--contracts] [--chaos] [--db] [--functional] [--decision] [--learning] [--buyer] [--workflows]
 ```
 
-- Нет аргументов → Full test (все workflows)
-- `--quick` → Только health checks (Phase 1)
-- `--skip-telegram` → Skip daily-recommendations
+### Environment
+- **По умолчанию → LOCAL** (localhost:10000) — для разработки
+- `--prod` → PRODUCTION (genomai.onrender.com) — после деплоя
+
+### Phase Selection
+- Нет аргументов → Full test (все 14 фаз, 42 проверки)
+- `--quick` → Только Phase 1: Health Checks
+- `--skip-telegram` → Skip DailyRecommendation trigger
+- `--security` → Только Phase 7: Security Testing
+- `--contracts` → Только Phase 6: API Contract Testing
+- `--chaos` → Только Phase 9-10: Chaos + Concurrency Testing
+- `--db` → Только Phase 8: DB Constraints Testing
+- `--functional` → Phase 11-13: Decision Engine + Learning Loop + Buyer
+- `--decision` → Только Phase 11: Decision Engine Logic
+- `--learning` → Только Phase 12: Learning Loop Logic
+- `--buyer` → Только Phase 13: Buyer Interactions
+- `--workflows` → Только Phase 2-2.5: Workflow Tests
 
 ---
 
-## EXECUTE NOW
+## EXECUTION INSTRUCTIONS
 
-### Step 1: Create Todos
+### Environment URLs
 
 ```
-TodoWrite: создай todos для каждой Phase ниже
+LOCAL (default):
+  API_BASE = http://localhost:10000
+  Temporal = localhost (docker)
+
+PRODUCTION (--prod):
+  API_BASE = https://genomai.onrender.com
+  Temporal = Temporal Cloud
 ```
 
-### Step 2: Health Check (Phase 1)
+### ВАЖНО: Как выполнять запросы
 
-**Parallel execution:**
+**SQL запросы через MCP Supabase:**
+```
+Используй mcp__supabase__sqlToRest для конвертации SQL в REST
+Затем mcp__supabase__postgrestRequest для выполнения
+```
 
+**HTTP запросы:**
+```
+LOCAL:  curl или WebFetch к http://localhost:10000
+PROD:   WebFetch к https://genomai.onrender.com
+```
+
+**Temporal команды:**
+```
+Используй Bash в директории decision-engine-service
+LOCAL:  python -m temporal.schedules list (docker temporal)
+PROD:   добавь --cloud флаг если нужно
+```
+
+---
+
+## PHASE 1: Health Checks
+
+### 1.1 Decision Engine Health
+
+**Выполни:**
+```
+WebFetch: GET {API_BASE}/health
+Prompt: "Верни статус из JSON ответа"
+```
+**PASS:** status = "ok"
+
+### 1.2 Supabase Connection
+
+**Выполни:**
+```
+mcp__supabase__postgrestRequest:
+  method: GET
+  path: /config?select=count
+```
+**PASS:** Ответ без ошибки
+
+### 1.3 Temporal Schedules
+
+**Выполни в Bash:**
 ```bash
-# Terminal 1: Decision Engine
-WebFetch: GET https://genomai.onrender.com/health
-→ Expect: {"status": "ok"}
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/decision-engine-service && python -m temporal.schedules list
 ```
+**PASS:** 6 schedules, none paused
 
-```sql
--- Terminal 2: Supabase
-SELECT COUNT(*) as config_count FROM genomai.config;
-→ Expect: config_count > 0
-```
+---
 
+## PHASE 2: Workflow Live Tests (SCHEDULED)
+
+**Порядок важен — каждый workflow может зависеть от данных предыдущего.**
+
+### 2.1 KeitaroPollerWorkflow
+
+**Шаг 1 - Trigger:**
 ```bash
-# Terminal 3: Temporal schedules
-cd decision-engine-service && python -m temporal.schedules list
-→ Expect: 6 schedules, none paused
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/decision-engine-service && python -m temporal.schedules trigger keitaro-poller
 ```
 
-### Step 3: Workflow Live Tests (Phase 2)
+**Шаг 2 - Wait:** 45 секунд
 
-**ТРИГГЕРЬ КАЖДЫЙ WORKFLOW И ПРОВЕРЯЙ НОВЫЕ ДАННЫЕ.**
+**Шаг 3 - Verify (SQL → REST):**
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT event_type, occurred_at FROM genomai.event_log WHERE event_type IN ('RawMetricsObserved', 'keitaro.polling.completed') AND occurred_at > now() - interval '2 minutes' ORDER BY occurred_at DESC LIMIT 1"
+```
+**PASS:** Event exists с occurred_at в последние 2 минуты
 
-Порядок важен — каждый зависит от предыдущего.
+### 2.2 MetricsProcessingWorkflow
 
-#### 3.1 KeitaroPollerWorkflow
-
+**Шаг 1 - Trigger:**
 ```bash
-cd decision-engine-service && python -m temporal.schedules trigger keitaro-poller
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/decision-engine-service && python -m temporal.schedules trigger metrics-processor
 ```
 
-Wait 45 seconds, then verify:
+**Шаг 2 - Wait:** 45 секунд
 
-```sql
-SELECT event_type, occurred_at, payload
-FROM genomai.event_log
-WHERE event_type IN ('RawMetricsObserved', 'keitaro.polling.completed')
-  AND occurred_at > now() - interval '2 minutes'
-ORDER BY occurred_at DESC
-LIMIT 1;
+**Шаг 3 - Verify:**
 ```
+mcp__supabase__sqlToRest:
+  sql: "SELECT event_type, occurred_at FROM genomai.event_log WHERE event_type IN ('OutcomeAggregated', 'metrics.processing.completed') AND occurred_at > now() - interval '2 minutes' ORDER BY occurred_at DESC LIMIT 1"
+```
+**PASS:** Event exists (0 outcomes OK если нет данных)
 
-**PASS:** Event exists with occurred_at in last 2 min
+### 2.3 LearningLoopWorkflow
 
-#### 3.2 MetricsProcessingWorkflow
-
+**Шаг 1 - Trigger:**
 ```bash
-cd decision-engine-service && python -m temporal.schedules trigger metrics-processor
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/decision-engine-service && python -m temporal.schedules trigger learning-loop
 ```
 
-Wait 45 seconds, then verify:
+**Шаг 2 - Wait:** 45 секунд
 
-```sql
-SELECT event_type, occurred_at, payload
-FROM genomai.event_log
-WHERE event_type IN ('OutcomeAggregated', 'metrics.processing.completed')
-  AND occurred_at > now() - interval '2 minutes'
-ORDER BY occurred_at DESC
-LIMIT 1;
+**Шаг 3 - Verify:**
 ```
+mcp__supabase__sqlToRest:
+  sql: "SELECT event_type, occurred_at FROM genomai.event_log WHERE event_type IN ('learning.applied', 'learning.batch.completed') AND occurred_at > now() - interval '2 minutes' ORDER BY occurred_at DESC LIMIT 1"
+```
+**PASS:** Event exists (0 processed OK если ничего pending)
 
-**PASS:** Event exists (0 outcomes OK if no data)
+### 2.4 MaintenanceWorkflow
 
-#### 3.3 LearningLoopWorkflow
-
+**Шаг 1 - Trigger:**
 ```bash
-cd decision-engine-service && python -m temporal.schedules trigger learning-loop
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/decision-engine-service && python -m temporal.schedules trigger maintenance
 ```
 
-Wait 45 seconds, then verify:
+**Шаг 2 - Wait:** 30 секунд
 
-```sql
-SELECT event_type, occurred_at, payload
-FROM genomai.event_log
-WHERE event_type IN ('learning.applied', 'learning.batch.completed')
-  AND occurred_at > now() - interval '2 minutes'
-ORDER BY occurred_at DESC
-LIMIT 1;
+**Шаг 3 - Verify:**
 ```
+mcp__supabase__sqlToRest:
+  sql: "SELECT event_type, occurred_at, payload FROM genomai.event_log WHERE event_type = 'MaintenanceCompleted' AND occurred_at > now() - interval '2 minutes' ORDER BY occurred_at DESC LIMIT 1"
+```
+**PASS:** Event exists с payload
 
-**PASS:** Event exists (0 processed OK if nothing pending)
+### 2.5 HealthCheckWorkflow
 
-#### 3.4 MaintenanceWorkflow
-
+**Шаг 1 - Trigger:**
 ```bash
-cd decision-engine-service && python -m temporal.schedules trigger maintenance
+cd /Users/mosszxc/Documents/Проэкты/GenomAI/decision-engine-service && python -m temporal.schedules trigger health-check
 ```
 
-Wait 30 seconds, then verify:
+**Шаг 2 - Wait:** 30 секунд
 
-```sql
-SELECT event_type, occurred_at, payload
-FROM genomai.event_log
-WHERE event_type = 'MaintenanceCompleted'
-  AND occurred_at > now() - interval '2 minutes'
-ORDER BY occurred_at DESC
-LIMIT 1;
+**Шаг 3 - Verify:**
 ```
-
-**PASS:** Event exists with payload containing buyers_reset, recommendations_expired
-
-#### 3.5 HealthCheckWorkflow
-
-```bash
-cd decision-engine-service && python -m temporal.schedules trigger health-check
+mcp__supabase__sqlToRest:
+  sql: "SELECT id, health_score, created_at FROM genomai.hygiene_reports WHERE created_at > now() - interval '2 minutes' ORDER BY created_at DESC LIMIT 1"
 ```
+**PASS:** Report exists с health_score > 0
 
-Wait 30 seconds, then verify:
-
-```sql
-SELECT id, health_score, created_at
-FROM genomai.hygiene_reports
-WHERE created_at > now() - interval '2 minutes'
-ORDER BY created_at DESC
-LIMIT 1;
-```
-
-**PASS:** Report exists with health_score > 0
-
-#### 3.6 DailyRecommendationWorkflow (SKIP by default)
+### 2.6 DailyRecommendationWorkflow (SKIP by default)
 
 **НЕ ТРИГГЕРИТЬ** — отправляет реальные сообщения в Telegram.
 
-Verify history only:
-
-```sql
-SELECT occurred_at, now() - occurred_at as staleness
-FROM genomai.event_log
-WHERE event_type = 'RecommendationGenerated'
-ORDER BY occurred_at DESC
-LIMIT 1;
+**Verify history only:**
 ```
-
+mcp__supabase__sqlToRest:
+  sql: "SELECT occurred_at FROM genomai.event_log WHERE event_type = 'RecommendationGenerated' ORDER BY occurred_at DESC LIMIT 1"
+```
 **PASS:** staleness < 25 hours OR SKIP
 
-### Step 3.5: Event-Driven Workflows (Phase 2.5 - History Verification)
+---
 
-**Эти workflows НЕ триггерятся — проверяем что они работали по историческим данным.**
+## PHASE 2.5: Event-Driven Workflows (History Verification)
 
-#### 3.5.1 CreativePipelineWorkflow
+**Эти workflows НЕ триггерятся — проверяем историю.**
 
-```sql
-SELECT event_type, COUNT(*) as count_7d
-FROM genomai.event_log
-WHERE event_type IN ('TranscriptCreated', 'CreativeDecomposed', 'IdeaRegistered', 'DecisionMade', 'HypothesisGenerated')
-  AND occurred_at > now() - interval '7 days'
-GROUP BY event_type;
+### 2.5.1 CreativePipelineWorkflow
+
 ```
-
+mcp__supabase__sqlToRest:
+  sql: "SELECT event_type, COUNT(*) as count_7d FROM genomai.event_log WHERE event_type IN ('TranscriptCreated', 'CreativeDecomposed', 'IdeaRegistered', 'DecisionMade', 'HypothesisGenerated') AND occurred_at > now() - interval '7 days' GROUP BY event_type"
+```
 **PASS:** Все event types присутствуют ИЛИ INFO (нет creatives)
 
-#### 3.5.2 BuyerOnboardingWorkflow
+### 2.5.2 BuyerOnboardingWorkflow
 
-```sql
-SELECT COUNT(*) as stuck_onboarding
-FROM genomai.buyer_states
-WHERE state NOT IN ('idle', 'completed')
-  AND updated_at < now() - interval '1 hour';
 ```
-
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as stuck_onboarding FROM genomai.buyer_states WHERE state NOT IN ('idle', 'completed') AND updated_at < now() - interval '1 hour'"
+```
 **PASS:** stuck_onboarding = 0
 
-#### 3.5.3 HistoricalImportWorkflow
+### 2.5.3 HistoricalImportWorkflow
 
-```sql
-SELECT status, COUNT(*) as count
-FROM genomai.historical_import_queue
-WHERE created_at > now() - interval '7 days'
-GROUP BY status;
 ```
-
+mcp__supabase__sqlToRest:
+  sql: "SELECT status, COUNT(*) as count FROM genomai.historical_import_queue WHERE created_at > now() - interval '7 days' GROUP BY status"
+```
 **INFO:** Report queue status
 
-#### 3.5.4 HistoricalVideoHandlerWorkflow
+### 2.5.4 RecommendationDeliveryWorkflow
 
-```sql
-SELECT
-  COUNT(*) FILTER (WHERE status = 'completed') as completed,
-  COUNT(*) FILTER (WHERE status = 'failed') as failed,
-  COUNT(*) as total
-FROM genomai.historical_import_queue
-WHERE video_url IS NOT NULL AND created_at > now() - interval '7 days';
 ```
-
-**PASS:** failed < total * 0.1 (failure rate < 10%)
-
-#### 3.5.5 CreativeRegistrationWorkflow
-
-```sql
-SELECT COUNT(*) as registrations_7d
-FROM genomai.event_log
-WHERE event_type = 'CreativeRegistered'
-  AND occurred_at > now() - interval '7 days';
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) FILTER (WHERE status = 'delivered') as delivered, COUNT(*) FILTER (WHERE status = 'pending' AND created_at < now() - interval '1 hour') as stuck FROM genomai.recommendations WHERE created_at > now() - interval '7 days'"
 ```
-
-**INFO:** Report count
-
-#### 3.5.6 KnowledgeSystem (Ingestion + Application)
-
-```sql
-SELECT
-  (SELECT COUNT(*) FROM genomai.knowledge_sources WHERE processed = true) as sources_processed,
-  (SELECT COUNT(*) FROM genomai.knowledge_extractions WHERE status = 'pending') as pending,
-  (SELECT COUNT(*) FROM genomai.knowledge_extractions WHERE status = 'applied') as applied;
-```
-
-**INFO:** Report values (0 acceptable)
-
-#### 3.5.7 PremiseExtractionWorkflow
-
-```sql
-SELECT COUNT(*) as extractions_7d
-FROM genomai.event_log
-WHERE event_type = 'PremiseExtracted'
-  AND occurred_at > now() - interval '7 days';
-```
-
-**INFO:** Report count
-
-#### 3.5.8 ModularHypothesisWorkflow
-
-```sql
-SELECT COUNT(*) as modular_hypotheses,
-  COUNT(*) FILTER (WHERE review_status = 'pending_review') as pending_review
-FROM genomai.hypotheses
-WHERE generation_mode = 'modular';
-```
-
-**INFO:** 0 acceptable (feature may not be active)
-
-#### 3.5.9 SingleRecommendationDeliveryWorkflow
-
-```sql
-SELECT
-  COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
-  COUNT(*) FILTER (WHERE status = 'pending' AND created_at < now() - interval '1 hour') as stuck
-FROM genomai.recommendations
-WHERE created_at > now() - interval '7 days';
-```
-
 **PASS:** stuck < 5
 
-### Step 4: Data Quality (Phase 3)
+---
 
-**Run all in parallel:**
+## PHASE 3: Data Quality
 
-```sql
--- 4.1 Creatives
-SELECT
-  COUNT(*) as total,
-  COUNT(*) FILTER (WHERE video_url IS NULL) as missing_url,
-  COUNT(*) FILTER (WHERE status IS NULL) as missing_status
-FROM genomai.creatives
-WHERE created_at > now() - interval '7 days';
--- PASS: missing_url = 0, missing_status = 0
+**Выполни все запросы параллельно:**
 
--- 4.2 Transcripts
-SELECT
-  COUNT(*) as total,
-  COUNT(*) FILTER (WHERE transcript_text IS NULL) as null_text
-FROM genomai.transcripts
-WHERE created_at > now() - interval '7 days';
--- PASS: null_text = 0
+### 3.1 Creatives Quality
 
--- 4.3 Ideas
-SELECT
-  COUNT(*) as total,
-  COUNT(*) FILTER (WHERE canonical_hash IS NULL) as missing_hash,
-  COUNT(*) FILTER (WHERE LENGTH(canonical_hash) != 64) as invalid_hash
-FROM genomai.ideas
-WHERE created_at > now() - interval '7 days';
--- PASS: missing_hash = 0, invalid_hash = 0
-
--- 4.4 Decisions
-SELECT
-  COUNT(*) as total,
-  COUNT(*) FILTER (WHERE decision NOT IN ('approve', 'reject', 'defer')) as invalid
-FROM genomai.decisions
-WHERE created_at > now() - interval '7 days';
--- PASS: invalid = 0
-
--- 4.5 Hypotheses
-SELECT
-  COUNT(*) as total,
-  COUNT(*) FILTER (WHERE content IS NULL OR content = '') as empty
-FROM genomai.hypotheses
-WHERE created_at > now() - interval '7 days';
--- PASS: empty = 0
 ```
-
-### Step 5: Relationship Integrity (Phase 4)
-
-```sql
--- 5.1 Orphaned decomposed (no creative)
-SELECT COUNT(*) as orphaned
-FROM genomai.decomposed_creatives d
-LEFT JOIN genomai.creatives c ON c.id = d.creative_id
-WHERE c.id IS NULL;
--- PASS: orphaned = 0
-
--- 5.2 Decisions without traces
-SELECT COUNT(*) as missing_traces
-FROM genomai.decisions d
-LEFT JOIN genomai.decision_traces t ON t.decision_id = d.id
-WHERE t.id IS NULL AND d.created_at > now() - interval '7 days';
--- PASS: missing_traces = 0
-
--- 5.3 Approved without hypothesis
-SELECT COUNT(*) as missing_hypothesis
-FROM genomai.decisions d
-LEFT JOIN genomai.hypotheses h ON h.idea_id = d.idea_id
-WHERE d.decision = 'approve'
-  AND h.id IS NULL
-  AND d.created_at > now() - interval '24 hours'
-  AND d.created_at < now() - interval '1 hour';
--- PASS: missing_hypothesis = 0
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE video_url IS NULL) as missing_url, COUNT(*) FILTER (WHERE status IS NULL) as missing_status FROM genomai.creatives WHERE created_at > now() - interval '7 days'"
 ```
+**PASS:** missing_url = 0, missing_status = 0
 
-### Step 6: Learning Health (Phase 5)
+### 3.2 Ideas Quality
 
-```sql
--- 6.1 Stale outcomes
-SELECT COUNT(*) as stale_pending
-FROM genomai.outcome_aggregates
-WHERE learning_applied = false
-  AND created_at < now() - interval '2 hours';
--- PASS: stale_pending < 5
-
--- 6.2 Component learnings
-SELECT COUNT(*) as total, MAX(updated_at) as last_update
-FROM genomai.component_learnings;
--- INFO: Report values
 ```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE canonical_hash IS NULL) as missing_hash, COUNT(*) FILTER (WHERE LENGTH(canonical_hash) != 64) as invalid_hash FROM genomai.ideas WHERE created_at > now() - interval '7 days'"
+```
+**PASS:** missing_hash = 0, invalid_hash = 0
 
-### Step 7: Generate Report (Phase 6)
+### 3.3 Decisions Quality
 
-Output report in this format:
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE decision NOT IN ('approve', 'reject', 'defer')) as invalid FROM genomai.decisions WHERE created_at > now() - interval '7 days'"
+```
+**PASS:** invalid = 0
+
+### 3.4 Hypotheses Quality
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE content IS NULL OR content = '') as empty FROM genomai.hypotheses WHERE created_at > now() - interval '7 days'"
+```
+**PASS:** empty = 0
+
+---
+
+## PHASE 4: Relationship Integrity
+
+### 4.1 Orphaned Decomposed Creatives
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as orphaned FROM genomai.decomposed_creatives d LEFT JOIN genomai.creatives c ON c.id = d.creative_id WHERE c.id IS NULL"
+```
+**PASS:** orphaned = 0
+
+### 4.2 Decisions Without Traces
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as missing_traces FROM genomai.decisions d LEFT JOIN genomai.decision_traces t ON t.decision_id = d.id WHERE t.id IS NULL AND d.created_at > now() - interval '7 days'"
+```
+**PASS:** missing_traces = 0
+
+### 4.3 Approved Without Hypothesis
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as missing_hypothesis FROM genomai.decisions d LEFT JOIN genomai.hypotheses h ON h.idea_id = d.idea_id WHERE d.decision = 'approve' AND h.id IS NULL AND d.created_at > now() - interval '24 hours' AND d.created_at < now() - interval '1 hour'"
+```
+**PASS:** missing_hypothesis = 0
+
+---
+
+## PHASE 5: Learning Health
+
+### 5.1 Stale Outcomes
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as stale_pending FROM genomai.outcome_aggregates WHERE learning_applied = false AND created_at < now() - interval '2 hours'"
+```
+**PASS:** stale_pending < 5
+
+### 5.2 Component Learnings Activity
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as total, MAX(updated_at) as last_update FROM genomai.component_learnings"
+```
+**INFO:** Report values
+
+---
+
+## PHASE 6: API Contract Testing
+
+### 6.1 Health Endpoint (No Auth)
+
+```
+WebFetch:
+  url: {API_BASE}/health
+  prompt: "Верни полный JSON ответ"
+```
+**PASS:** status = "ok"
+
+### 6.2 Metrics Health Endpoint
+
+```
+WebFetch:
+  url: {API_BASE}/health/metrics
+  prompt: "Верни is_stale и circuit_state из ответа"
+```
+**PASS:** Ответ без ошибки
+
+### 6.3 Protected Endpoint Without Auth
+
+```
+WebFetch:
+  url: {API_BASE}/api/decision/
+  prompt: "Сделай POST запрос без Authorization header и верни HTTP статус код"
+```
+**PASS:** 401 OR 403
+
+---
+
+## PHASE 7: Security Testing
+
+### 7.1 Auth Required Check
+
+```
+WebFetch:
+  url: {API_BASE}/api/decision/
+  prompt: "POST без auth header, какой статус код?"
+```
+**PASS:** 401 OR 403
+
+### 7.2 Invalid Token Check
+
+```
+WebFetch:
+  url: {API_BASE}/learning/status
+  prompt: "GET с header Authorization: Bearer invalid-token-12345, какой статус?"
+```
+**PASS:** 401 OR 403
+
+### 7.3 Secrets Not Exposed
+
+```
+WebFetch:
+  url: {API_BASE}/health
+  prompt: "Есть ли в ответе слова key, secret, password, token? Ответь да/нет"
+```
+**PASS:** Нет
+
+---
+
+## PHASE 8: DB Constraints Testing
+
+### 8.1 Unique Constraint: decisions(idea_id, decision_epoch)
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT idea_id, decision_epoch, COUNT(*) as cnt FROM genomai.decisions GROUP BY idea_id, decision_epoch HAVING COUNT(*) > 1"
+```
+**PASS:** Empty result (0 rows)
+
+### 8.2 Foreign Key: decomposed → creatives
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as orphaned FROM genomai.decomposed_creatives d LEFT JOIN genomai.creatives c ON c.id = d.creative_id WHERE c.id IS NULL"
+```
+**PASS:** orphaned = 0
+
+### 8.3 Foreign Key: decisions → ideas
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as orphaned FROM genomai.decisions d LEFT JOIN genomai.ideas i ON i.id = d.idea_id WHERE i.id IS NULL"
+```
+**PASS:** orphaned = 0
+
+### 8.4 Hash Integrity
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as invalid FROM genomai.ideas WHERE canonical_hash IS NOT NULL AND LENGTH(canonical_hash) != 64"
+```
+**PASS:** invalid = 0
+
+### 8.5 Valid Decision Enum
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT decision, COUNT(*) as cnt FROM genomai.decisions GROUP BY decision"
+```
+**PASS:** Only 'approve', 'reject', 'defer' values
+
+---
+
+## PHASE 9: Chaos/Resilience Testing
+
+### 9.1 Circuit Breaker Events
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT event_type, COUNT(*) as count FROM genomai.event_log WHERE event_type LIKE '%circuit%' AND occurred_at > now() - interval '24 hours' GROUP BY event_type"
+```
+**INFO:** Report activity
+
+### 9.2 Retry Exhausted Hypotheses
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as exhausted FROM genomai.hypotheses WHERE retry_count >= 3 AND status NOT IN ('delivered', 'failed')"
+```
+**PASS:** exhausted = 0
+
+### 9.3 Stuck Workflows
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT status, COUNT(*) as cnt FROM genomai.creatives WHERE status IN ('transcribing', 'decomposing', 'processing') AND updated_at < now() - interval '30 minutes' GROUP BY status"
+```
+**PASS:** Total stuck < 3
+
+### 9.4 Unhandled Failures
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as unhandled FROM genomai.creatives WHERE status = 'failed' AND error_message IS NULL"
+```
+**PASS:** unhandled = 0
+
+---
+
+## PHASE 10: Concurrent Access Testing
+
+### 10.1 Duplicate Ideas (Same Hash)
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT canonical_hash, COUNT(*) as cnt FROM genomai.ideas WHERE canonical_hash IS NOT NULL GROUP BY canonical_hash HAVING COUNT(*) > 1"
+```
+**PASS:** Empty result (0 rows)
+
+### 10.2 Duplicate Outcome Aggregates
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT creative_id, window_start, COUNT(*) as cnt FROM genomai.outcome_aggregates GROUP BY creative_id, window_start HAVING COUNT(*) > 1"
+```
+**PASS:** Empty result (0 rows)
+
+### 10.3 Learning Applied Multiple Times
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT source_outcome_id, COUNT(*) as cnt FROM genomai.idea_confidence_versions WHERE source_outcome_id IS NOT NULL GROUP BY source_outcome_id HAVING COUNT(*) > 1"
+```
+**PASS:** Empty result (0 rows)
+
+---
+
+## PHASE 11: Decision Engine Logic
+
+### 11.1 Decision Idempotency
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT idea_id, decision_epoch, COUNT(*) as cnt FROM genomai.decisions GROUP BY idea_id, decision_epoch HAVING COUNT(*) > 1"
+```
+**PASS:** Empty result (0 rows)
+
+### 11.2 Decision Trace Completeness
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as missing FROM genomai.decisions d LEFT JOIN genomai.decision_traces t ON t.decision_id = d.id WHERE t.id IS NULL AND d.created_at > now() - interval '7 days'"
+```
+**PASS:** missing = 0
+
+### 11.3 Hard Dead No Approves
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as violations FROM genomai.decisions d JOIN genomai.ideas i ON i.id = d.idea_id WHERE i.death_state = 'hard_dead' AND d.decision = 'approve'"
+```
+**PASS:** violations = 0
+
+---
+
+## PHASE 12: Learning Loop Logic
+
+### 12.1 Confidence Bounds
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as out_of_bounds FROM genomai.idea_confidence_versions WHERE confidence_value < 0.0 OR confidence_value > 1.0"
+```
+**PASS:** out_of_bounds = 0
+
+### 12.2 Learning Idempotency
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT source_outcome_id, COUNT(*) as cnt FROM genomai.idea_confidence_versions WHERE source_outcome_id IS NOT NULL GROUP BY source_outcome_id HAVING COUNT(*) > 1"
+```
+**PASS:** Empty result (0 rows)
+
+### 12.3 Outcome Processing
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as unprocessed FROM genomai.outcome_aggregates WHERE learning_applied = false AND created_at < now() - interval '4 hours'"
+```
+**PASS:** unprocessed < 10
+
+---
+
+## PHASE 13: Buyer Interactions
+
+### 13.1 Buyer States Validity
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT state, COUNT(*) as cnt FROM genomai.buyer_states GROUP BY state"
+```
+**INFO:** Valid states: idle, awaiting_name, awaiting_geo, awaiting_vertical, awaiting_keitaro, loading_history, awaiting_videos, completed, cancelled, timed_out
+
+### 13.2 Stuck Onboarding
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as stuck FROM genomai.buyer_states WHERE state NOT IN ('idle', 'completed', 'cancelled', 'timed_out') AND updated_at < now() - interval '2 hours'"
+```
+**PASS:** stuck = 0
+
+### 13.3 Buyer Data Completeness
+
+```
+mcp__supabase__sqlToRest:
+  sql: "SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE name IS NULL OR name = '') as missing_name FROM genomai.buyers WHERE status = 'active'"
+```
+**PASS:** missing_name = 0
+
+---
+
+## PHASE 14: Generate Report
+
+**Сформируй отчёт в следующем формате:**
 
 ```markdown
 ## E2E Test Report
 
-**Date:** {now}
-**Duration:** {duration}
+**Date:** {текущая дата и время}
+**Duration:** {время выполнения}
+**Mode:** {full|quick|skip-telegram|etc}
 
-### Workflow Live Tests (Scheduled)
+### Phase 1: Health Checks
 
-| # | Workflow | Triggered | Event Verified | Result |
-|---|----------|-----------|----------------|--------|
-| 3.1 | KeitaroPoller | ✅ | ✅ RawMetricsObserved | PASS |
-| 3.2 | MetricsProcessor | ✅ | ✅ OutcomeAggregated | PASS |
-| 3.3 | LearningLoop | ✅ | ✅ learning.applied | PASS |
-| 3.4 | Maintenance | ✅ | ✅ MaintenanceCompleted | PASS |
-| 3.5 | HealthCheck | ✅ | ✅ hygiene_report created | PASS |
-| 3.6 | DailyRecommendation | ⏭️ SKIP | ✅ history < 25h | PASS |
+| Component | Status | Details |
+|-----------|--------|---------|
+| Decision Engine | {status} | /health → {result} |
+| Supabase | {status} | connection test |
+| Temporal Schedules | {status} | {count} schedules |
 
-**Scheduled: 5/5 triggered, 5/5 passed**
+### Phase 2: Workflow Live Tests
 
-### Event-Driven Workflows (History Verification)
+| Workflow | Triggered | Event Verified | Result |
+|----------|-----------|----------------|--------|
+| KeitaroPoller | {yes/no} | {event} | {PASS/FAIL} |
+| MetricsProcessor | {yes/no} | {event} | {PASS/FAIL} |
+| LearningLoop | {yes/no} | {event} | {PASS/FAIL} |
+| Maintenance | {yes/no} | {event} | {PASS/FAIL} |
+| HealthCheck | {yes/no} | {event} | {PASS/FAIL} |
+| DailyRecommendation | SKIP | history check | {PASS/SKIP} |
 
-| # | Workflow | Activity (7d) | Status |
-|---|----------|---------------|--------|
-| 3.5.1 | CreativePipeline | X events | ✅/ℹ️ |
-| 3.5.2 | BuyerOnboarding | X stuck | ✅/⚠️ |
-| 3.5.3 | HistoricalImport | queue status | ℹ️ |
-| 3.5.4 | HistoricalVideoHandler | X% failure | ✅/⚠️ |
-| 3.5.5 | CreativeRegistration | X registrations | ℹ️ |
-| 3.5.6 | KnowledgeSystem | X pending, Y applied | ℹ️ |
-| 3.5.7 | PremiseExtraction | X extractions | ℹ️ |
-| 3.5.8 | ModularHypothesis | X hypotheses | ℹ️ |
-| 3.5.9 | RecommendationDelivery | X stuck | ✅/⚠️ |
+### Phase 3-5: Data Quality & Integrity
 
-**Event-Driven: 9 checked, X/3 passed, Y info**
+| Check | Result | Status |
+|-------|--------|--------|
+| Creatives quality | {values} | {status} |
+| Ideas quality | {values} | {status} |
+| Decisions quality | {values} | {status} |
+| Orphaned records | {count} | {status} |
+| Learning health | {values} | {status} |
 
-### Data Quality
+### Phase 6-7: API & Security
 
-| Table | Total | Issues | Status |
-|-------|-------|--------|--------|
-| creatives | X | 0 | ✅ |
-| transcripts | X | 0 | ✅ |
-| ideas | X | 0 | ✅ |
-| decisions | X | 0 | ✅ |
-| hypotheses | X | 0 | ✅ |
+| Test | Result | Status |
+|------|--------|--------|
+| Health endpoint | {result} | {status} |
+| Auth required | {result} | {status} |
+| Invalid token | {result} | {status} |
+| No secrets exposed | {result} | {status} |
 
-### Relationship Integrity
+### Phase 8-10: DB & Resilience
 
-| Check | Count | Status |
-|-------|-------|--------|
-| Orphaned decomposed | 0 | ✅ |
-| Missing traces | 0 | ✅ |
-| Approved no hypothesis | 0 | ✅ |
+| Check | Issues | Status |
+|-------|--------|--------|
+| Unique constraints | {count} | {status} |
+| Foreign keys | {count} | {status} |
+| Circuit breaker | {info} | {status} |
+| Stuck workflows | {count} | {status} |
+| Concurrent access | {count} | {status} |
 
-### Learning Health
+### Phase 11-13: Business Logic
 
-| Metric | Value | Status |
-|--------|-------|--------|
-| Stale pending | X | ✅/⚠️ |
-| Component learnings | X | ℹ️ |
+| Check | Result | Status |
+|-------|--------|--------|
+| Decision idempotency | {count} duplicates | {status} |
+| Trace completeness | {count} missing | {status} |
+| Confidence bounds | {count} out of range | {status} |
+| Learning idempotency | {count} duplicates | {status} |
+| Buyer states | {info} | {status} |
 
 ---
 
-### VERDICT: PASS / FAIL
+## Summary
 
-{summary}
+| Phase | Passed | Total | Status |
+|-------|--------|-------|--------|
+| Health Checks | X | 3 | {status} |
+| Workflows | X | 6 | {status} |
+| Data Quality | X | 4 | {status} |
+| Relationships | X | 3 | {status} |
+| Learning | X | 2 | {status} |
+| API/Security | X | 6 | {status} |
+| DB Constraints | X | 5 | {status} |
+| Resilience | X | 4 | {status} |
+| Decision Engine | X | 3 | {status} |
+| Learning Loop | X | 3 | {status} |
+| Buyer | X | 3 | {status} |
+
+**TOTAL: X/42 checks passed**
+
+### VERDICT: {PASS / FAIL}
+
+{краткое резюме проблем если есть}
 ```
 
 ---
 
-## Severity
+## Severity Legend
 
 | Icon | Meaning |
 |------|---------|
-| ✅ | PASS |
-| ⚠️ | WARNING (non-blocking) |
-| ❌ | ERROR (blocking) |
-| ⏭️ | SKIP |
-| ℹ️ | INFO |
+| PASS | Check passed |
+| WARN | Warning (non-blocking) |
+| FAIL | Error (blocking) |
+| SKIP | Skipped |
+| INFO | Informational |
 
 ---
 
-## Reference
+## Quick Reference
 
-Full SQL queries, thresholds, and criteria: `docs/E2E_REFERENCE.md`
+**Phase mapping:**
+- `--quick` → Phase 1
+- `--workflows` → Phase 2, 2.5
+- `--contracts` → Phase 6
+- `--security` → Phase 7
+- `--db` → Phase 8
+- `--chaos` → Phase 9, 10
+- `--decision` → Phase 11
+- `--learning` → Phase 12
+- `--buyer` → Phase 13
+- `--functional` → Phase 11, 12, 13

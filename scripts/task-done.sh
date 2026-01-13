@@ -41,7 +41,7 @@ if [ -z "$ISSUE_NUM" ]; then
     echo ""
     echo "Options:"
     echo "  --no-pr       Skip PR creation and merge"
-    echo "  --no-merge    Create PR but skip CI wait and merge"
+    echo "  --no-merge    Create PR with auto-merge label (merges after CI)"
     echo "  --skip-tests  Skip pre-merge tests"
     echo ""
     echo "Active worktrees:"
@@ -90,16 +90,39 @@ echo "✓ qa-notes found: $(basename "$QA_NOTE")"
 
 # Run tests unless skipped
 if [ "$SKIP_TESTS" != "true" ]; then
+    # Check if localhost:10000 is running (for functional tests)
+    echo ""
+    echo "=== Pre-flight Checks ==="
+    if ! curl -sf http://localhost:10000/health >/dev/null 2>&1; then
+        echo "⚠️  FastAPI not running on localhost:10000"
+        echo ""
+        echo "Start the server first:"
+        echo "  make up"
+        echo ""
+        echo "Or skip tests with --skip-tests flag"
+        exit 1
+    fi
+    echo "✓ localhost:10000 is healthy"
+
     # Extract and run functional test from qa-notes
     echo ""
     echo "=== Functional Test ==="
 
     # Extract test command from qa-notes (between ```bash and ``` after ## Test)
-    TEST_CMD=$(sed -n '/^## Test/,/^## /p' "$QA_NOTE" | sed -n '/```bash/,/```/p' | grep -v '```' | head -5)
+    TEST_BLOCK=$(sed -n '/^## Test/,/^## /p' "$QA_NOTE" | sed -n '/```bash/,/```/p' | grep -v '```')
+    TEST_CMD=$(echo "$TEST_BLOCK" | head -5)
 
     if [ -z "$TEST_CMD" ]; then
         echo "⚠️  No test command found in qa-notes"
-        echo "Add ## Test section with \`\`\`bash block"
+        echo ""
+        echo "Expected format in $(basename "$QA_NOTE"):"
+        echo "  ## Test"
+        echo "  \`\`\`bash"
+        echo "  curl -sf localhost:10000/endpoint || echo 'OK'"
+        echo "  \`\`\`"
+        echo ""
+        echo "Actual content:"
+        cat "$QA_NOTE" | head -30
         exit 1
     fi
 
@@ -119,7 +142,7 @@ if [ "$SKIP_TESTS" != "true" ]; then
     # Then unit tests
     echo ""
     echo "=== Unit Tests ==="
-    if ! make ci; then
+    if ! make -C "$WORKTREE_PATH" test-unit; then
         echo "Unit tests failed. Fix issues and re-run."
         exit 1
     fi
@@ -132,10 +155,24 @@ echo ""
 echo "Updating issue status..."
 gh issue edit "$ISSUE_NUM" --add-label "status:pending-deploy" --remove-label "status:in-progress" 2>/dev/null || true
 
+# Sync with develop before push (avoid merge conflicts)
+echo ""
+echo "Syncing with develop..."
+git fetch origin develop
+if ! git rebase origin/develop; then
+    echo "⚠️  Rebase conflict detected"
+    echo ""
+    echo "Resolve conflicts and run again:"
+    echo "  git rebase --continue"
+    echo "  ./scripts/task-done.sh $ISSUE_NUM"
+    exit 1
+fi
+echo "✓ Branch synced with develop"
+
 # Push branch
 echo ""
 echo "Pushing branch..."
-git push -u origin "$BRANCH_NAME"
+git push -u origin "$BRANCH_NAME" --force-with-lease
 
 # Create PR to develop
 PR_NUMBER=""
@@ -178,6 +215,12 @@ Closes #$ISSUE_NUM"
             echo "Found existing PR #$PR_NUMBER"
         fi
     fi
+
+    # Add auto-merge label if --no-merge flag is set
+    if [ "$NO_MERGE" = "true" ] && [ -n "$PR_NUMBER" ]; then
+        gh pr edit "$PR_NUMBER" --add-label "auto-merge"
+        echo "✓ Label 'auto-merge' added. PR will merge automatically after CI."
+    fi
 fi
 
 # Wait for CI and merge
@@ -219,7 +262,7 @@ cd "$PROJECT_ROOT"
 echo ""
 echo "=== Done ==="
 if [ "$NO_MERGE" = "true" ]; then
-    echo "PR created. Run 'gh pr merge <number> --squash' when ready."
+    echo "PR created with auto-merge label. Will merge automatically after CI."
 else
     echo "Issue #$ISSUE_NUM completed and merged to develop."
 fi

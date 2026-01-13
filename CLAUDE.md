@@ -129,3 +129,63 @@ qa-notes: qa-notes/issue-XXX-*.md
 
 ## Dirs
 `decision-engine-service/` `infrastructure/migrations/` `docs/`
+
+## Anti-Patterns (ЗАПРЕЩЕНО)
+
+**Код ниже приводит к багам. НЕ писать так:**
+
+```python
+# ❌ ПЛОХО: Bare except глотает все ошибки
+try:
+    do_something()
+except Exception:
+    pass  # Баг: ошибка никогда не будет видна
+
+# ✅ ХОРОШО: Специфичное исключение + логирование
+try:
+    do_something()
+except SpecificError as e:
+    logger.error(f"Failed: {e}")
+    raise  # или handle gracefully
+```
+
+```python
+# ❌ ПЛОХО: Доступ к списку без проверки
+first_item = data[0]  # IndexError если пусто
+
+# ✅ ХОРОШО: Проверка перед доступом
+first_item = data[0] if data else None
+# или
+if not data:
+    raise ValueError("Expected non-empty list")
+first_item = data[0]
+```
+
+```python
+# ❌ ПЛОХО: Деление без проверки
+ratio = a / b  # ZeroDivisionError
+
+# ✅ ХОРОШО: Защита от деления на ноль
+ratio = a / b if b else 0
+# или
+ratio = a / max(b, 1)
+```
+
+```python
+# ❌ ПЛОХО: Hardcoded URLs/credentials
+url = "https://api.example.com/webhook"
+
+# ✅ ХОРОШО: Из конфига или env
+url = os.environ.get("WEBHOOK_URL")
+```
+
+**Temporal-специфичные:**
+```python
+# ❌ ПЛОХО: datetime в workflow (non-deterministic)
+now = datetime.utcnow()
+
+# ✅ ХОРОШО: workflow.now()
+now = workflow.now()
+```
+
+**Проверка mypy:** `make mypy` (или в pre-commit)

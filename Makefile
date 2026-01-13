@@ -1,7 +1,7 @@
 # Makefile for GenomAI
 # Usage: make <target>
 
-.PHONY: help install lint format test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-ready issues-critical issues-by-priority up down dev dev-stop
+.PHONY: help install lint format mypy test test-unit test-slow test-all test-integration e2e e2e-quick setup-hooks ci pre-commit-check pre-push-check issues issue-start issue-ready issues-critical issues-by-priority up down dev dev-stop
 
 # Default target
 help:
@@ -20,6 +20,7 @@ help:
 	@echo "Linting:"
 	@echo "  make lint           - Run ruff check with auto-fix"
 	@echo "  make format         - Run ruff format"
+	@echo "  make mypy           - Run type checking (gradual mode)"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test           - Run critical tests only (~15s)"
@@ -87,6 +88,11 @@ format:
 
 format-check:
 	python3 -m ruff format decision-engine-service/ --check
+
+# Type checking with mypy (gradual mode)
+mypy:
+	@python3 -c "import mypy" 2>/dev/null || (echo "Installing mypy..." && pip install mypy types-requests)
+	cd decision-engine-service && python3 -m mypy src/ --config-file=pyproject.toml
 
 # ============ Unit Tests ============
 

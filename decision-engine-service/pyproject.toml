@@ -17,4 +17,53 @@ dependencies = [
 dev = [
     "ruff",
     "pytest",
+    "mypy",
+    "types-requests",
 ]
+
+# ============================================================
+# MYPY - статический анализатор типов
+# Ловит: None access, wrong types, missing returns
+# ============================================================
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+check_untyped_defs = true
+# Gradual mode - не требуем типы везде сразу
+# disallow_untyped_defs = true  # включить позже для strict mode
+
+[[tool.mypy.overrides]]
+module = "temporal.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+# ============================================================
+# RUFF - линтер + форматтер
+# Ловит: bare except, unused vars, complexity
+# ============================================================
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes (unused imports, undefined names)
+    "B",      # flake8-bugbear (bare except, mutable defaults)
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "UP",     # pyupgrade (modern Python syntax)
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function call in default argument (FastAPI Depends)
+    "SIM108", # ternary operator (readability preference)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "SIM"]  # более мягкие правила для тестов
