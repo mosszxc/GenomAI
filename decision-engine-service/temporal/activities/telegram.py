@@ -177,6 +177,69 @@ def _format_hypothesis_message(content: str, idea_id: Optional[str] = None) -> s
 
 
 @activity.defn
+async def send_status_notification(
+    chat_id: str,
+    stage: str,
+    message: str,
+) -> dict:
+    """
+    Send progress notification to Telegram chat.
+
+    Non-blocking: returns success=False on error instead of raising.
+    Used for UX updates during creative processing.
+
+    Args:
+        chat_id: Telegram chat ID
+        stage: Pipeline stage identifier (e.g., "extraction", "hypotheses", "complete")
+        message: Human-readable status message
+
+    Returns:
+        dict with success status and optional message_id
+    """
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not bot_token:
+        activity.logger.warning("TELEGRAM_BOT_TOKEN not configured, skipping notification")
+        return {"success": False, "reason": "no_token"}
+
+    activity.logger.info(f"Sending status notification: stage={stage}, chat={chat_id}")
+
+    client = get_http_client()
+    try:
+        response = await client.post(
+            f"{TELEGRAM_API_BASE}/bot{bot_token}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            },
+            timeout=10.0,
+        )
+
+        data = response.json()
+
+        if not data.get("ok"):
+            error_desc = data.get("description", "Unknown error")
+            activity.logger.warning(f"Telegram notification failed: {error_desc}")
+            return {"success": False, "reason": error_desc}
+
+        message_id = data.get("result", {}).get("message_id")
+        activity.logger.info(f"Status notification sent: message_id={message_id}")
+
+        return {
+            "success": True,
+            "message_id": message_id,
+            "stage": stage,
+        }
+
+    except httpx.TimeoutException:
+        activity.logger.warning("Telegram notification timeout")
+        return {"success": False, "reason": "timeout"}
+    except httpx.RequestError as e:
+        activity.logger.warning(f"Telegram notification error: {e}")
+        return {"success": False, "reason": str(e)}
+
+
+@activity.defn
 async def get_buyer_chat_id(buyer_id: str) -> Optional[str]:
     """
     Get Telegram chat ID for a buyer.

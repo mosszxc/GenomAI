@@ -100,6 +100,7 @@ from temporal.activities.telegram import (
     get_buyer_chat_id,
     update_hypothesis_delivery_status,
     emit_delivery_event,
+    send_status_notification,
 )
 
 # Import activities - Keitaro
@@ -307,6 +308,7 @@ async def run_worker():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
+            send_status_notification,
         ],
     )
 
@@ -383,6 +385,7 @@ async def run_all_workers():
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
+            send_status_notification,
         ],
     )
 
