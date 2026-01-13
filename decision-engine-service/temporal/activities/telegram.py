@@ -25,11 +25,15 @@ MAX_DELAY = 10.0  # seconds
 
 
 def _should_retry(status_code: int, error_code: Optional[int] = None) -> bool:
-    """Check if request should be retried based on status code."""
-    # Retry on rate limit (429) or server errors (5xx)
-    if status_code == 429:
+    """Check if request should be retried based on status code or Telegram error_code."""
+    # Retry on rate limit (429) - check both HTTP status and Telegram error_code
+    # Telegram may return HTTP 200 with {"ok": false, "error_code": 429}
+    if status_code == 429 or error_code == 429:
         return True
+    # Retry on server errors (5xx)
     if 500 <= status_code < 600:
+        return True
+    if error_code and 500 <= error_code < 600:
         return True
     return False
 

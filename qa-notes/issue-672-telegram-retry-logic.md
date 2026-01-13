@@ -6,7 +6,7 @@ Added retry logic to `send_hypothesis_to_telegram` activity to handle transient 
 ## Changes
 - **File:** `decision-engine-service/temporal/activities/telegram.py`
 - Added retry configuration constants: `MAX_RETRIES=3`, `BASE_DELAY=1.0s`, `MAX_DELAY=10.0s`
-- Added `_should_retry()` function: retries on 429 (rate limit) and 5xx (server errors)
+- Added `_should_retry()` function: retries on 429 (rate limit) and 5xx (server errors), checks both HTTP status and Telegram error_code
 - Added `_get_retry_delay()` function: exponential backoff with Retry-After header support
 - Updated `send_hypothesis_to_telegram` with retry loop:
   - Max 3 attempts with exponential backoff (1s, 2s, 4s)
@@ -22,12 +22,18 @@ from temporal.activities.telegram import (
     _should_retry, _get_retry_delay, MAX_RETRIES, BASE_DELAY, MAX_DELAY
 )
 
-# Test _should_retry
-assert _should_retry(429) == True, 'Should retry on 429'
-assert _should_retry(500) == True, 'Should retry on 500'
-assert _should_retry(503) == True, 'Should retry on 503'
+# Test _should_retry - HTTP status codes
+assert _should_retry(429) == True, 'Should retry on HTTP 429'
+assert _should_retry(500) == True, 'Should retry on HTTP 500'
+assert _should_retry(503) == True, 'Should retry on HTTP 503'
 assert _should_retry(400) == False, 'Should not retry on 400'
 assert _should_retry(404) == False, 'Should not retry on 404'
+
+# Test _should_retry - Telegram error_code (HTTP 200 with error in body)
+assert _should_retry(200, error_code=429) == True, 'Should retry on Telegram error_code 429'
+assert _should_retry(200, error_code=500) == True, 'Should retry on Telegram error_code 500'
+assert _should_retry(200, error_code=502) == True, 'Should retry on Telegram error_code 502'
+assert _should_retry(200, error_code=400) == False, 'Should not retry on error_code 400'
 
 # Test _get_retry_delay
 assert _get_retry_delay(0) == 1.0, 'First retry delay should be 1s'
