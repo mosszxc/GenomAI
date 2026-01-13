@@ -143,17 +143,13 @@ async def make_decision(input_data: dict) -> dict:
     fatigue_check = fatigue_constraint(idea, fatigue_state)
     check_results.append(fatigue_check)
     if fatigue_check["result"] == "FAILED":
-        return await _create_decision(
-            idea, "reject", check_results, "fatigue_constraint"
-        )
+        return await _create_decision(idea, "reject", check_results, "fatigue_constraint")
 
     # CHECK 4: Risk Budget
     risk_check = risk_budget(idea, system_state)
     check_results.append(risk_check)
     if risk_check["result"] == "FAILED":
-        return await _create_decision(
-            idea, "defer", check_results, "risk_budget_exceeded"
-        )
+        return await _create_decision(idea, "defer", check_results, "risk_budget_exceeded")
 
     # All checks passed → APPROVE
     return await _create_decision(idea, "approve", check_results, None)
@@ -213,12 +209,8 @@ async def _create_decision(
             "idea_id": idea["id"],
             "decision_type": decision_type,
             "decision_reason": failed_check or "all_checks_passed",
-            "passed_checks": [
-                c["name"] for c in check_results if c["result"] == "PASSED"
-            ],
-            "failed_checks": [
-                c["name"] for c in check_results if c["result"] == "FAILED"
-            ],
+            "passed_checks": [c["name"] for c in check_results if c["result"] == "PASSED"],
+            "failed_checks": [c["name"] for c in check_results if c["result"] == "FAILED"],
             "failed_check": failed_check,
             "dominant_constraint": failed_check,
             "cluster_at_decision": idea.get("active_cluster_id"),

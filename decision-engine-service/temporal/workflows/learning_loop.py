@@ -198,13 +198,11 @@ class LearningLoopWorkflow:
 
         # Step 1: Get unprocessed outcomes
         try:
-            outcomes_result: GetUnprocessedOutcomesOutput = (
-                await workflow.execute_activity(
-                    get_unprocessed_outcomes,
-                    GetUnprocessedOutcomesInput(limit=input.batch_limit),
-                    start_to_close_timeout=timedelta(minutes=1),
-                    retry_policy=LEARNING_RETRY_POLICY,
-                )
+            outcomes_result: GetUnprocessedOutcomesOutput = await workflow.execute_activity(
+                get_unprocessed_outcomes,
+                GetUnprocessedOutcomesInput(limit=input.batch_limit),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=LEARNING_RETRY_POLICY,
             )
         except Exception as e:
             return LearningLoopResult(
@@ -267,8 +265,7 @@ class LearningLoopWorkflow:
                 errors.append(f"Outcome {outcome.id}: {str(e)}")
 
         workflow.logger.info(
-            f"Individual processing complete: "
-            f"{processed_count} processed, {len(new_deaths)} deaths"
+            f"Individual processing complete: {processed_count} processed, {len(new_deaths)} deaths"
         )
 
         # Feature correlation monitoring (after processing outcomes)

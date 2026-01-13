@@ -123,9 +123,7 @@ async def transcribe_via_n8n(
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not supabase_key:
-        raise ApplicationError(
-            "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured"
-        )
+        raise ApplicationError("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured")
 
     headers = {
         "apikey": supabase_key,
@@ -161,9 +159,7 @@ async def transcribe_via_n8n(
 
     # Get the created record ID
     created = insert_resp.json()
-    transcript_db_id = (
-        created[0]["id"] if isinstance(created, list) else created.get("id")
-    )
+    transcript_db_id = created[0]["id"] if isinstance(created, list) else created.get("id")
 
     if not transcript_db_id:
         # Fetch the latest transcript for this creative
@@ -363,9 +359,7 @@ async def transcribe_audio(
 
         if transcript.status == aai.TranscriptStatus.error:
             error_msg = transcript.error or "Unknown transcription error"
-            log.error(
-                "Transcription failed", error=error_msg, transcript_id=transcript_id
-            )
+            log.error("Transcription failed", error=error_msg, transcript_id=transcript_id)
             raise ApplicationError(
                 f"Transcription failed: {error_msg}",
                 type="TRANSCRIPTION_ERROR",
@@ -429,8 +423,6 @@ async def get_transcript(transcript_id: str) -> dict:
 
     return {
         "transcript_id": transcript_id,
-        "text": transcript.text
-        if transcript.status == aai.TranscriptStatus.completed
-        else None,
+        "text": transcript.text if transcript.status == aai.TranscriptStatus.completed else None,
         "status": str(transcript.status),
     }

@@ -183,9 +183,7 @@ def format_heatmap_telegram(data: dict, title: Optional[str] = None) -> str:
         total = sum(sample_sizes.get(comp, {}).values())
         component_totals[comp] = total
 
-    top_components = sorted(
-        components, key=lambda c: component_totals.get(c, 0), reverse=True
-    )[:6]
+    top_components = sorted(components, key=lambda c: component_totals.get(c, 0), reverse=True)[:6]
 
     # Limit to top 5 geos by total samples
     geo_totals = {}
@@ -254,9 +252,7 @@ async def get_available_component_types() -> list[str]:
     data = response.json()
 
     # Get unique component types
-    types = list(
-        set(row.get("component_type") for row in data if row.get("component_type"))
-    )
+    types = list(set(row.get("component_type") for row in data if row.get("component_type")))
     return sorted(types)
 
 
@@ -290,17 +286,11 @@ async def get_segmented_analysis(
     segments = []
 
     if segment_by == "geo":
-        segments = await _get_segments_by_geo(
-            rest_url, headers, component_value, component_type
-        )
+        segments = await _get_segments_by_geo(rest_url, headers, component_value, component_type)
     elif segment_by == "аватарам":
-        segments = await _get_segments_by_avatar(
-            rest_url, headers, component_value, component_type
-        )
+        segments = await _get_segments_by_avatar(rest_url, headers, component_value, component_type)
     elif segment_by == "week":
-        segments = await _get_segments_by_week(
-            rest_url, headers, component_value, component_type
-        )
+        segments = await _get_segments_by_week(rest_url, headers, component_value, component_type)
 
     # Generate insight
     insight = _generate_insight(component_value, segment_by, segments)
@@ -391,9 +381,7 @@ async def _get_segments_by_avatar(
     segments = []
     for row in data:
         avatar_id = row.get("avatar_id")
-        avatar_name = avatar_names.get(
-            avatar_id, avatar_id[:8] if avatar_id else "Unknown"
-        )
+        avatar_name = avatar_names.get(avatar_id, avatar_id[:8] if avatar_id else "Unknown")
         win_rate = row.get("win_rate")
         sample_size = row.get("sample_size") or 0
 
@@ -543,9 +531,7 @@ def _get_week_label(concluded_at: Optional[str]) -> str:
         return "Unknown"
 
 
-def _generate_insight(
-    component_value: str, segment_by: str, segments: list[dict]
-) -> str:
+def _generate_insight(component_value: str, segment_by: str, segments: list[dict]) -> str:
     """Generate insight text based on segment data."""
     if not segments:
         return f"Нет данных для {component_value}"
@@ -573,9 +559,7 @@ def _generate_insight(
     if best["win_rate"] == worst["win_rate"]:
         return f"{component_value} стабилен по {segment_type}s"
 
-    return (
-        f"{component_value} лучше работает в {best['segment']} ({best['win_rate']:.0%})"
-    )
+    return f"{component_value} лучше работает в {best['segment']} ({best['win_rate']:.0%})"
 
 
 def format_segmented_telegram(data: dict) -> str:
@@ -612,10 +596,7 @@ def format_segmented_telegram(data: dict) -> str:
     header_label = label_map.get(segment_by, segment_by.title())
 
     if not segments:
-        return (
-            f"{header_emoji} <b>{component_value}</b> по {header_label}\n\n"
-            f"<i>Данных нет</i>"
-        )
+        return f"{header_emoji} <b>{component_value}</b> по {header_label}\n\n<i>Данных нет</i>"
 
     lines = [
         f"{header_emoji} <b>{component_value}</b> по {header_label}",

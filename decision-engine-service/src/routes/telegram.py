@@ -59,9 +59,7 @@ class WebhookErrorStats:
         return {
             "total_errors": self.total_errors,
             "last_error": self.last_error,
-            "last_error_time": self.last_error_time.isoformat()
-            if self.last_error_time
-            else None,
+            "last_error_time": self.last_error_time.isoformat() if self.last_error_time else None,
             "error_types": self.error_types,
         }
 
@@ -134,9 +132,7 @@ def _get_retry_delay(attempt: int, retry_after: int | None = None) -> float:
     return min(delay, TELEGRAM_MAX_DELAY)
 
 
-async def send_telegram_message(
-    chat_id: str, text: str, reply_markup: dict | None = None
-) -> bool:
+async def send_telegram_message(chat_id: str, text: str, reply_markup: dict | None = None) -> bool:
     """
     Send a message to Telegram chat with retry on transient errors.
 
@@ -215,9 +211,7 @@ async def send_telegram_message(
 
         except Exception as e:
             # Unexpected error - don't retry
-            logger.error(
-                f"Telegram sendMessage unexpected error: chat_id={chat_id}, error={e}"
-            )
+            logger.error(f"Telegram sendMessage unexpected error: chat_id={chat_id}, error={e}")
             return False
 
     # All retries exhausted
@@ -306,9 +300,7 @@ async def send_telegram_photo(chat_id: str, photo_url: str, caption: str = "") -
 
         except Exception as e:
             # Unexpected error - don't retry
-            logger.error(
-                f"Telegram sendPhoto unexpected error: chat_id={chat_id}, error={e}"
-            )
+            logger.error(f"Telegram sendPhoto unexpected error: chat_id={chat_id}, error={e}")
             return False
 
     # All retries exhausted
@@ -407,8 +399,7 @@ async def handle_start_command(message: TelegramMessage) -> None:
         logger.info(f"Workflow already running for user: {message.user_id}")
         await send_telegram_message(
             message.chat_id,
-            "У вас уже есть активная регистрация.\n"
-            "Завершите её или дождитесь таймаута.",
+            "У вас уже есть активная регистрация.\nЗавершите её или дождитесь таймаута.",
         )
 
     except Exception as e:
@@ -490,9 +481,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         client = get_http_client()
         # Get buyer
         buyer_resp = await client.get(
-            f"{sb.rest_url}/buyers"
-            f"?telegram_id=eq.{message.user_id}"
-            f"&select=id,name,geos,verticals",
+            f"{sb.rest_url}/buyers?telegram_id=eq.{message.user_id}&select=id,name,geos,verticals",
             headers=headers,
         )
         buyers = buyer_resp.json()
@@ -534,9 +523,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             # Fetch metrics for all tracker_ids
             tracker_list = ",".join(tracker_ids)
             metrics_resp = await client.get(
-                f"{sb.rest_url}/raw_metrics_current"
-                f"?tracker_id=in.({tracker_list})"
-                f"&select=metrics",
+                f"{sb.rest_url}/raw_metrics_current?tracker_id=in.({tracker_list})&select=metrics",
                 headers=headers,
             )
             metrics_rows = metrics_resp.json()
@@ -548,11 +535,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
                     total_revenue += safe_float(metrics.get("revenue", 0))
 
         # Calculate ROI
-        roi = (
-            ((total_revenue - total_spend) / total_spend * 100)
-            if total_spend > 0
-            else 0
-        )
+        roi = ((total_revenue - total_spend) / total_spend * 100) if total_spend > 0 else 0
         roi_sign = "+" if roi >= 0 else ""
 
         stats_message = (
@@ -844,9 +827,7 @@ async def handle_trends_command(message: TelegramMessage) -> None:
     from src.services.charts import generate_win_rate_chart_url
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -885,8 +866,7 @@ async def handle_trends_command(message: TelegramMessage) -> None:
             # Fallback to text if photo fails
             await send_telegram_message(
                 message.chat_id,
-                f"График создан, но не удалось отправить картинку.\n"
-                f"Ссылка: {chart_url[:100]}...",
+                f"График создан, но не удалось отправить картинку.\nСсылка: {chart_url[:100]}...",
             )
 
     except Exception as e:
@@ -910,9 +890,7 @@ async def handle_simulate_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Parse command
@@ -1006,9 +984,7 @@ async def handle_drift_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Parse component type from command
@@ -1080,9 +1056,7 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Log incoming command
@@ -1110,12 +1084,8 @@ async def handle_correlations_command(message: TelegramMessage) -> None:
             content=result_text,
             context={
                 "correlation_count": len(correlations),
-                "positive": len(
-                    [c for c in correlations if c.correlation_type == "positive"]
-                ),
-                "negative": len(
-                    [c for c in correlations if c.correlation_type == "negative"]
-                ),
+                "positive": len([c for c in correlations if c.correlation_type == "positive"]),
+                "negative": len([c for c in correlations if c.correlation_type == "negative"]),
             },
         )
 
@@ -1145,9 +1115,7 @@ async def handle_recommend_command(message: TelegramMessage) -> None:
     )
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     # Log incoming command
@@ -1199,9 +1167,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
     """Handle /buyers command - list all buyers with stats."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1254,9 +1220,7 @@ async def handle_buyers_command(message: TelegramMessage) -> None:
 
         for i, b in enumerate(buyers, 1):
             name = b.get("name") or "Без имени"
-            username = (
-                f"@{b['telegram_username']}" if b.get("telegram_username") else ""
-            )
+            username = f"@{b['telegram_username']}" if b.get("telegram_username") else ""
             geos = ", ".join(b.get("geos") or []) or "—"
             verticals = ", ".join(b.get("verticals") or []) or "—"
 
@@ -1296,9 +1260,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
     """Handle /activity command - show recent buyer interactions."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1341,9 +1303,7 @@ async def handle_activity_command(message: TelegramMessage) -> None:
             tid = i["telegram_id"]
             buyer = buyers.get(tid, {})
             username = (
-                f"@{buyer.get('telegram_username')}"
-                if buyer.get("telegram_username")
-                else tid
+                f"@{buyer.get('telegram_username')}" if buyer.get("telegram_username") else tid
             )
 
             direction = "→" if i["direction"] == "in" else "←"
@@ -1451,9 +1411,7 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
     """Handle /decisions command - show Decision Engine stats."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1500,9 +1458,7 @@ async def handle_decisions_command(message: TelegramMessage) -> None:
                 decision = d.get("decision", "").upper()
                 created_at = d.get("created_at", "")
                 time_str = created_at[11:16] if len(created_at) > 16 else ""
-                emoji = {"APPROVE": "✅", "REJECT": "❌", "DEFER": "⏸️"}.get(
-                    decision, "❓"
-                )
+                emoji = {"APPROVE": "✅", "REJECT": "❌", "DEFER": "⏸️"}.get(decision, "❓")
                 lines.append(f"• {time_str} {emoji} {decision}")
 
         await send_telegram_message(message.chat_id, "\n".join(lines))
@@ -1516,9 +1472,7 @@ async def handle_creatives_command(message: TelegramMessage) -> None:
     """Handle /creatives command - list all creatives."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1581,9 +1535,7 @@ async def handle_status_command(message: TelegramMessage) -> None:
     """Handle /status command - show system status."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1607,26 +1559,20 @@ async def handle_status_command(message: TelegramMessage) -> None:
             f"{sb.rest_url}/creatives?select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
-        creatives_count = creatives_resp.headers.get("content-range", "0").split("/")[
-            -1
-        ]
+        creatives_count = creatives_resp.headers.get("content-range", "0").split("/")[-1]
 
         decisions_resp = await client.get(
             f"{sb.rest_url}/decisions?select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
-        decisions_count = decisions_resp.headers.get("content-range", "0").split("/")[
-            -1
-        ]
+        decisions_count = decisions_resp.headers.get("content-range", "0").split("/")[-1]
 
         # Get pending hypotheses
         hypotheses_resp = await client.get(
             f"{sb.rest_url}/hypotheses?status=is.null&select=id",
             headers={**headers, "Prefer": "count=exact"},
         )
-        pending_hypotheses = hypotheses_resp.headers.get("content-range", "0").split(
-            "/"
-        )[-1]
+        pending_hypotheses = hypotheses_resp.headers.get("content-range", "0").split("/")[-1]
 
         # Format response
         status_message = (
@@ -1649,9 +1595,7 @@ async def handle_errors_command(message: TelegramMessage) -> None:
     """Handle /errors command - show recent errors."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -1727,9 +1671,7 @@ async def get_pending_modular_hypotheses() -> list[dict]:
     return response.json() if response.status_code == 200 else []
 
 
-async def update_hypothesis_review_status(
-    hypothesis_id: str, review_status: str
-) -> bool:
+async def update_hypothesis_review_status(hypothesis_id: str, review_status: str) -> bool:
     """Update hypothesis review status (approved/rejected)."""
     try:
         sb = get_supabase()
@@ -1762,9 +1704,7 @@ async def update_hypothesis_review_status(
 async def handle_pending_command(message: TelegramMessage) -> None:
     """Handle /pending command - show modular hypotheses awaiting review."""
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     await log_buyer_interaction(
@@ -1818,17 +1758,13 @@ async def handle_pending_command(message: TelegramMessage) -> None:
 
     except Exception as e:
         logger.error(f"Failed to get pending hypotheses: {e}")
-        await send_telegram_message(
-            message.chat_id, "Не удалось загрузить гипотезы на ревью."
-        )
+        await send_telegram_message(message.chat_id, "Не удалось загрузить гипотезы на ревью.")
 
 
 async def handle_approve_command(message: TelegramMessage) -> None:
     """Handle /approve <id> command - approve modular hypothesis."""
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     text = message.text or ""
@@ -1853,11 +1789,7 @@ async def handle_approve_command(message: TelegramMessage) -> None:
     try:
         # Find hypothesis by prefix
         hypotheses = await get_pending_modular_hypotheses()
-        matching = [
-            h
-            for h in hypotheses
-            if str(h["id"]).lower().startswith(hypothesis_id_prefix)
-        ]
+        matching = [h for h in hypotheses if str(h["id"]).lower().startswith(hypothesis_id_prefix)]
 
         if not matching:
             await send_telegram_message(
@@ -1887,9 +1819,7 @@ async def handle_approve_command(message: TelegramMessage) -> None:
             )
             logger.info(f"Hypothesis {hypothesis_id} approved by {message.user_id}")
         else:
-            await send_telegram_message(
-                message.chat_id, "Ошибка при обновлении статуса."
-            )
+            await send_telegram_message(message.chat_id, "Ошибка при обновлении статуса.")
 
     except Exception as e:
         logger.error(f"Failed to approve hypothesis: {e}")
@@ -1899,9 +1829,7 @@ async def handle_approve_command(message: TelegramMessage) -> None:
 async def handle_reject_command(message: TelegramMessage) -> None:
     """Handle /reject <id> command - reject modular hypothesis."""
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     text = message.text or ""
@@ -1926,11 +1854,7 @@ async def handle_reject_command(message: TelegramMessage) -> None:
     try:
         # Find hypothesis by prefix
         hypotheses = await get_pending_modular_hypotheses()
-        matching = [
-            h
-            for h in hypotheses
-            if str(h["id"]).lower().startswith(hypothesis_id_prefix)
-        ]
+        matching = [h for h in hypotheses if str(h["id"]).lower().startswith(hypothesis_id_prefix)]
 
         if not matching:
             await send_telegram_message(
@@ -1959,9 +1883,7 @@ async def handle_reject_command(message: TelegramMessage) -> None:
             )
             logger.info(f"Hypothesis {hypothesis_id} rejected by {message.user_id}")
         else:
-            await send_telegram_message(
-                message.chat_id, "Ошибка при обновлении статуса."
-            )
+            await send_telegram_message(message.chat_id, "Ошибка при обновлении статуса.")
 
     except Exception as e:
         logger.error(f"Failed to reject hypothesis: {e}")
@@ -2003,30 +1925,18 @@ def format_admin_notification(event_type: str, data: dict) -> str:
         return f"👤 <b>Новый баер:</b> {name} {username}"
 
     elif event_type == "creative_win":
-        username = (
-            f"@{data['username']}"
-            if data.get("username")
-            else data.get("buyer_name", "?")
-        )
+        username = f"@{data['username']}" if data.get("username") else data.get("buyer_name", "?")
         roi = data.get("roi")
         roi_str = f" (ROI {roi:+.0f}%)" if roi is not None else ""
         return f"🎉 <b>WIN:</b> креатив от {username}{roi_str}"
 
     elif event_type == "creative_loss":
-        username = (
-            f"@{data['username']}"
-            if data.get("username")
-            else data.get("buyer_name", "?")
-        )
+        username = f"@{data['username']}" if data.get("username") else data.get("buyer_name", "?")
         return f"📉 <b>LOSS:</b> креатив от {username}"
 
     elif event_type == "error":
         command = data.get("command", "?")
-        username = (
-            f"@{data['username']}"
-            if data.get("username")
-            else data.get("telegram_id", "?")
-        )
+        username = f"@{data['username']}" if data.get("username") else data.get("telegram_id", "?")
         error = data.get("error", "Unknown error")[:100]
         return f"❌ <b>Ошибка {command}</b> для {username}:\n{error}"
 
@@ -2051,9 +1961,7 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
     """Handle /knowledge command - show pending extractions."""
 
     if not is_admin(message.user_id):
-        await send_telegram_message(
-            message.chat_id, "Эта команда доступна только администраторам."
-        )
+        await send_telegram_message(message.chat_id, "Эта команда доступна только администраторам.")
         return
 
     try:
@@ -2068,8 +1976,7 @@ async def handle_knowledge_command(message: TelegramMessage) -> None:
         client = get_http_client()
         # Get pending extractions
         response = await client.get(
-            f"{sb.rest_url}/knowledge_extractions"
-            f"?status=eq.pending&order=created_at.asc&limit=5",
+            f"{sb.rest_url}/knowledge_extractions?status=eq.pending&order=created_at.asc&limit=5",
             headers=headers,
         )
         extractions = response.json()
@@ -2378,9 +2285,7 @@ async def handle_callback_query(update: dict) -> None:
 
     elif data.startswith("ke_skip_"):
         # Just show next extraction
-        await send_telegram_message(
-            chat_id, "Пропущено. Используйте /knowledge для следующего."
-        )
+        await send_telegram_message(chat_id, "Пропущено. Используйте /knowledge для следующего.")
 
     elif data.startswith("chat_"):
         buyer_telegram_id = data.replace("chat_", "")
@@ -2591,9 +2496,7 @@ async def process_telegram_update(update: dict) -> None:
         await _process_telegram_update_inner(update)
     except Exception as e:
         # Log with full traceback - critical for debugging background task failures
-        logger.exception(
-            f"Failed to process Telegram update {update.get('update_id')}: {e}"
-        )
+        logger.exception(f"Failed to process Telegram update {update.get('update_id')}: {e}")
         # Track error for monitoring
         webhook_error_stats.record_error(e)
 

@@ -54,9 +54,7 @@ SCHEDULES = {
         "args": [KeitaroPollerInput(interval="yesterday", create_snapshots=True)],
         "task_queue": settings.temporal.TASK_QUEUE_METRICS,
         "interval": timedelta(hours=1),
-        "execution_timeout": timedelta(
-            minutes=30
-        ),  # Issue #553: prevent unbounded execution
+        "execution_timeout": timedelta(minutes=30),  # Issue #553: prevent unbounded execution
         "description": "Polls Keitaro hourly, then triggers metrics-processor → learning-loop chain",
     },
     # NOTE: metrics-processor and learning-loop removed from schedules.
@@ -113,9 +111,7 @@ async def create_schedule(client: Client, schedule_id: str, config: dict) -> boo
             config["cron"].split()
             spec = ScheduleSpec(cron_expressions=[config["cron"]])
         else:
-            spec = ScheduleSpec(
-                intervals=[ScheduleIntervalSpec(every=config["interval"])]
-            )
+            spec = ScheduleSpec(intervals=[ScheduleIntervalSpec(every=config["interval"])])
 
         await client.create_schedule(
             schedule_id,
@@ -229,9 +225,7 @@ async def show_schedules():
 
     logger.info(f"Found {len(schedules)} schedules:")
     for s in schedules:
-        logger.info(
-            f"  - {s['id']}: last={s['recent'] or 'never'}, next={s['next'] or 'unknown'}"
-        )
+        logger.info(f"  - {s['id']}: last={s['recent'] or 'never'}, next={s['next'] or 'unknown'}")
 
 
 async def pause_schedule(schedule_id: str):

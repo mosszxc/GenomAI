@@ -44,12 +44,8 @@ app.add_middleware(
 # Include routers
 app.include_router(decision_router, prefix="/api/decision", tags=["decision"])
 app.include_router(learning_router, prefix="/learning", tags=["learning"])
-app.include_router(
-    idea_registry_router, prefix="/api/idea-registry", tags=["idea-registry"]
-)
-app.include_router(
-    recommendations_router, prefix="/recommendations", tags=["recommendations"]
-)
+app.include_router(idea_registry_router, prefix="/api/idea-registry", tags=["idea-registry"])
+app.include_router(recommendations_router, prefix="/recommendations", tags=["recommendations"])
 app.include_router(schema_router, prefix="/api/schema", tags=["schema"])
 app.include_router(outcomes_router, prefix="/api/outcomes", tags=["outcomes"])
 app.include_router(premise_router, prefix="/premise", tags=["premise"])

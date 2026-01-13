@@ -40,9 +40,7 @@ class TestComputeModuleKey:
             "hook_mechanism": "pattern_interrupt",
         }
 
-        assert compute_module_key("hook", content1) == compute_module_key(
-            "hook", content2
-        )
+        assert compute_module_key("hook", content1) == compute_module_key("hook", content2)
 
     def test_module_key_ignores_extra_fields(self):
         """Only key_fields should be used for hash"""

@@ -55,9 +55,7 @@ class TestCanonicalHash:
             "another_extra": 12345,
         }
 
-        assert compute_canonical_hash(payload_minimal) == compute_canonical_hash(
-            payload_extra
-        )
+        assert compute_canonical_hash(payload_minimal) == compute_canonical_hash(payload_extra)
 
     def test_canonical_hash_only_includes_defined_fields(self):
         """Only fields with defined values should be included"""
@@ -182,9 +180,7 @@ class TestAvatarHash:
         awareness_level = "solution_aware"
 
         # Expected: "nutra|RU|health_improvement|pain_relief|solution_aware"
-        expected_input = (
-            f"{vertical}|{geo}|{deep_desire_type}|{primary_trigger}|{awareness_level}"
-        )
+        expected_input = f"{vertical}|{geo}|{deep_desire_type}|{primary_trigger}|{awareness_level}"
         expected_hash = hashlib.md5(expected_input.encode()).hexdigest()
 
         result = compute_avatar_hash(

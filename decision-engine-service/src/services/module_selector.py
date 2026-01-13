@@ -91,9 +91,7 @@ async def check_modular_generation_ready(
     counts = {}
     for module_type in ["hook", "promise", "proof"]:
         response = await client.get(
-            f"{rest_url}/module_bank"
-            f"?module_type=eq.{module_type}&{filter_str}"
-            f"&select=id",
+            f"{rest_url}/module_bank?module_type=eq.{module_type}&{filter_str}&select=id",
             headers=headers,
         )
         response.raise_for_status()
@@ -396,9 +394,7 @@ async def select_module_combination(
 
     # Calculate combined score
     hook_score = float(hook.get("win_rate", 0) or 0)
-    promise_score = float(
-        promise.get("combined_score", promise.get("win_rate", 0)) or 0
-    )
+    promise_score = float(promise.get("combined_score", promise.get("win_rate", 0)) or 0)
     proof_score = float(proof.get("combined_score", proof.get("win_rate", 0)) or 0)
 
     combined_score = (hook_score + promise_score + proof_score) / 3
@@ -499,9 +495,7 @@ async def select_top_combinations(
 
         # Calculate combined score
         hook_score = float(hook.get("win_rate", 0) or 0)
-        promise_score = float(
-            promise.get("combined_score", promise.get("win_rate", 0)) or 0
-        )
+        promise_score = float(promise.get("combined_score", promise.get("win_rate", 0)) or 0)
         proof_score = float(proof.get("combined_score", proof.get("win_rate", 0)) or 0)
 
         combinations.append(

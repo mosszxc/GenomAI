@@ -99,10 +99,7 @@ async def get_all_pair_stats() -> dict[str, PairStats]:
     # First, get decomposed creatives with components
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/decomposed_creatives"
-        f"?select=id,idea_id,payload"
-        f"&idea_id=not.is.null"
-        f"&limit=1000",
+        f"{rest_url}/decomposed_creatives?select=id,idea_id,payload&idea_id=not.is.null&limit=1000",
         headers=headers,
     )
     response.raise_for_status()

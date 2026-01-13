@@ -72,9 +72,7 @@ def validate_sha256_hash(value: str, field_name: str = "canonical_hash") -> str:
     value = value.lower()
 
     if len(value) != 64:
-        raise ValueError(
-            f"{field_name} must be 64 characters (SHA256), got {len(value)}"
-        )
+        raise ValueError(f"{field_name} must be 64 characters (SHA256), got {len(value)}")
 
     if not all(c in HEX_CHARS for c in value):
         raise ValueError(f"{field_name} must contain only hex characters")
@@ -105,9 +103,7 @@ def validate_url(value: str, field_name: str = "url") -> str:
     return value
 
 
-def validate_optional_uuid(
-    value: Optional[str], field_name: str = "id"
-) -> Optional[str]:
+def validate_optional_uuid(value: Optional[str], field_name: str = "id") -> Optional[str]:
     """
     Validate optional UUID string.
 
@@ -149,9 +145,7 @@ def validate_enum(
         raise ValueError(f"{field_name} cannot be empty")
 
     if value not in allowed_values:
-        raise ValueError(
-            f"{field_name} must be one of {sorted(allowed_values)}, got: {value!r}"
-        )
+        raise ValueError(f"{field_name} must be one of {sorted(allowed_values)}, got: {value!r}")
 
     return value
 
@@ -171,9 +165,7 @@ def validate_dict_payload(value: Any, field_name: str = "payload") -> dict:
         ValueError: If not a dict
     """
     if not isinstance(value, dict):
-        raise ValueError(
-            f"{field_name} must be a dict, got {type(value).__name__}: {value!r:.200}"
-        )
+        raise ValueError(f"{field_name} must be a dict, got {type(value).__name__}: {value!r:.200}")
     return value
 
 

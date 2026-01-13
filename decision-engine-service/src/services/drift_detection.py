@@ -247,9 +247,7 @@ async def detect_drift(
 
         # Calculate drift metrics
         drift_score = calculate_drift_score(baseline_rate, current_rate)
-        chi2 = calculate_chi2(
-            baseline_wins, baseline_losses, current_wins, current_losses
-        )
+        chi2 = calculate_chi2(baseline_wins, baseline_losses, current_wins, current_losses)
         severity = get_severity(drift_score, chi2)
         p_category = get_p_value_category(chi2)
         recommendation = get_recommendation(severity, current_rate, baseline_rate)
@@ -297,12 +295,9 @@ def format_drift_telegram(results: list[DriftResult]) -> str:
         emoji = emoji_map.get(result.severity, "⚪")
         direction = "↓" if result.current_win_rate < result.baseline_win_rate else "↑"
 
+        lines.append(f"\n{emoji} <b>{result.component_type}.{result.component_value}</b>")
         lines.append(
-            f"\n{emoji} <b>{result.component_type}.{result.component_value}</b>"
-        )
-        lines.append(
-            f"├── Базовый: {result.baseline_win_rate:.0%} "
-            f"({result.baseline_samples} samples)"
+            f"├── Базовый: {result.baseline_win_rate:.0%} ({result.baseline_samples} samples)"
         )
         lines.append(
             f"├── Текущий: {result.current_win_rate:.0%} "
@@ -336,7 +331,5 @@ async def get_available_component_types() -> list[str]:
     response.raise_for_status()
     data = response.json()
 
-    types = list(
-        set(row["component_type"] for row in data if row.get("component_type"))
-    )
+    types = list(set(row["component_type"] for row in data if row.get("component_type")))
     return sorted(types)

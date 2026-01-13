@@ -40,16 +40,10 @@ class CircuitBreakerState:
         return {
             "state": self.state.value,
             "failure_count": self.failure_count,
-            "last_failure_at": (
-                self.last_failure_at.isoformat() if self.last_failure_at else None
-            ),
-            "last_success_at": (
-                self.last_success_at.isoformat() if self.last_success_at else None
-            ),
+            "last_failure_at": (self.last_failure_at.isoformat() if self.last_failure_at else None),
+            "last_success_at": (self.last_success_at.isoformat() if self.last_success_at else None),
             "opened_at": self.opened_at.isoformat() if self.opened_at else None,
-            "half_open_at": (
-                self.half_open_at.isoformat() if self.half_open_at else None
-            ),
+            "half_open_at": (self.half_open_at.isoformat() if self.half_open_at else None),
         }
 
     @classmethod
@@ -193,17 +187,13 @@ async def should_allow_request() -> tuple[bool, CircuitBreakerState]:
     if state.state == CircuitState.OPEN:
         # Check if recovery timeout has passed
         if state.opened_at:
-            recovery_time = state.opened_at + timedelta(
-                minutes=RECOVERY_TIMEOUT_MINUTES
-            )
+            recovery_time = state.opened_at + timedelta(minutes=RECOVERY_TIMEOUT_MINUTES)
             if now >= recovery_time:
                 # Transition to half-open, allow one test request
                 state.state = CircuitState.HALF_OPEN
                 state.half_open_at = now
                 await save_circuit_state(state)
-                activity.logger.info(
-                    "Circuit breaker transitioning to HALF_OPEN for test request"
-                )
+                activity.logger.info("Circuit breaker transitioning to HALF_OPEN for test request")
                 return True, state
 
         return False, state
@@ -256,14 +246,10 @@ async def get_metrics_staleness() -> dict:
                 "state": cb_state.state.value,
                 "failure_count": cb_state.failure_count,
                 "last_failure_at": (
-                    cb_state.last_failure_at.isoformat()
-                    if cb_state.last_failure_at
-                    else None
+                    cb_state.last_failure_at.isoformat() if cb_state.last_failure_at else None
                 ),
                 "last_success_at": (
-                    cb_state.last_success_at.isoformat()
-                    if cb_state.last_success_at
-                    else None
+                    cb_state.last_success_at.isoformat() if cb_state.last_success_at else None
                 ),
             },
             "status": "degraded"

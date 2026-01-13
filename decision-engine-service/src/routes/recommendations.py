@@ -165,9 +165,7 @@ async def stats(_: bool = Depends(verify_api_key)):
 
 
 @router.get("/")
-async def list_pending(
-    buyer_id: Optional[str] = None, _: bool = Depends(verify_api_key)
-):
+async def list_pending(buyer_id: Optional[str] = None, _: bool = Depends(verify_api_key)):
     """
     GET /recommendations/
 

@@ -55,9 +55,7 @@ async def select_premise(
     Returns:
         dict with premise details or is_new=True signal
     """
-    activity.logger.info(
-        f"Selecting premise for idea={idea_id}, geo={geo}, vertical={vertical}"
-    )
+    activity.logger.info(f"Selecting premise for idea={idea_id}, geo={geo}, vertical={vertical}")
 
     selection: PremiseSelection = await select_premise_for_hypothesis(
         idea_id=idea_id,

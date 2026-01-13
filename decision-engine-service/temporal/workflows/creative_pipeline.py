@@ -49,9 +49,7 @@ class CreativePipelineWorkflow:
         self._hypothesis_count: int = 0
         self._error: Optional[str] = None
         self._log = None  # Initialized in run() with context
-        self._operation_start_time: Optional[datetime] = (
-            None  # For deterministic completed_at
-        )
+        self._operation_start_time: Optional[datetime] = None  # For deterministic completed_at
 
     @workflow.run
     async def run(self, input: CreativeInput) -> PipelineResult:
@@ -152,9 +150,7 @@ class CreativePipelineWorkflow:
             if existing_transcript:
                 # RECOVERY: Use existing transcript, skip AssemblyAI (saves time & money)
                 transcript_text = existing_transcript.get("transcript_text", "")
-                assemblyai_transcript_id = existing_transcript.get(
-                    "assemblyai_transcript_id"
-                )
+                assemblyai_transcript_id = existing_transcript.get("assemblyai_transcript_id")
                 # Convert bigint id to string for type compatibility
                 saved_transcript_id = str(existing_transcript["id"])
                 self._log.info(
@@ -211,9 +207,7 @@ class CreativePipelineWorkflow:
                             "transcript_id": saved_transcript_id,
                             "assemblyai_transcript_id": assemblyai_transcript_id,
                             "version": saved_transcript.get("version", 1),
-                            "words": len(transcript_text.split())
-                            if transcript_text
-                            else 0,
+                            "words": len(transcript_text.split()) if transcript_text else 0,
                         },
                     ],
                     start_to_close_timeout=timedelta(seconds=10),
@@ -289,9 +283,7 @@ class CreativePipelineWorkflow:
             )
 
             self._idea_id = idea_result["id"]
-            idea_status = (
-                "new" if idea_result.get("upsert_status") == "created" else "reused"
-            )
+            idea_status = "new" if idea_result.get("upsert_status") == "created" else "reused"
 
             # Emit idea event
             await workflow.execute_activity(
@@ -496,9 +488,7 @@ class CreativePipelineWorkflow:
             except Exception as e:
                 # Don't fail the workflow if status update fails
                 # The workflow result already contains the error
-                workflow.logger.warning(
-                    f"Failed to update creative status to 'failed': {e}"
-                )
+                workflow.logger.warning(f"Failed to update creative status to 'failed': {e}")
 
             return self._build_result()
 

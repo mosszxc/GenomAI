@@ -58,9 +58,7 @@ async def load_idea(idea_id: str) -> dict | None:
 
         client = get_http_client()
         # First, load the idea
-        response = await client.get(
-            f"{rest_url}/ideas?id=eq.{idea_id}&select=*", headers=headers
-        )
+        response = await client.get(f"{rest_url}/ideas?id=eq.{idea_id}&select=*", headers=headers)
         response.raise_for_status()
         ideas_data = response.json()
 
@@ -159,9 +157,7 @@ async def load_system_state() -> dict:
         headers["Prefer"] = "count=exact"
 
         client = get_http_client()
-        response = await client.get(
-            f"{rest_url}/ideas?status=eq.active&select=id", headers=headers
-        )
+        response = await client.get(f"{rest_url}/ideas?status=eq.active&select=id", headers=headers)
         response.raise_for_status()
 
         # Get count from Content-Range header
@@ -249,9 +245,7 @@ async def save_decision(decision: dict) -> dict:
         headers = _get_headers(supabase_key, for_write=True)
 
         client = get_http_client()
-        response = await client.post(
-            f"{rest_url}/decisions", headers=headers, json=decision
-        )
+        response = await client.post(f"{rest_url}/decisions", headers=headers, json=decision)
         response.raise_for_status()
         data = response.json()
 
@@ -273,9 +267,7 @@ async def delete_decision(decision_id: str) -> None:
         headers = _get_headers(supabase_key, for_write=True)
 
         client = get_http_client()
-        response = await client.delete(
-            f"{rest_url}/decisions?id=eq.{decision_id}", headers=headers
-        )
+        response = await client.delete(f"{rest_url}/decisions?id=eq.{decision_id}", headers=headers)
         response.raise_for_status()
     except Exception:
         # Log but don't raise - this is cleanup
@@ -289,9 +281,7 @@ async def save_decision_trace(trace: dict) -> dict:
         headers = _get_headers(supabase_key, for_write=True)
 
         client = get_http_client()
-        response = await client.post(
-            f"{rest_url}/decision_traces", headers=headers, json=trace
-        )
+        response = await client.post(f"{rest_url}/decision_traces", headers=headers, json=trace)
         response.raise_for_status()
         data = response.json()
 

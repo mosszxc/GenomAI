@@ -187,9 +187,7 @@ async def decompose_creative(
         payload["schema_version"] = SCHEMA_VERSION
 
         # Compute canonical hash for deduplication
-        canonical_hash = hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode()
-        ).hexdigest()
+        canonical_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
         activity.logger.info(f"Decomposition completed: hash={canonical_hash[:16]}...")
 

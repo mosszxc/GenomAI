@@ -18,9 +18,7 @@ class IdeaNotFoundError(DecisionEngineError):
     """Raised when idea is not found"""
 
     def __init__(self, idea_id: str):
-        super().__init__(
-            "IDEA_NOT_FOUND", f"Idea not found: {idea_id}", {"idea_id": idea_id}
-        )
+        super().__init__("IDEA_NOT_FOUND", f"Idea not found: {idea_id}", {"idea_id": idea_id})
         self.status_code = 404
 
 

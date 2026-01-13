@@ -76,10 +76,7 @@ async def expire_old_recommendations(expiry_days: int = 7) -> int:
     client = get_http_client()
     # Find old pending recommendations
     response = await client.get(
-        f"{rest_url}/recommendations"
-        f"?status=eq.pending"
-        f"&created_at=lt.{cutoff_iso}"
-        "&select=id",
+        f"{rest_url}/recommendations?status=eq.pending&created_at=lt.{cutoff_iso}&select=id",
         headers=_get_headers(supabase_key),
     )
     response.raise_for_status()
@@ -153,9 +150,7 @@ async def mark_stuck_transcriptions_failed(timeout_minutes: int = 10) -> int:
     # Batch check which ones have transcripts (O(1) instead of O(n))
     creative_ids = [c["id"] for c in registered_creatives]
     transcript_resp = await client.get(
-        f"{rest_url}/transcripts"
-        f"?creative_id=in.({','.join(creative_ids)})"
-        "&select=creative_id",
+        f"{rest_url}/transcripts?creative_id=in.({','.join(creative_ids)})&select=creative_id",
         headers=_get_headers(supabase_key),
     )
 
@@ -278,9 +273,7 @@ async def check_data_integrity() -> List[str]:
             # Batch check which ideas have decisions (O(1) instead of O(n))
             idea_ids = [idea["id"] for idea in old_ideas]
             decision_resp = await client.get(
-                f"{rest_url}/decisions"
-                f"?idea_id=in.({','.join(idea_ids)})"
-                "&select=idea_id",
+                f"{rest_url}/decisions?idea_id=in.({','.join(idea_ids)})&select=idea_id",
                 headers=headers,
             )
 
@@ -443,9 +436,7 @@ async def release_orphaned_agent_tasks(timeout_minutes: int = 10) -> int:
     """
     rest_url, supabase_key = _get_credentials()
 
-    activity.logger.info(
-        f"Checking for orphaned agent tasks (timeout={timeout_minutes}min)"
-    )
+    activity.logger.info(f"Checking for orphaned agent tasks (timeout={timeout_minutes}min)")
 
     client = get_http_client()
     # Call the release_orphaned_tasks function via RPC
@@ -573,24 +564,49 @@ async def find_stuck_creatives(
 
             creatives_with_transcripts = set()
             if transcript_resp.status_code == 200:
-                creatives_with_transcripts = {
-                    t["creative_id"] for t in transcript_resp.json()
-                }
+                creatives_with_transcripts = {t["creative_id"] for t in transcript_resp.json()}
 
-            for creative in pending_creatives:
-                if creative["id"] not in creatives_with_transcripts:
-                    stuck_since = creative["created_at"]
-                    stuck_creatives.append(
-                        {
-                            "creative_id": creative["id"],
-                            "buyer_id": creative.get("buyer_id"),
-                            "stuck_reason": "transcription",
-                            "stuck_since": stuck_since,
-                            "stuck_duration_minutes": _calculate_stuck_duration_minutes(
-                                stuck_since
-                            ),
-                        }
+            # Find creatives without transcripts
+            pending_without_transcript = [
+                c for c in pending_creatives if c["id"] not in creatives_with_transcripts
+            ]
+
+            # Filter out orphan creatives (no events = never processed by workflow)
+            if pending_without_transcript:
+                pending_ids = [c["id"] for c in pending_without_transcript]
+                event_resp = await client.get(
+                    f"{rest_url}/event_log?entity_id=in.({','.join(pending_ids)})&select=entity_id",
+                    headers=headers,
+                )
+
+                creatives_with_events = set()
+                if event_resp.status_code == 200:
+                    creatives_with_events = {e["entity_id"] for e in event_resp.json()}
+
+                orphan_count = len(
+                    [c for c in pending_without_transcript if c["id"] not in creatives_with_events]
+                )
+                if orphan_count > 0:
+                    activity.logger.info(
+                        f"Filtered out {orphan_count} orphan pending creatives "
+                        "(no workflow events, likely test data)"
                     )
+
+                for creative in pending_without_transcript:
+                    # Only include if has workflow events
+                    if creative["id"] in creatives_with_events:
+                        stuck_since = creative["created_at"]
+                        stuck_creatives.append(
+                            {
+                                "creative_id": creative["id"],
+                                "buyer_id": creative.get("buyer_id"),
+                                "stuck_reason": "transcription",
+                                "stuck_since": stuck_since,
+                                "stuck_duration_minutes": _calculate_stuck_duration_minutes(
+                                    stuck_since
+                                ),
+                            }
+                        )
 
     # 2. Find creatives stuck on decomposition
     # Has transcript but no decomposed_creative AND transcript created > X minutes ago
@@ -627,25 +643,42 @@ async def find_stuck_creatives(
                 if t["creative_id"] not in creatives_with_decomp
             ]
 
+            # Filter out orphan creatives (no events = never processed by workflow)
+            if stuck_decomp_ids:
+                event_resp = await client.get(
+                    f"{rest_url}/event_log"
+                    f"?entity_id=in.({','.join(stuck_decomp_ids)})"
+                    "&select=entity_id",
+                    headers=headers,
+                )
+
+                creatives_with_events = set()
+                if event_resp.status_code == 200:
+                    creatives_with_events = {e["entity_id"] for e in event_resp.json()}
+
+                # Only keep creatives that have events (were actually processed)
+                orphan_ids = [cid for cid in stuck_decomp_ids if cid not in creatives_with_events]
+                stuck_decomp_ids = [cid for cid in stuck_decomp_ids if cid in creatives_with_events]
+
+                if orphan_ids:
+                    activity.logger.info(
+                        f"Filtered out {len(orphan_ids)} orphan creatives "
+                        "(no workflow events, likely test data)"
+                    )
+
             if stuck_decomp_ids:
                 # Batch get buyer_ids for all stuck creatives (O(1) instead of O(n))
                 creative_resp = await client.get(
-                    f"{rest_url}/creatives"
-                    f"?id=in.({','.join(stuck_decomp_ids)})"
-                    "&select=id,buyer_id",
+                    f"{rest_url}/creatives?id=in.({','.join(stuck_decomp_ids)})&select=id,buyer_id",
                     headers=headers,
                 )
 
                 buyer_id_map = {}
                 if creative_resp.status_code == 200:
-                    buyer_id_map = {
-                        c["id"]: c.get("buyer_id") for c in creative_resp.json()
-                    }
+                    buyer_id_map = {c["id"]: c.get("buyer_id") for c in creative_resp.json()}
 
                 # Build transcript lookup for stuck_since
-                transcript_map = {
-                    t["creative_id"]: t["created_at"] for t in transcripts
-                }
+                transcript_map = {t["creative_id"]: t["created_at"] for t in transcripts}
 
                 for creative_id in stuck_decomp_ids:
                     stuck_since = transcript_map.get(creative_id, "")
@@ -720,9 +753,7 @@ async def find_failed_creatives_for_retry(
     failed_creatives = response.json()
 
     if failed_creatives:
-        activity.logger.info(
-            f"Found {len(failed_creatives)} failed creatives eligible for retry"
-        )
+        activity.logger.info(f"Found {len(failed_creatives)} failed creatives eligible for retry")
     else:
         activity.logger.info("No failed creatives eligible for retry")
 
@@ -774,14 +805,10 @@ async def reset_creative_for_retry(creative_id: str) -> bool:
     )
 
     if response.status_code in (200, 204):
-        activity.logger.info(
-            f"Creative {creative_id[:8]} reset for retry #{current_retry + 1}"
-        )
+        activity.logger.info(f"Creative {creative_id[:8]} reset for retry #{current_retry + 1}")
         return True
     else:
-        activity.logger.warning(
-            f"Failed to reset creative {creative_id[:8]}: {response.text}"
-        )
+        activity.logger.warning(f"Failed to reset creative {creative_id[:8]}: {response.text}")
         return False
 
 
@@ -802,9 +829,7 @@ async def abandon_failed_creative(creative_id: str) -> bool:
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key, for_write=True)
 
-    activity.logger.info(
-        f"Abandoning creative {creative_id[:8]} (max retries exceeded)"
-    )
+    activity.logger.info(f"Abandoning creative {creative_id[:8]} (max retries exceeded)")
 
     client = get_http_client()
     response = await client.patch(
@@ -820,9 +845,7 @@ async def abandon_failed_creative(creative_id: str) -> bool:
         activity.logger.info(f"Creative {creative_id[:8]} marked as abandoned")
         return True
     else:
-        activity.logger.warning(
-            f"Failed to abandon creative {creative_id[:8]}: {response.text}"
-        )
+        activity.logger.warning(f"Failed to abandon creative {creative_id[:8]}: {response.text}")
         return False
 
 
@@ -862,9 +885,7 @@ async def check_staleness(
                 f"recommended action: {result.get('recommended_action')}"
             )
         else:
-            activity.logger.info(
-                f"System is healthy. Staleness score: {staleness_score:.2f}"
-            )
+            activity.logger.info(f"System is healthy. Staleness score: {staleness_score:.2f}")
 
         return result
     except Exception as e:
@@ -917,21 +938,15 @@ async def cancel_stuck_creative_workflow(creative_id: str) -> bool:
                 activity.logger.info(f"Cancelled stuck workflow {workflow_id}")
                 return True
             elif status in ("COMPLETED", "FAILED", "CANCELED", "TERMINATED"):
-                activity.logger.info(
-                    f"Workflow {workflow_id} already {status}, no cancel needed"
-                )
+                activity.logger.info(f"Workflow {workflow_id} already {status}, no cancel needed")
                 return True
             else:
-                activity.logger.warning(
-                    f"Workflow {workflow_id} in unexpected status: {status}"
-                )
+                activity.logger.warning(f"Workflow {workflow_id} in unexpected status: {status}")
                 return False
 
         except Exception as e:
             if "not found" in str(e).lower():
-                activity.logger.info(
-                    f"Workflow {workflow_id} not found, nothing to cancel"
-                )
+                activity.logger.info(f"Workflow {workflow_id} not found, nothing to cancel")
                 return True
             raise
 
@@ -973,12 +988,8 @@ async def reset_creative_for_recovery(creative_id: str) -> bool:
     )
 
     if response.status_code in (200, 204):
-        activity.logger.info(
-            f"Creative {creative_id[:8]} reset to 'registered' for recovery"
-        )
+        activity.logger.info(f"Creative {creative_id[:8]} reset to 'registered' for recovery")
         return True
     else:
-        activity.logger.warning(
-            f"Failed to reset creative {creative_id[:8]}: {response.text}"
-        )
+        activity.logger.warning(f"Failed to reset creative {creative_id[:8]}: {response.text}")
         return False

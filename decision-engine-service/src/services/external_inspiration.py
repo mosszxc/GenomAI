@@ -181,10 +181,7 @@ async def get_pending_inspirations(limit: int = 10) -> List[dict]:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/external_inspirations"
-        f"?status=eq.pending"
-        f"&order=created_at.asc"
-        f"&limit={limit}",
+        f"{rest_url}/external_inspirations?status=eq.pending&order=created_at.asc&limit={limit}",
         headers=headers,
     )
     response.raise_for_status()
@@ -203,10 +200,7 @@ async def get_extracted_inspirations(limit: int = 10) -> List[dict]:
 
     client = get_http_client()
     response = await client.get(
-        f"{rest_url}/external_inspirations"
-        f"?status=eq.extracted"
-        f"&order=created_at.asc"
-        f"&limit={limit}",
+        f"{rest_url}/external_inspirations?status=eq.extracted&order=created_at.asc&limit={limit}",
         headers=headers,
     )
     response.raise_for_status()

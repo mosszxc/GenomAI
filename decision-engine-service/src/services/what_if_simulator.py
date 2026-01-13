@@ -146,9 +146,7 @@ async def find_similar_ideas(
         return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
 
     # Get creatives with test results
-    creative_ids = list(
-        set(d["creative_id"] for d in decomposed if d.get("creative_id"))
-    )
+    creative_ids = list(set(d["creative_id"] for d in decomposed if d.get("creative_id")))
     if not creative_ids:
         return {"similar_ideas": [], "exact_matches": 0, "partial_matches": 0}
 
@@ -353,9 +351,7 @@ def calculate_predicted_win_rate(
                 weighted_wins += similarity
 
     ideas_win_rate = None
-    ideas_sample = len(
-        [i for i in similar_ideas if i.get("test_result") in ("win", "loss")]
-    )
+    ideas_sample = len([i for i in similar_ideas if i.get("test_result") in ("win", "loss")])
 
     if total_weight > 0:
         ideas_win_rate = weighted_wins / total_weight
@@ -384,9 +380,7 @@ def calculate_predicted_win_rate(
         return None, None, 0
 
     # Calculate confidence range based on sample size
-    total_samples = ideas_sample + sum(
-        s.get("sample_size", 0) for s in component_stats.values()
-    )
+    total_samples = ideas_sample + sum(s.get("sample_size", 0) for s in component_stats.values())
 
     # Confidence interval approximation (simplified Wilson score)
     if total_samples < 5:
@@ -436,9 +430,7 @@ def identify_risk_factors(
 
         # Low win rate
         if win_rate is not None and win_rate < 0.15:
-            risks.append(
-                f"<code>{comp}</code> has low historical win rate ({win_rate:.0%})"
-            )
+            risks.append(f"<code>{comp}</code> has low historical win rate ({win_rate:.0%})")
 
     # Check for potentially conflicting components (example heuristic)
     if len(components) > 4:
@@ -495,8 +487,7 @@ async def simulate_combination(
 
     # Get top similar idea IDs for display
     top_similar = [
-        idea.get("idea_id")[:8] if idea.get("idea_id") else "unknown"
-        for idea in similar_ideas[:3]
+        idea.get("idea_id")[:8] if idea.get("idea_id") else "unknown" for idea in similar_ideas[:3]
     ]
 
     return {
@@ -561,9 +552,7 @@ def format_simulation_telegram(result: dict) -> str:
         lines.append(f"<b>Прогноз конверсии:</b> {low:.0%}-{high:.0%}")
 
         # Confidence emoji
-        confidence_emoji = {"low": "🔴", "medium": "🟡", "high": "🟢"}.get(
-            confidence_level, "⚪"
-        )
+        confidence_emoji = {"low": "🔴", "medium": "🟡", "high": "🟢"}.get(confidence_level, "⚪")
         lines.append(
             f"<b>Уверенность:</b> {confidence_emoji} {confidence_level} "
             f"(на основе {similar_count} похожих идей)"
@@ -599,9 +588,7 @@ def format_simulation_telegram(result: dict) -> str:
             emoji = "⬜"
 
         type_short = comp_type[:10] if comp_type else ""
-        lines.append(
-            f"  {emoji} <code>{comp}</code> ({type_short}): {rate_str} (n={sample})"
-        )
+        lines.append(f"  {emoji} <code>{comp}</code> ({type_short}): {rate_str} (n={sample})")
 
     # Risk factors
     if risk_factors:

@@ -229,15 +229,11 @@ async def synthesize_hypothesis_text(
         try:
             result = json.loads(content)
         except json.JSONDecodeError as e:
-            raise ApplicationError(
-                f"LLM returned invalid JSON: {e}", type="SCHEMA_ERROR"
-            ) from e
+            raise ApplicationError(f"LLM returned invalid JSON: {e}", type="SCHEMA_ERROR") from e
 
         # Validate structure
         if "text" not in result:
-            raise ApplicationError(
-                "LLM response missing 'text' field", type="SCHEMA_ERROR"
-            )
+            raise ApplicationError("LLM response missing 'text' field", type="SCHEMA_ERROR")
 
         synthesized_text = result["text"]
         activity.logger.info(f"Synthesized text length: {len(synthesized_text)}")
@@ -356,9 +352,7 @@ async def generate_modular_hypotheses(
             - generation_mode: 'modular'
             - combinations: Module combinations used
     """
-    activity.logger.info(
-        f"Starting modular generation for idea={idea_id}, count={count}"
-    )
+    activity.logger.info(f"Starting modular generation for idea={idea_id}, count={count}")
 
     # 1. Check readiness
     readiness = await check_modular_generation_ready(vertical, geo)
@@ -422,9 +416,7 @@ async def generate_modular_hypotheses(
             )
 
         except Exception as e:
-            activity.logger.error(
-                f"Failed to generate hypothesis from combination: {e}"
-            )
+            activity.logger.error(f"Failed to generate hypothesis from combination: {e}")
             continue
 
     activity.logger.info(

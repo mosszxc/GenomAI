@@ -78,9 +78,7 @@ class RejectRequest(BaseModel):
 
 
 @router.post("/sources", response_model=UploadSourceResponse)
-async def upload_source(
-    request: UploadSourceRequest, _: bool = Depends(verify_api_key)
-):
+async def upload_source(request: UploadSourceRequest, _: bool = Depends(verify_api_key)):
     """
     POST /api/knowledge/sources
 
@@ -130,9 +128,7 @@ async def upload_source(
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start workflow: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to start workflow: {str(e)}") from e
 
 
 @router.get("/extractions")
@@ -261,9 +257,7 @@ async def approve_extraction(
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start workflow: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to start workflow: {str(e)}") from e
 
 
 @router.post("/extractions/{extraction_id}/reject")
@@ -353,16 +347,11 @@ async def get_source(source_id: str, _: bool = Depends(verify_api_key)):
 
         # Get extractions for this source
         extractions_response = await client.get(
-            f"{sb.rest_url}/knowledge_extractions"
-            f"?source_id=eq.{source_id}&order=created_at.asc",
+            f"{sb.rest_url}/knowledge_extractions?source_id=eq.{source_id}&order=created_at.asc",
             headers=headers,
         )
 
-        extractions = (
-            extractions_response.json()
-            if extractions_response.status_code == 200
-            else []
-        )
+        extractions = extractions_response.json() if extractions_response.status_code == 200 else []
 
         return {
             "source": source,

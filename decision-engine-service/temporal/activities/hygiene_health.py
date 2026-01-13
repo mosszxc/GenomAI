@@ -256,9 +256,7 @@ async def send_admin_alert(
         data = response.json()
 
         if data.get("ok"):
-            activity.logger.info(
-                f"Alert sent: message_id={data['result']['message_id']}"
-            )
+            activity.logger.info(f"Alert sent: message_id={data['result']['message_id']}")
             return True
         else:
             activity.logger.error(f"Telegram error: {data.get('description')}")
@@ -364,8 +362,7 @@ def format_integrity_alert(issues: List[Dict]) -> str:
         }.get(issue.get("severity", "info"), "⚪")
 
         lines.append(
-            f"{severity_emoji} {issue.get('table')}: "
-            f"{issue.get('count')} {issue.get('issue_type')}"
+            f"{severity_emoji} {issue.get('table')}: {issue.get('count')} {issue.get('issue_type')}"
         )
 
     return "\n".join(lines)

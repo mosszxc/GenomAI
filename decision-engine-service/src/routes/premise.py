@@ -203,9 +203,7 @@ async def get_active(
 
 
 @router.post("/", response_model=PremiseResponse)
-async def create_premise(
-    request: CreatePremiseRequest, _: bool = Depends(verify_api_key)
-):
+async def create_premise(request: CreatePremiseRequest, _: bool = Depends(verify_api_key)):
     """
     POST /premise/
 
@@ -308,9 +306,7 @@ async def get_premise(premise_id: str, _: bool = Depends(verify_api_key)):
         headers = sb.get_headers()
 
         client = get_http_client()
-        response = await client.get(
-            f"{sb.rest_url}/premises?id=eq.{premise_id}", headers=headers
-        )
+        response = await client.get(f"{sb.rest_url}/premises?id=eq.{premise_id}", headers=headers)
         response.raise_for_status()
         data = response.json()
 

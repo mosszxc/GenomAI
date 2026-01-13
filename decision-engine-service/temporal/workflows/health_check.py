@@ -102,9 +102,7 @@ class HealthCheckWorkflow:
                         f"Supabase connection failed: {sb_result.get('error', 'unknown')}"
                     )
                 elif result.supabase_latency_ms and result.supabase_latency_ms > 3000:
-                    result.issues.append(
-                        f"Supabase slow: {result.supabase_latency_ms:.0f}ms"
-                    )
+                    result.issues.append(f"Supabase slow: {result.supabase_latency_ms:.0f}ms")
 
             except Exception as e:
                 workflow.logger.error(f"Supabase check failed: {e}")
@@ -135,13 +133,9 @@ class HealthCheckWorkflow:
                 # Check for backlog
                 total_pending = sum(result.pending_counts.values())
                 if total_pending > 100:
-                    result.issues.append(
-                        f"Large pending backlog: {total_pending} items"
-                    )
+                    result.issues.append(f"Large pending backlog: {total_pending} items")
                 elif total_pending > 50:
-                    result.issues.append(
-                        f"Moderate pending backlog: {total_pending} items"
-                    )
+                    result.issues.append(f"Moderate pending backlog: {total_pending} items")
 
             except Exception as e:
                 workflow.logger.error(f"Pending counts check failed: {e}")
@@ -159,9 +153,9 @@ class HealthCheckWorkflow:
             alert_severity = "warning"
 
         if alert_severity:
-            should_alert = (
-                alert_severity == "critical" and input.alert_on_critical
-            ) or (alert_severity == "warning" and input.alert_on_warning)
+            should_alert = (alert_severity == "critical" and input.alert_on_critical) or (
+                alert_severity == "warning" and input.alert_on_warning
+            )
 
             if should_alert:
                 try:

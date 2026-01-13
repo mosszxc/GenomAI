@@ -102,9 +102,7 @@ async def validate_feature_significance(
     if n_features == 0:
         n_features = 1  # At minimum, we're testing this feature
 
-    threshold = adjusted_significance_threshold(
-        n_features, STATISTICAL_RULES["base_alpha"]
-    )
+    threshold = adjusted_significance_threshold(n_features, STATISTICAL_RULES["base_alpha"])
 
     if p_value > threshold:
         return ValidationResult(
@@ -181,9 +179,7 @@ def wilson_confidence_interval(
     return lower, upper
 
 
-def validate_sample_size(
-    sample_size: int, for_promotion: bool = False
-) -> ValidationResult:
+def validate_sample_size(sample_size: int, for_promotion: bool = False) -> ValidationResult:
     """
     Validate that sample size is sufficient for conclusions.
 
@@ -292,9 +288,7 @@ def detect_simpsons_paradox(
         ValidationResult with warning if paradox detected
     """
     # Filter out None values
-    valid_correlations = {
-        k: v for k, v in segment_correlations.items() if v is not None
-    }
+    valid_correlations = {k: v for k, v in segment_correlations.items() if v is not None}
 
     if len(valid_correlations) < 2:
         return ValidationResult(
@@ -504,9 +498,7 @@ async def full_validation_for_promotion(
     if segment_correlations:
         aggregate = feature.get("correlation_cpa")
         if aggregate is not None:
-            paradox_check = detect_simpsons_paradox(
-                float(aggregate), segment_correlations
-            )
+            paradox_check = detect_simpsons_paradox(float(aggregate), segment_correlations)
             checks.append(paradox_check)
             if not paradox_check.valid:
                 errors.append(paradox_check.message)
