@@ -1,6 +1,6 @@
 # GenomAI — Telegram Bot Setup Guide
 
-**Версия:** v2.0
+**Версия:** v3.0
 **Статус:** ACTIVE
 **Назначение:** Пошаговая инструкция по настройке Telegram бота для GenomAI
 
@@ -9,10 +9,10 @@
 Telegram бот используется в GenomAI для:
 - **Buyer Onboarding:** Регистрация новых медиабайеров (`/start`)
 - **Video Registration:** Приём video_url от пользователя
-- **Hypothesis Delivery:** Доставка гипотез пользователю
-- **Daily Recommendations:** Ежедневные рекомендации (09:00 UTC)
+- **Statistics:** Статистика и аналитика (`/stats`, `/genome`)
+- **Admin Tools:** Мониторинг и управление системой
 
-**Архитектура:** FastAPI webhook + Temporal workflows (n8n не используется)
+**Архитектура:** FastAPI webhook + Temporal workflows
 
 ## Архитектура
 
@@ -21,11 +21,11 @@ Telegram Bot API
       ↓
 FastAPI Webhook (/webhook/telegram)
       ↓
-Temporal Workflows:
-  - BuyerOnboardingWorkflow
-  - CreativeRegistrationWorkflow
-  - CreativePipelineWorkflow (включает Hypothesis Delivery)
-  - DailyRecommendationWorkflow
+Message Router (src/routes/telegram.py)
+      ↓
+├─ Commands → Direct Response or Temporal Workflow
+├─ Video URL → CreativeRegistrationWorkflow
+└─ Callbacks → Handle inline button actions
 ```
 
 ## Шаг 1: Создание Telegram бота
@@ -45,13 +45,13 @@ Temporal Workflows:
 /setcommands
 ```
 
-**Рекомендуемые команды:**
+**Команды для байеров:**
 ```
 start - Начать работу с GenomAI
 stats - Показать статистику
-genome - Тепловая карта компонентов
-knowledge - Просмотр knowledge extractions (admin)
+genome - Матрица компонентов
 help - Помощь
+feedback - Оставить отзыв
 ```
 
 ## Шаг 2: Получение Chat ID
@@ -77,7 +77,8 @@ help - Помощь
 
 ```bash
 TELEGRAM_BOT_TOKEN=your-bot-token-here
-TELEGRAM_CHAT_ID=your-default-chat-id  # опционально
+TELEGRAM_WEBHOOK_SECRET=your-secret-token  # опционально, для безопасности
+ADMIN_TELEGRAM_IDS=123456,789012  # ID администраторов
 ```
 
 ### 3.2 Установка Webhook
@@ -85,7 +86,10 @@ TELEGRAM_CHAT_ID=your-default-chat-id  # опционально
 ```bash
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://genomai.onrender.com/webhook/telegram"}'
+  -d '{
+    "url": "https://genomai.onrender.com/webhook/telegram",
+    "secret_token": "<YOUR_SECRET>"
+  }'
 ```
 
 ### 3.3 Проверка Webhook
@@ -114,7 +118,44 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 ### 4.3 Тест /stats
 
 1. Отправьте боту `/stats`
-2. Ожидаемый ответ: статистика (ROI, wins/losses)
+2. Ожидаемый ответ: статистика (wins/losses, ROI, рекомендации)
+
+## Команды
+
+### Для всех пользователей (Buyers)
+
+| Команда | Описание |
+|---------|----------|
+| `/start` | Онбординг нового байера |
+| `/stats` | Статистика: wins, losses, ROI |
+| `/genome` | Матрица компонентов (heatmap) |
+| `/help` | Справка по командам |
+| `/feedback <текст>` | Оставить отзыв |
+| Video URL | Регистрация креатива |
+
+### Только для администраторов
+
+| Команда | Описание |
+|---------|----------|
+| `/genome <type>` | Heatmap по конкретному типу компонента |
+| `/genome <value> --by <geo\|avatar\|week>` | Сегментированный анализ |
+| `/confidence` | Доверительные интервалы |
+| `/correlations` | Синергии компонентов |
+| `/trends` | Графики трендов win rate |
+| `/drift` | Обнаружение дрифта |
+| `/simulate X + Y + Z` | What-If симулятор |
+| `/recommend` | Лучшая комбинация дня |
+| `/knowledge` | Knowledge extractions на ревью |
+| `/buyers` | Список всех баеров |
+| `/activity` | Последние действия в системе |
+| `/decisions` | Решения Decision Engine |
+| `/creatives` | Все креативы |
+| `/status` | Статус Temporal workflows |
+| `/errors` | Последние ошибки |
+| `/pending` | Гипотезы на модерацию |
+| `/approve <id>` | Одобрить гипотезу |
+| `/reject <id>` | Отклонить гипотезу |
+| `.txt/.md file` | Knowledge extraction из документа |
 
 ## Temporal Workflows
 
@@ -125,37 +166,23 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 | CreativePipelineWorkflow | creative-pipeline | После регистрации |
 | DailyRecommendationWorkflow | metrics | Schedule 09:00 UTC |
 
-## Поддерживаемые команды
-
-| Команда | Описание | Доступ | Статус |
-|---------|----------|--------|--------|
-| `/start` | Онбординг нового байера | Все | ✅ |
-| `/stats` | Статистика пользователя | Все | ✅ |
-| `/help` | Справка | Все | ✅ |
-| `/genome` | Heatmap компонентов | Все | ✅ |
-| `/trends` | Win rate trends (график) | Admin | ✅ |
-| `/knowledge` | Pending knowledge extractions | Admin | ✅ |
-| Video URL | Регистрация креатива | Все | ✅ |
-| `.txt/.md` file | Knowledge extraction | Admin | ✅ |
-
 ## Troubleshooting
 
 ### Бот не отвечает
 
 1. Проверьте webhook: `getWebhookInfo`
 2. Проверьте логи FastAPI на Render
-3. Проверьте статус Temporal workers
+3. Проверьте статус Temporal workers: `/status` (admin)
 
-### Ошибка "Session timed out"
+### Ошибка авторизации
 
-- Issue #280 исправлен
-- Таймаут сессии: 60 минут
+1. Проверьте `TELEGRAM_WEBHOOK_SECRET` совпадает с secret_token в setWebhook
+2. Проверьте `TELEGRAM_BOT_TOKEN` в env
 
-### Сообщения не приходят
+### Команда не работает
 
-1. Проверьте `TELEGRAM_BOT_TOKEN` в env
-2. Проверьте что webhook установлен правильно
-3. Проверьте Render logs
+1. Проверьте права: команда может быть admin-only
+2. Проверьте `ADMIN_TELEGRAM_IDS` в env
 
 ## Связанные документы
 
@@ -167,14 +194,14 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 
 1. **Telegram — транспорт, а не мозг**
    - Бот не принимает решения
-   - Бот не хранит состояние
+   - Бот не хранит состояние (кроме Temporal workflow state)
    - Бот только передаёт данные
 
-2. **Push-Only Model**
-   - Пользователь отправляет факты
-   - Система обрабатывает и отвечает
-   - Интерактивные диалоги запрещены
-
-3. **Stateless Messaging**
+2. **Stateless Messaging**
    - Состояние хранится в Temporal workflow
    - Каждое сообщение обрабатывается независимо
+
+3. **Безопасность**
+   - Bot Token хранится в secrets
+   - Webhook защищён secret_token
+   - Admin команды доступны только по whitelist
