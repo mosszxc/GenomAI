@@ -214,6 +214,7 @@ class CreativeRegistrationWorkflow:
     Workflow for registering a single creative from URL.
 
     Called when user sends a video URL during or after onboarding.
+    Issue #709: Added tracker_id parameter to link creatives with Keitaro campaigns.
     """
 
     def __init__(self):
@@ -226,7 +227,7 @@ class CreativeRegistrationWorkflow:
         self,
         buyer_id: str,
         video_url: str,
-        target_geo: Optional[str] = None,
+        tracker_id: Optional[str] = None,
         target_vertical: Optional[str] = None,
     ) -> dict:
         """
@@ -235,7 +236,7 @@ class CreativeRegistrationWorkflow:
         Args:
             buyer_id: Buyer UUID
             video_url: Video URL to register
-            target_geo: Optional target GEO
+            tracker_id: Optional Keitaro campaign/tracker ID (Issue #709)
             target_vertical: Optional target vertical
 
         Returns:
@@ -253,7 +254,14 @@ class CreativeRegistrationWorkflow:
 
             creative = await workflow.execute_activity(
                 create_creative,
-                args=[video_url, "user", buyer_id, target_geo, target_vertical],
+                args=[
+                    video_url,
+                    "user",  # source_type (changed from 'telegram' in develop)
+                    buyer_id,
+                    None,  # target_geo (deprecated, use tracker_id)
+                    target_vertical,
+                    tracker_id,  # Issue #709: pass tracker_id
+                ],
                 start_to_close_timeout=timedelta(seconds=30),
                 retry_policy=default_retry,
             )
@@ -271,6 +279,7 @@ class CreativeRegistrationWorkflow:
                         "buyer_id": buyer_id,
                         "video_url": video_url,
                         "source": "user",
+                        "tracker_id": tracker_id,  # Issue #709: include in event
                     },
                 ],
                 start_to_close_timeout=timedelta(seconds=10),
