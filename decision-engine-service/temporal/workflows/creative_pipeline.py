@@ -486,7 +486,7 @@ class CreativePipelineWorkflow:
                     ],
                     start_to_close_timeout=timedelta(seconds=10),
                 )
-            except Exception:
+            except Exception as e:
                 # Don't fail the workflow if status update fails
                 # The workflow result already contains the error
                 workflow.logger.warning(
