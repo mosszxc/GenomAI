@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS genomai.buyers (
   name TEXT NOT NULL,                     -- имя баера
   geo TEXT,                               -- основное гео (DE, US, FR, etc)
   vertical TEXT,                          -- направление нутры
+  keitaro_source TEXT,                    -- источник трафика из Keitaro
   status TEXT DEFAULT 'active',           -- active, inactive, blocked
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
