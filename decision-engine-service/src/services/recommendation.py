@@ -605,6 +605,9 @@ async def get_recommendation_stats() -> dict:
     )
     with_outcome = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
+    # Volatility: coefficient of variation for CPA outcomes
+    volatility = await _calculate_volatility(rest_url, headers)
+
     return {
         "total_recommendations": total,
         "by_mode": by_mode,
@@ -613,4 +616,87 @@ async def get_recommendation_stats() -> dict:
         "with_outcome": with_outcome,
         "successful": successful,
         "success_rate": successful / max(with_outcome, 1),
+        "volatility": volatility,
+    }
+
+
+async def _calculate_volatility(rest_url: str, headers: dict) -> dict:
+    """
+    Calculate volatility metrics from historical outcomes.
+
+    Returns:
+        - cpa_cv: Coefficient of variation for CPA (std_dev / mean)
+        - success_rate_variance: Variance in daily success rates
+        - interpretation: low | medium | high
+    """
+    import statistics
+
+    client = get_http_client()
+
+    # Get CPA values from recommendations with outcomes
+    response = await client.get(
+        f"{rest_url}/recommendations"
+        f"?outcome_cpa=not.is.null"
+        f"&select=outcome_cpa,was_successful,created_at"
+        f"&order=created_at.desc"
+        f"&limit=100",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if len(data) < 2:
+        return {
+            "cpa_cv": None,
+            "success_rate_variance": None,
+            "interpretation": "insufficient_data",
+            "sample_size": len(data),
+        }
+
+    # CPA coefficient of variation
+    cpa_values = [row["outcome_cpa"] for row in data if row.get("outcome_cpa")]
+    if len(cpa_values) >= 2:
+        cpa_mean = statistics.mean(cpa_values)
+        cpa_stdev = statistics.stdev(cpa_values)
+        cpa_cv = cpa_stdev / cpa_mean if cpa_mean > 0 else 0
+    else:
+        cpa_cv = None
+
+    # Success rate variance by day
+    daily_success: dict[str, list[bool]] = {}
+    for row in data:
+        date = row.get("created_at", "")[:10]  # YYYY-MM-DD
+        if date and row.get("was_successful") is not None:
+            if date not in daily_success:
+                daily_success[date] = []
+            daily_success[date].append(row["was_successful"])
+
+    daily_rates = [
+        sum(successes) / len(successes)
+        for successes in daily_success.values()
+        if len(successes) >= 1
+    ]
+
+    if len(daily_rates) >= 2:
+        success_rate_variance = statistics.variance(daily_rates)
+    else:
+        success_rate_variance = None
+
+    # Interpretation based on CPA CV
+    if cpa_cv is None:
+        interpretation = "insufficient_data"
+    elif cpa_cv < 0.1:
+        interpretation = "low"
+    elif cpa_cv < 0.3:
+        interpretation = "medium"
+    else:
+        interpretation = "high"
+
+    return {
+        "cpa_cv": round(cpa_cv, 4) if cpa_cv is not None else None,
+        "success_rate_variance": (
+            round(success_rate_variance, 4) if success_rate_variance is not None else None
+        ),
+        "interpretation": interpretation,
+        "sample_size": len(data),
     }
