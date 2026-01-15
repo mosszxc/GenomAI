@@ -529,8 +529,45 @@ async def record_recommendation_outcome(
     return data[0] if data else {}
 
 
+async def get_decision_id_for_creative(creative_id: str) -> Optional[str]:
+    """
+    Get decision_id for a creative by traversing:
+    creative_id → decomposed_creatives.idea_id → decisions.idea_id
+
+    Returns the most recent decision_id or None.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+    client = get_http_client()
+
+    # Step 1: Get idea_id from decomposed_creatives
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives?creative_id=eq.{creative_id}&select=idea_id&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    dc_data = response.json()
+
+    if not dc_data or not dc_data[0].get("idea_id"):
+        return None
+
+    idea_id = dc_data[0]["idea_id"]
+
+    # Step 2: Get most recent decision for this idea
+    response = await client.get(
+        f"{rest_url}/decisions?idea_id=eq.{idea_id}&select=id&order=created_at.desc&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    decision_data = response.json()
+
+    if decision_data:
+        return cast(str, decision_data[0]["id"])
+    return None
+
+
 async def get_recommendation(recommendation_id: str) -> Optional[dict]:
-    """Get recommendation by ID"""
+    """Get recommendation by ID with decision_id if available"""
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -541,13 +578,23 @@ async def get_recommendation(recommendation_id: str) -> Optional[dict]:
     response.raise_for_status()
     data = cast(list[dict[str, Any]], response.json())
 
-    if data:
-        return data[0]
-    return None
+    if not data:
+        return None
+
+    rec = data[0]
+
+    # Add decision_id if creative_id exists
+    if rec.get("creative_id"):
+        decision_id = await get_decision_id_for_creative(rec["creative_id"])
+        rec["decision_id"] = decision_id
+    else:
+        rec["decision_id"] = None
+
+    return rec
 
 
 async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[dict]:
-    """Get pending recommendations, optionally filtered by buyer"""
+    """Get pending recommendations, optionally filtered by buyer, with decision_id"""
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -563,7 +610,17 @@ async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[di
         headers=headers,
     )
     response.raise_for_status()
-    return cast(list[dict[str, Any]], response.json())
+    recs = cast(list[dict[str, Any]], response.json())
+
+    # Add decision_id for each recommendation
+    for rec in recs:
+        if rec.get("creative_id"):
+            decision_id = await get_decision_id_for_creative(rec["creative_id"])
+            rec["decision_id"] = decision_id
+        else:
+            rec["decision_id"] = None
+
+    return recs
 
 
 async def get_recommendation_stats() -> dict:
