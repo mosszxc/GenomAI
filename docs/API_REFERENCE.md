@@ -267,10 +267,42 @@ Authorization: Bearer {API_KEY}
 
 ## Recommendations
 
-### Get Recommendations
+### List Pending Recommendations
 
 ```
-GET /recommendations/{avatar_hash}
+GET /recommendations/
+Authorization: Bearer {API_KEY}
+```
+
+**Query params:**
+- `buyer_id` (optional) - Filter by buyer
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "buyer_id": "uuid",
+      "avatar_id": "uuid",
+      "geo": "US",
+      "mode": "exploitation",
+      "recommended_components": {"hook_mechanism": "confession", "angle_type": "pain"},
+      "description": "Use proven components: confession hook (85%), pain angle (72%)",
+      "status": "pending",
+      "creative_id": null,
+      "decision_id": null,
+      "created_at": "2025-01-15T12:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Recommendation by ID
+
+```
+GET /recommendations/{id}
 Authorization: Bearer {API_KEY}
 ```
 
@@ -278,30 +310,94 @@ Authorization: Bearer {API_KEY}
 ```json
 {
   "success": true,
-  "avatar_hash": "abc123",
-  "recommendations": [
-    {
-      "component_type": "hook_mechanism",
-      "component_value": "confession",
-      "confidence": 0.85,
-      "sample_count": 42
-    }
-  ]
+  "data": {
+    "id": "uuid",
+    "buyer_id": "uuid",
+    "avatar_id": "uuid",
+    "geo": "US",
+    "mode": "exploitation",
+    "recommended_components": {"hook_mechanism": "confession"},
+    "description": "Use proven components...",
+    "status": "executed",
+    "creative_id": "uuid",
+    "decision_id": "uuid",
+    "created_at": "2025-01-15T12:00:00Z",
+    "executed_at": "2025-01-15T14:00:00Z"
+  }
 }
 ```
 
-### Trigger Recommendation
+**Note:** `decision_id` is populated when the recommendation has been executed (has `creative_id`) and the creative has been processed through the Decision Engine.
+
+### Generate Recommendation
 
 ```
-POST /recommendations/trigger
+POST /recommendations/generate
 Authorization: Bearer {API_KEY}
 ```
 
 **Request:**
 ```json
 {
-  "avatar_hash": "abc123",
-  "buyer_id": "uuid"
+  "buyer_id": "uuid",
+  "avatar_id": "uuid",
+  "geo": "US",
+  "vertical": "nutra",
+  "force_exploration": false
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "mode": "exploitation",
+    "exploration_type": null,
+    "description": "Use proven components: confession hook (85%)",
+    "avg_confidence": 0.78,
+    "components": [
+      {
+        "type": "hook_mechanism",
+        "value": "confession",
+        "confidence": 0.85,
+        "sample_size": 42,
+        "is_exploration": false
+      }
+    ]
+  }
+}
+```
+
+### Mark Recommendation Executed
+
+```
+POST /recommendations/{id}/executed
+Authorization: Bearer {API_KEY}
+```
+
+**Request:**
+```json
+{
+  "creative_id": "uuid"
+}
+```
+
+### Record Recommendation Outcome
+
+```
+POST /recommendations/{id}/outcome
+Authorization: Bearer {API_KEY}
+```
+
+**Request:**
+```json
+{
+  "was_successful": true,
+  "cpa": 12.50,
+  "spend": 100.00,
+  "revenue": 250.00
 }
 ```
 

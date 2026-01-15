@@ -529,8 +529,45 @@ async def record_recommendation_outcome(
     return data[0] if data else {}
 
 
+async def get_decision_id_for_creative(creative_id: str) -> Optional[str]:
+    """
+    Get decision_id for a creative by traversing:
+    creative_id → decomposed_creatives.idea_id → decisions.idea_id
+
+    Returns the most recent decision_id or None.
+    """
+    rest_url, supabase_key = _get_credentials()
+    headers = _get_headers(supabase_key)
+    client = get_http_client()
+
+    # Step 1: Get idea_id from decomposed_creatives
+    response = await client.get(
+        f"{rest_url}/decomposed_creatives?creative_id=eq.{creative_id}&select=idea_id&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    dc_data = response.json()
+
+    if not dc_data or not dc_data[0].get("idea_id"):
+        return None
+
+    idea_id = dc_data[0]["idea_id"]
+
+    # Step 2: Get most recent decision for this idea
+    response = await client.get(
+        f"{rest_url}/decisions?idea_id=eq.{idea_id}&select=id&order=created_at.desc&limit=1",
+        headers=headers,
+    )
+    response.raise_for_status()
+    decision_data = response.json()
+
+    if decision_data:
+        return cast(str, decision_data[0]["id"])
+    return None
+
+
 async def get_recommendation(recommendation_id: str) -> Optional[dict]:
-    """Get recommendation by ID"""
+    """Get recommendation by ID with decision_id if available"""
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -541,13 +578,23 @@ async def get_recommendation(recommendation_id: str) -> Optional[dict]:
     response.raise_for_status()
     data = cast(list[dict[str, Any]], response.json())
 
-    if data:
-        return data[0]
-    return None
+    if not data:
+        return None
+
+    rec = data[0]
+
+    # Add decision_id if creative_id exists
+    if rec.get("creative_id"):
+        decision_id = await get_decision_id_for_creative(rec["creative_id"])
+        rec["decision_id"] = decision_id
+    else:
+        rec["decision_id"] = None
+
+    return rec
 
 
 async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[dict]:
-    """Get pending recommendations, optionally filtered by buyer"""
+    """Get pending recommendations, optionally filtered by buyer, with decision_id"""
     rest_url, supabase_key = _get_credentials()
     headers = _get_headers(supabase_key)
 
@@ -563,7 +610,17 @@ async def get_pending_recommendations(buyer_id: Optional[str] = None) -> list[di
         headers=headers,
     )
     response.raise_for_status()
-    return cast(list[dict[str, Any]], response.json())
+    recs = cast(list[dict[str, Any]], response.json())
+
+    # Add decision_id for each recommendation
+    for rec in recs:
+        if rec.get("creative_id"):
+            decision_id = await get_decision_id_for_creative(rec["creative_id"])
+            rec["decision_id"] = decision_id
+        else:
+            rec["decision_id"] = None
+
+    return recs
 
 
 async def get_recommendation_stats() -> dict:
@@ -605,6 +662,9 @@ async def get_recommendation_stats() -> dict:
     )
     with_outcome = int(response.headers.get("content-range", "*/0").split("/")[-1])
 
+    # Volatility: coefficient of variation for CPA outcomes
+    volatility = await _calculate_volatility(rest_url, headers)
+
     return {
         "total_recommendations": total,
         "by_mode": by_mode,
@@ -613,4 +673,87 @@ async def get_recommendation_stats() -> dict:
         "with_outcome": with_outcome,
         "successful": successful,
         "success_rate": successful / max(with_outcome, 1),
+        "volatility": volatility,
+    }
+
+
+async def _calculate_volatility(rest_url: str, headers: dict) -> dict:
+    """
+    Calculate volatility metrics from historical outcomes.
+
+    Returns:
+        - cpa_cv: Coefficient of variation for CPA (std_dev / mean)
+        - success_rate_variance: Variance in daily success rates
+        - interpretation: low | medium | high
+    """
+    import statistics
+
+    client = get_http_client()
+
+    # Get CPA values from recommendations with outcomes
+    response = await client.get(
+        f"{rest_url}/recommendations"
+        f"?outcome_cpa=not.is.null"
+        f"&select=outcome_cpa,was_successful,created_at"
+        f"&order=created_at.desc"
+        f"&limit=100",
+        headers=headers,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    if len(data) < 2:
+        return {
+            "cpa_cv": None,
+            "success_rate_variance": None,
+            "interpretation": "insufficient_data",
+            "sample_size": len(data),
+        }
+
+    # CPA coefficient of variation
+    cpa_values = [row["outcome_cpa"] for row in data if row.get("outcome_cpa")]
+    if len(cpa_values) >= 2:
+        cpa_mean = statistics.mean(cpa_values)
+        cpa_stdev = statistics.stdev(cpa_values)
+        cpa_cv = cpa_stdev / cpa_mean if cpa_mean > 0 else 0
+    else:
+        cpa_cv = None
+
+    # Success rate variance by day
+    daily_success: dict[str, list[bool]] = {}
+    for row in data:
+        date = row.get("created_at", "")[:10]  # YYYY-MM-DD
+        if date and row.get("was_successful") is not None:
+            if date not in daily_success:
+                daily_success[date] = []
+            daily_success[date].append(row["was_successful"])
+
+    daily_rates = [
+        sum(successes) / len(successes)
+        for successes in daily_success.values()
+        if len(successes) >= 1
+    ]
+
+    if len(daily_rates) >= 2:
+        success_rate_variance = statistics.variance(daily_rates)
+    else:
+        success_rate_variance = None
+
+    # Interpretation based on CPA CV
+    if cpa_cv is None:
+        interpretation = "insufficient_data"
+    elif cpa_cv < 0.1:
+        interpretation = "low"
+    elif cpa_cv < 0.3:
+        interpretation = "medium"
+    else:
+        interpretation = "high"
+
+    return {
+        "cpa_cv": round(cpa_cv, 4) if cpa_cv is not None else None,
+        "success_rate_variance": (
+            round(success_rate_variance, 4) if success_rate_variance is not None else None
+        ),
+        "interpretation": interpretation,
+        "sample_size": len(data),
     }

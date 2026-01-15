@@ -344,3 +344,83 @@ async def process_premise_learning(
         errors.append(f"Error updating premise_learnings: {str(e)}")
 
     return result
+
+
+async def prepare_premise_updates(
+    creative_id: str,
+    cpa: float,
+    spend: float,
+    revenue: float,
+    geo: Optional[str] = None,
+    avatar_id: Optional[str] = None,
+) -> list[dict]:
+    """
+    Prepare premise learning updates for atomic RPC.
+
+    Issue #732: Returns list of dicts ready for apply_learning_complete_atomic RPC.
+    Does NOT execute the updates - caller passes to RPC for atomic execution.
+
+    Args:
+        creative_id: Creative UUID
+        cpa: Cost per action
+        spend: Total spend
+        revenue: Total revenue
+        geo: Optional geo context
+        avatar_id: Optional avatar context
+
+    Returns:
+        List of update dicts, empty list if no premise to update
+    """
+    # Get hypothesis for creative
+    hypothesis = await get_hypothesis_for_creative(creative_id)
+    if not hypothesis:
+        return []
+
+    premise_id = hypothesis.get("premise_id")
+    if not premise_id:
+        # No premise for this hypothesis - this is normal
+        return []
+
+    # Get premise_type
+    premise_type = await get_premise_type(premise_id)
+    if not premise_type:
+        return []
+
+    # Determine win/loss
+    was_win = is_win(cpa, spend)
+
+    # Build updates list
+    updates = []
+
+    # Global update (avatar_id = NULL)
+    updates.append(
+        {
+            "premise_id": premise_id,
+            "premise_type": premise_type,
+            "geo": geo,
+            "avatar_id": None,
+            "sample_size": 1,
+            "win_count": 1 if was_win else 0,
+            "loss_count": 0 if was_win else 1,
+            "total_spend": spend,
+            "total_revenue": revenue,
+        }
+    )
+
+    # Per-avatar update (if avatar known)
+    if avatar_id:
+        updates.append(
+            {
+                "premise_id": premise_id,
+                "premise_type": premise_type,
+                "geo": geo,
+                "avatar_id": avatar_id,
+                "sample_size": 1,
+                "win_count": 1 if was_win else 0,
+                "loss_count": 0 if was_win else 1,
+                "total_spend": spend,
+                "total_revenue": revenue,
+            }
+        )
+
+    return updates
