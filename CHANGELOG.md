@@ -1,3 +1,14 @@
+## [v1.3.2] - 2026-01-15
+
+### Changes
+- 1ab7376 feat(auth): add /api/auth/telegram endpoint for Telegram Login Widget (#740) (#741)
+
+### Issues
+- Closes #740
+- Closes #741
+
+---
+
 ## [v1.3.1] - 2026-01-15
 
 ### Changes
