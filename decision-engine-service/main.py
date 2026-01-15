@@ -60,10 +60,69 @@ app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"]
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    from datetime import datetime
+    """
+    Health check endpoint with service status details.
 
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    Returns status of:
+    - API: always ok if this endpoint responds
+    - Database: Supabase connection check
+    - Temporal: Temporal Cloud connection check
+    """
+    from datetime import datetime
+    import httpx
+
+    from src.core.supabase import get_supabase
+    from temporal.client import get_temporal_client
+
+    timestamp = datetime.now().isoformat()
+
+    # API is always ok if we got here
+    api_status = {"status": "ok"}
+
+    # Check Database (Supabase)
+    database_status = {"status": "unknown"}
+    try:
+        sb = get_supabase()
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{sb.rest_url}/creatives?select=id&limit=1",
+                headers=sb.get_headers(),
+            )
+            if response.status_code == 200:
+                database_status = {"status": "ok"}
+            else:
+                database_status = {"status": "degraded", "message": f"HTTP {response.status_code}"}
+    except Exception as e:
+        database_status = {"status": "down", "message": str(e)[:100]}
+
+    # Check Temporal
+    temporal_status = {"status": "unknown"}
+    try:
+        client = await get_temporal_client()
+        # Simple check - if we can get the client, it's connected
+        if client:
+            temporal_status = {"status": "ok"}
+    except Exception as e:
+        temporal_status = {"status": "down", "message": str(e)[:100]}
+
+    # Calculate overall status
+    statuses = [api_status["status"], database_status["status"], temporal_status["status"]]
+    if "down" in statuses:
+        overall = "degraded"
+    elif "degraded" in statuses or "unknown" in statuses:
+        overall = "degraded"
+    else:
+        overall = "ok"
+
+    return {
+        "status": overall,
+        "timestamp": timestamp,
+        "services": {
+            "api": api_status,
+            "database": database_status,
+            "temporal": temporal_status,
+        },
+    }
 
 
 @app.get("/health/metrics")
