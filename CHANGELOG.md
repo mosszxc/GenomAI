@@ -1,3 +1,23 @@
+## [v1.3.1] - 2026-01-15
+
+### Changes
+- 85c18cd feat(api): add volatility metrics to /recommendations/stats (#737)
+- 61671d1 feat: complete issue #735 (#738)
+- dd2e896 fix(migration): rename approve_with_warnings to avoid timestamp conflict
+- 90d7155 feat: complete issue #732 (#734)
+- 4c9396e feat: complete issue #731 (#733)
+
+### Issues
+- Closes #731
+- Closes #732
+- Closes #733
+- Closes #734
+- Closes #735
+- Closes #737
+- Closes #738
+
+---
+
 ## [v1.2.0] - 2026-01-13
 
 ### Changes
