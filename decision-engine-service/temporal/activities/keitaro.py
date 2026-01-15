@@ -274,10 +274,13 @@ class CampaignInfo:
     offer_id: Optional[str] = None
     landing_id: Optional[str] = None
     created_at: Optional[str] = None
+    confirmed_profit: float = 0.0  # From Keitaro confirmed_profit metric
 
     @property
     def profit(self) -> float:
-        """Calculate profit (revenue - cost)"""
+        """Return confirmed_profit from Keitaro (or fallback to revenue - cost)"""
+        if self.confirmed_profit != 0.0:
+            return self.confirmed_profit
         return self.revenue - self.cost
 
     def to_dict(self) -> dict:
@@ -385,22 +388,19 @@ async def get_campaigns_by_source(
 
     # Step 4: Fetch metrics for all campaigns in one request
     activity.logger.info(f"Fetching metrics for {len(campaigns)} campaigns...")
-
-    campaign_ids = [c.campaign_id for c in campaigns]
     metrics_url = _get_keitaro_url("/report/build")
 
-    # Get metrics for last 30 days with campaign_id dimension
+    # Get metrics for last 30 days grouped by campaign_id
+    # Keitaro API format: https://admin-api.docs.keitaro.io/
+    # Uses: dimensions (grouping), measures (metrics), range (from/to dates)
+    today = datetime.utcnow().date()
+    date_from = (today - timedelta(days=30)).isoformat()
+    date_to = today.isoformat()
+
     metrics_payload = {
-        "range": {"interval": "last_30_days"},
-        "metrics": ["clicks", "conversions", "revenue", "cost"],
+        "range": {"from": date_from, "to": date_to, "timezone": "UTC"},
         "dimensions": ["campaign_id"],
-        "filters": [
-            {
-                "name": "campaign_id",
-                "operator": "IN_LIST",
-                "expression": campaign_ids,
-            }
-        ],
+        "measures": ["clicks", "sales", "confirmed_revenue", "cost", "confirmed_profit"],
     }
 
     try:
@@ -412,15 +412,16 @@ async def get_campaigns_by_source(
             metrics_rows = metrics_data.get("rows", [])
 
             # Build lookup dict by campaign_id
-            metrics_by_id = {}
+            metrics_by_id: dict[str, dict[str, int | float]] = {}
             for row in metrics_rows:
                 cid = str(row.get("campaign_id", ""))
                 if cid:
                     metrics_by_id[cid] = {
                         "clicks": safe_int(row.get("clicks", 0)),
-                        "conversions": safe_int(row.get("conversions", 0)),
-                        "revenue": safe_float(row.get("revenue", 0.0)),
+                        "conversions": safe_int(row.get("sales", 0)),  # Keitaro uses "sales"
+                        "revenue": safe_float(row.get("confirmed_revenue", 0.0)),
                         "cost": safe_float(row.get("cost", 0.0)),
+                        "profit": safe_float(row.get("confirmed_profit", 0.0)),
                     }
 
             # Merge metrics into campaigns
@@ -431,6 +432,7 @@ async def get_campaigns_by_source(
                     camp.conversions = int(m["conversions"])
                     camp.revenue = float(m["revenue"])
                     camp.cost = float(m["cost"])
+                    camp.confirmed_profit = float(m["profit"])
 
             activity.logger.info(f"Merged metrics for {len(metrics_by_id)} campaigns")
         else:
