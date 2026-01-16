@@ -97,11 +97,9 @@ from temporal.activities.modular_generation import (
     generate_modular_hypotheses,
 )
 from temporal.activities.telegram import (
-    send_hypothesis_to_telegram,
     get_buyer_chat_id,
     update_hypothesis_delivery_status,
     emit_delivery_event,
-    send_status_notification,
 )
 
 # Import activities - Keitaro
@@ -311,12 +309,10 @@ async def run_worker():
             synthesize_hypothesis_text,
             save_modular_hypothesis,
             generate_modular_hypotheses,
-            # Telegram Delivery
-            send_hypothesis_to_telegram,
+            # Telegram Activities
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
-            send_status_notification,
         ],
     )
 
@@ -389,12 +385,10 @@ async def run_all_workers():
             synthesize_hypothesis_text,
             save_modular_hypothesis,
             generate_modular_hypotheses,
-            # Telegram Delivery
-            send_hypothesis_to_telegram,
+            # Telegram Activities
             get_buyer_chat_id,
             update_hypothesis_delivery_status,
             emit_delivery_event,
-            send_status_notification,
         ],
     )
 
