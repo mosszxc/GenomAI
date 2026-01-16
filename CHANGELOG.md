@@ -1,3 +1,17 @@
+## [v1.3.3] - 2026-01-16
+
+### Changes
+- df6c7f9 feat: complete issue #743 (#745)
+- 134cf4b feat: complete issue #742 (#744)
+
+### Issues
+- Closes #742
+- Closes #743
+- Closes #744
+- Closes #745
+
+---
+
 ## [v1.3.2] - 2026-01-15
 
 ### Changes
