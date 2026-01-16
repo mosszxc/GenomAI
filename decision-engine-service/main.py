@@ -23,6 +23,8 @@ from src.routes.knowledge import router as knowledge_router
 from src.routes.transcripts import router as transcripts_router
 from src.routes.dashboard import router as dashboard_router
 from src.routes.auth import router as auth_router
+from src.routes.onboarding import router as onboarding_router
+from src.routes.buyers import router as buyers_router
 from src.utils.errors import DecisionEngineError
 
 # Environment variables
@@ -58,6 +60,8 @@ app.include_router(schedules_router, prefix="/api/schedules", tags=["schedules"]
 app.include_router(knowledge_router, prefix="/api/knowledge", tags=["knowledge"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(onboarding_router, prefix="/api/onboarding", tags=["onboarding"])
+app.include_router(buyers_router, prefix="/api/buyers", tags=["buyers"])
 
 
 @app.get("/health")
