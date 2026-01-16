@@ -142,7 +142,8 @@ async def fetch_last_processed_at() -> Optional[str]:
     data = response.json()
 
     if data:
-        return data[0].get("created_at")
+        created_at = data[0].get("created_at")
+        return str(created_at) if created_at is not None else None
     return None
 
 
