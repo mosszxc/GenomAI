@@ -1,3 +1,14 @@
+## [v1.3.4] - 2026-01-16
+
+### Changes
+- 90ee3bf feat: complete issue #746 (#747)
+
+### Issues
+- Closes #746
+- Closes #747
+
+---
+
 ## [v1.3.3] - 2026-01-16
 
 ### Changes
