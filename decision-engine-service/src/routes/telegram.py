@@ -569,7 +569,7 @@ def extract_video_url(text: str) -> Optional[str]:
 
 async def handle_start_command(message: TelegramMessage) -> None:
     """Handle /start command - redirect to Cockpit website for onboarding."""
-    COCKPIT_ONBOARDING_URL = "https://cockpit.genomai.com/onboarding"
+    COCKPIT_ONBOARDING_URL = "https://cockpit-roan.vercel.app/onboarding"
 
     keyboard = {
         "inline_keyboard": [
@@ -736,7 +736,7 @@ async def handle_stats_command(message: TelegramMessage) -> None:
             await send_telegram_message(
                 message.chat_id,
                 "Вы ещё не зарегистрированы.\n"
-                "Зарегистрируйтесь на сайте: https://cockpit.genomai.com/onboarding",
+                "Зарегистрируйтесь на сайте: https://cockpit-roan.vercel.app/onboarding",
             )
             return
 
@@ -877,7 +877,7 @@ async def handle_help_command(message: TelegramMessage) -> None:
             "/feedback - Оставить отзыв\n"
             "/help - Показать справку\n\n"
             "<b>Регистрация:</b>\n"
-            "🔗 https://cockpit.genomai.com/onboarding\n\n"
+            "🔗 https://cockpit-roan.vercel.app/onboarding\n\n"
             "<b>Регистрация креатива:</b>\n"
             "Просто отправьте ссылку на видео."
         )
@@ -2786,7 +2786,7 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             await send_telegram_message(
                 message.chat_id,
                 "Сначала нужно зарегистрироваться.\n"
-                "Зарегистрируйтесь на сайте: https://cockpit.genomai.com/onboarding",
+                "Зарегистрируйтесь на сайте: https://cockpit-roan.vercel.app/onboarding",
             )
             return
 
