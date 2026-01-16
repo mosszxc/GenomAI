@@ -4,10 +4,10 @@ Telegram Webhook Router
 Handles incoming Telegram messages and routes them to appropriate workflows.
 
 Routes:
-    /start → Start BuyerOnboardingWorkflow
+    /start → Redirect to Cockpit for onboarding
     /stats → Direct stats response
     /help → Help message
-    Video/URL → CreativeRegistrationWorkflow or signal to active onboarding
+    Video/URL → CreativeRegistrationWorkflow
 """
 
 from __future__ import annotations
@@ -568,49 +568,33 @@ def extract_video_url(text: str) -> Optional[str]:
 
 
 async def handle_start_command(message: TelegramMessage) -> None:
-    """Handle /start command - start onboarding workflow."""
-    from temporal.workflows.buyer_onboarding import BuyerOnboardingWorkflow
-    from temporal.models.buyer import BuyerOnboardingInput
-    from temporalio.common import WorkflowIDReusePolicy, WorkflowIDConflictPolicy
-    from temporalio.exceptions import WorkflowAlreadyStartedError
+    """Handle /start command - redirect to Cockpit website for onboarding."""
+    COCKPIT_ONBOARDING_URL = "https://cockpit.genomai.com/onboarding"
 
-    try:
-        client = await get_temporal_client()
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "🚀 Начать регистрацию",
+                    "url": COCKPIT_ONBOARDING_URL,
+                }
+            ]
+        ]
+    }
 
-        # Start new onboarding workflow
-        # Uses ALLOW_DUPLICATE to restart after timeout/completion
-        # Uses FAIL conflict policy to detect if workflow is already running
-        workflow_id = f"onboarding-{message.user_id}"
+    await send_telegram_message(
+        message.chat_id,
+        "👋 Добро пожаловать в GenomAI!\n\n"
+        "Для регистрации перейдите на сайт:\n"
+        f"🔗 {COCKPIT_ONBOARDING_URL}\n\n"
+        "После регистрации вы сможете:\n"
+        "• Загружать креативы\n"
+        "• Получать рекомендации\n"
+        "• Отслеживать метрики",
+        reply_markup=keyboard,
+    )
 
-        await client.start_workflow(
-            BuyerOnboardingWorkflow.run,
-            BuyerOnboardingInput(
-                telegram_id=message.user_id,
-                telegram_username=message.username,
-                chat_id=message.chat_id,
-            ),
-            id=workflow_id,
-            task_queue="telegram",
-            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-            id_conflict_policy=WorkflowIDConflictPolicy.FAIL,
-        )
-
-        logger.info(f"Started onboarding workflow: {workflow_id}")
-
-    except WorkflowAlreadyStartedError:
-        # Workflow is already running (not completed/cancelled/timed_out)
-        logger.info(f"Workflow already running for user: {message.user_id}")
-        await send_telegram_message(
-            message.chat_id,
-            "У вас уже есть активная регистрация.\nЗавершите её или дождитесь таймаута.",
-        )
-
-    except Exception as e:
-        record_handler_error(e, "Failed to start onboarding")
-        await send_telegram_message(
-            message.chat_id,
-            "Не удалось начать регистрацию. Попробуйте позже.",
-        )
+    logger.info(f"Sent onboarding redirect to user: {message.user_id}")
 
 
 async def log_buyer_interaction(
@@ -751,7 +735,8 @@ async def handle_stats_command(message: TelegramMessage) -> None:
         if not buyers:
             await send_telegram_message(
                 message.chat_id,
-                "Вы ещё не зарегистрированы. Отправьте /start для начала.",
+                "Вы ещё не зарегистрированы.\n"
+                "Зарегистрируйтесь на сайте: https://cockpit.genomai.com/onboarding",
             )
             return
 
@@ -887,13 +872,14 @@ async def handle_help_command(message: TelegramMessage) -> None:
     else:
         help_message = (
             "<b>Команды GenomAI</b>\n\n"
-            "/start - Начать регистрацию\n"
+            "/start - Информация о регистрации\n"
             "/stats - Посмотреть статистику\n"
             "/feedback - Оставить отзыв\n"
             "/help - Показать справку\n\n"
+            "<b>Регистрация:</b>\n"
+            "🔗 https://cockpit.genomai.com/onboarding\n\n"
             "<b>Регистрация креатива:</b>\n"
-            "Просто отправьте ссылку на видео.\n\n"
-            "<i>Example: https://example.com/video.mp4</i>"
+            "Просто отправьте ссылку на видео."
         )
 
     await send_telegram_message(message.chat_id, help_message)
@@ -2799,7 +2785,8 @@ async def handle_video_url(message: TelegramMessage, video_url: str) -> None:
             logger.error("DEBUG handle_video_url: No buyer found, sending registration message")
             await send_telegram_message(
                 message.chat_id,
-                "Сначала нужно зарегистрироваться. Отправьте /start.",
+                "Сначала нужно зарегистрироваться.\n"
+                "Зарегистрируйтесь на сайте: https://cockpit.genomai.com/onboarding",
             )
             return
 
