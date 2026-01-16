@@ -43,12 +43,6 @@ with workflow.unsafe.imports_passed_through():
     from temporal.activities.premise_selection import (
         select_premise,
     )
-    from temporal.activities.telegram import (
-        send_hypothesis_to_telegram,
-        get_buyer_chat_id,
-        emit_delivery_event,
-        send_status_notification,
-    )
     from temporal.activities.module_extraction import (
         extract_modules_from_decomposition,
     )
@@ -134,34 +128,6 @@ class CreativePipelineWorkflow:
                 self._error = f"Creative {input.creative_id} not found"
                 return self._build_result()
 
-            # Get chat_id early for progress notifications (non-blocking)
-            notification_chat_id: Optional[str] = None
-            if input.buyer_id:
-                notification_chat_id = await workflow.execute_activity(
-                    get_buyer_chat_id,
-                    input.buyer_id,
-                    start_to_close_timeout=timedelta(seconds=10),
-                    retry_policy=default_retry,
-                )
-
-            # Helper to send progress notification (fire-and-forget, never blocks)
-            async def notify_progress(stage: str, message: str) -> None:
-                if not notification_chat_id:
-                    return
-                try:
-                    await workflow.execute_activity(
-                        send_status_notification,
-                        args=[notification_chat_id, stage, message],
-                        start_to_close_timeout=timedelta(seconds=15),
-                        retry_policy=RetryPolicy(maximum_attempts=1),
-                    )
-                except Exception as e:
-                    # Never fail workflow due to notification error
-                    workflow.logger.warning(f"Progress notification failed: {e}")
-
-            # Send initial notification
-            await notify_progress("accepted", "✅ Креатив принят! Начинаю анализ...")
-
             # Step 2: Check for existing transcript (RECOVERY PATH)
             self._status = "checking_transcript"
             existing_transcript = await workflow.execute_activity(
@@ -243,7 +209,6 @@ class CreativePipelineWorkflow:
 
             # Step 3: LLM Decomposition (OpenAI)
             self._status = "decomposing"
-            await notify_progress("extraction", "🔬 Этап 1/3: Извлечение компонентов...")
             decomposition_result = await workflow.execute_activity(
                 decompose_creative,
                 args=[transcript_text, input.creative_id],
@@ -359,7 +324,6 @@ class CreativePipelineWorkflow:
             hypothesis_id = None
             if decision_result.is_approved and input.buyer_id:
                 self._status = "generating_hypothesis"
-                await notify_progress("hypotheses", "📊 Этап 2/3: Генерация гипотез...")
 
                 # Step 6a: Select premise for hypothesis generation
                 # Uses Thompson Sampling: 75% exploit best, 25% explore
@@ -413,12 +377,6 @@ class CreativePipelineWorkflow:
 
                 self._hypothesis_count = len(saved_hypotheses)
 
-                # Send completion notification with hypothesis count
-                await notify_progress(
-                    "complete",
-                    f"✨ Этап 3/3: Готово! Создано {self._hypothesis_count} гипотез.",
-                )
-
                 # Emit hypothesis event
                 await workflow.execute_activity(
                     emit_event,
@@ -432,46 +390,6 @@ class CreativePipelineWorkflow:
                     ],
                     start_to_close_timeout=timedelta(seconds=10),
                 )
-
-                # Step 7: Telegram Delivery (only for APPROVE with buyer)
-                if input.buyer_id and saved_hypotheses:
-                    self._status = "delivering_telegram"
-
-                    # Get buyer's chat ID
-                    chat_id = await workflow.execute_activity(
-                        get_buyer_chat_id,
-                        input.buyer_id,
-                        start_to_close_timeout=timedelta(seconds=10),
-                        retry_policy=default_retry,
-                    )
-
-                    if chat_id:
-                        # Send first hypothesis to Telegram
-                        first_hypothesis = saved_hypotheses[0]
-                        hypothesis_id = first_hypothesis["id"]
-
-                        delivery_result = await workflow.execute_activity(
-                            send_hypothesis_to_telegram,
-                            args=[
-                                hypothesis_id,
-                                first_hypothesis["content"],
-                                chat_id,
-                                self._idea_id,
-                            ],
-                            start_to_close_timeout=timedelta(seconds=30),
-                            retry_policy=default_retry,
-                        )
-
-                        # Emit delivery event
-                        await workflow.execute_activity(
-                            emit_delivery_event,
-                            args=[
-                                hypothesis_id,
-                                self._idea_id,
-                                delivery_result["status"],
-                            ],
-                            start_to_close_timeout=timedelta(seconds=10),
-                        )
 
             elif decision_result.is_approved:
                 # APPROVE but no buyer_id - skip hypothesis to prevent orphans (#475)

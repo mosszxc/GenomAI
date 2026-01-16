@@ -32,11 +32,9 @@ from temporal.activities.hypothesis_generation import (
     save_hypotheses,
 )
 from temporal.activities.telegram import (
-    send_hypothesis_to_telegram,
     get_buyer_chat_id,
     update_hypothesis_delivery_status,
     emit_delivery_event,
-    send_status_notification,
 )
 from temporal.activities.keitaro import (
     get_all_trackers,
@@ -134,12 +132,10 @@ __all__ = [
     # Hypothesis Generation
     "generate_hypotheses",
     "save_hypotheses",
-    # Telegram Delivery
-    "send_hypothesis_to_telegram",
+    # Telegram Activities
     "get_buyer_chat_id",
     "update_hypothesis_delivery_status",
     "emit_delivery_event",
-    "send_status_notification",
     # Keitaro activities
     "get_all_trackers",
     "get_tracker_metrics",
