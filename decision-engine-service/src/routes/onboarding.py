@@ -439,30 +439,34 @@ async def start_onboarding(
     client = get_http_client()
 
     try:
-        # Step 1: Update buyer record
-        update_data: dict[str, Any] = {
+        # Step 1: Create or update buyer record (UPSERT)
+        upsert_data: dict[str, Any] = {
+            "id": token.buyer_id,
             "keitaro_source": request.keitaro_source,
             "status": "onboarding",
         }
         if request.name:
-            update_data["name"] = request.name
+            upsert_data["name"] = request.name
         if request.geos:
-            update_data["geos"] = request.geos
+            upsert_data["geos"] = request.geos
         if request.verticals:
-            update_data["verticals"] = request.verticals
+            upsert_data["verticals"] = request.verticals
 
-        response = await client.patch(
-            f"{sb.rest_url}/buyers?id=eq.{token.buyer_id}",
-            headers=sb.get_headers(),
-            json=update_data,
+        response = await client.post(
+            f"{sb.rest_url}/buyers",
+            headers={
+                **sb.get_headers(),
+                "Prefer": "resolution=merge-duplicates",  # UPSERT on conflict
+            },
+            json=upsert_data,
             timeout=10.0,
         )
 
         if not response.is_success:
-            logger.error(f"Failed to update buyer: {response.status_code} {response.text}")
+            logger.error(f"Failed to upsert buyer: {response.status_code} {response.text}")
             return StartOnboardingResponse(
                 success=False,
-                message="Failed to update buyer",
+                message="Failed to create/update buyer",
                 error=f"Database error: {response.status_code}",
             )
 
