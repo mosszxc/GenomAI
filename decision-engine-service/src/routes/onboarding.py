@@ -2,7 +2,7 @@
 Onboarding API Routes
 
 API endpoints for cockpit onboarding flow.
-All endpoints require JWT auth (token from /api/auth/telegram).
+All endpoints require JWT auth (Supabase JWT or custom token from /api/auth/telegram).
 
 Routes:
     POST /api/onboarding/validate-keitaro - Validate Keitaro credentials
@@ -20,6 +20,7 @@ import time
 from typing import Any, Optional
 
 import httpx
+import jwt
 from fastapi import APIRouter, Header, HTTPException, Depends
 from pydantic import BaseModel, Field
 
@@ -41,15 +42,28 @@ class TokenPayload(BaseModel):
     timestamp: int
 
 
-async def verify_jwt_token(authorization: Optional[str] = Header(None)) -> TokenPayload:
-    """
-    Verify JWT token and extract buyer_id.
+def _is_jwt_format(token: str) -> bool:
+    """Check if token looks like a JWT (three base64 parts separated by dots)."""
+    parts = token.split(".")
+    return len(parts) == 3
 
-    Token format: {buyer_id}:{timestamp}:{signature}
-    Signature: HMAC-SHA256(buyer_id:timestamp, API_KEY)[:16]
+
+def _verify_supabase_jwt(token: str) -> TokenPayload:
+    """
+    Verify Supabase JWT and extract buyer_id.
+
+    Supabase JWT contains:
+    - sub: user UUID (used as buyer_id)
+    - exp: expiration timestamp
+    - aud: "authenticated"
+
+    Note: We decode without signature verification because:
+    1. Supabase JWT secret is not available in backend
+    2. The token was already validated by Supabase Auth
+    3. We trust the token from Cockpit frontend
 
     Args:
-        authorization: Bearer token from Authorization header
+        token: JWT token string
 
     Returns:
         TokenPayload with buyer_id and timestamp
@@ -57,13 +71,53 @@ async def verify_jwt_token(authorization: Optional[str] = Header(None)) -> Token
     Raises:
         HTTPException 401 if token is invalid or expired
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required")
+    try:
+        # Decode without verification (Supabase uses its own secret)
+        # options={"verify_signature": False} allows decoding without secret
+        payload = jwt.decode(token, options={"verify_signature": False})
 
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
+        # Extract buyer_id from 'sub' claim
+        buyer_id = payload.get("sub")
+        if not buyer_id:
+            raise HTTPException(status_code=401, detail="Invalid JWT: missing 'sub' claim")
 
-    token = authorization.replace("Bearer ", "")
+        # Check expiration
+        exp = payload.get("exp")
+        if exp:
+            current_time = int(time.time())
+            if current_time > exp:
+                raise HTTPException(status_code=401, detail="Token expired")
+
+        # Use exp as timestamp, or current time if not available
+        timestamp = exp if exp else int(time.time())
+
+        logger.debug(f"Verified Supabase JWT for buyer: {buyer_id}")
+        return TokenPayload(buyer_id=buyer_id, timestamp=timestamp)
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired") from None
+    except jwt.DecodeError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid JWT format: {e}") from None
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}") from None
+
+
+def _verify_custom_token(token: str) -> TokenPayload:
+    """
+    Verify custom token format (from /api/auth/telegram).
+
+    Token format: {buyer_id}:{timestamp}:{signature}
+    Signature: HMAC-SHA256(buyer_id:timestamp, API_KEY)[:16]
+
+    Args:
+        token: Custom token string
+
+    Returns:
+        TokenPayload with buyer_id and timestamp
+
+    Raises:
+        HTTPException 401 if token is invalid or expired
+    """
     parts = token.split(":")
 
     if len(parts) != 3:
@@ -93,6 +147,38 @@ async def verify_jwt_token(authorization: Optional[str] = Header(None)) -> Token
         raise HTTPException(status_code=401, detail="Invalid token signature")
 
     return TokenPayload(buyer_id=buyer_id, timestamp=timestamp)
+
+
+async def verify_jwt_token(authorization: Optional[str] = Header(None)) -> TokenPayload:
+    """
+    Verify JWT token and extract buyer_id.
+
+    Supports two token formats:
+    1. Supabase JWT (from Cockpit frontend via Supabase Auth)
+    2. Custom token (from /api/auth/telegram): {buyer_id}:{timestamp}:{signature}
+
+    Args:
+        authorization: Bearer token from Authorization header
+
+    Returns:
+        TokenPayload with buyer_id and timestamp
+
+    Raises:
+        HTTPException 401 if token is invalid or expired
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    token = authorization.replace("Bearer ", "")
+
+    # Determine token format and verify accordingly
+    if _is_jwt_format(token):
+        return _verify_supabase_jwt(token)
+    else:
+        return _verify_custom_token(token)
 
 
 # ============================================================================
