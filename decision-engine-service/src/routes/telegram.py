@@ -24,11 +24,15 @@ from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from src.core.http_client import get_http_client
+from src.core.supabase import get_supabase
 from temporalio.service import RPCError, RPCStatusCode
 import httpx
 
 
 logger = logging.getLogger(__name__)
+
+# Verification code settings
+VERIFICATION_CODE_LENGTH = 6
 
 # Retry configuration for Telegram API
 TELEGRAM_MAX_RETRIES = 3
@@ -309,16 +313,111 @@ async def _terminate_stale_workflow(client, workflow_id: str, reason: str) -> No
         logger.error(f"Failed to terminate workflow {workflow_id}: {e}")
 
 
-async def handle_start_command(message: TelegramMessage) -> None:
-    """Handle /start command - redirect to Cockpit website for onboarding."""
-    COCKPIT_ONBOARDING_URL = "https://cockpit.genomai.com/onboarding"
+def generate_verification_code() -> str:
+    """Generate 6-digit verification code."""
+    return "".join(secrets.choice("0123456789") for _ in range(VERIFICATION_CODE_LENGTH))
 
+
+async def check_pending_verification(username: str, telegram_id: str) -> Optional[dict]:
+    """
+    Check if there's a pending verification for this username.
+
+    Returns verification record if found and updates it with telegram_id and code.
+    """
+    if not username:
+        return None
+
+    sb = get_supabase()
+    client = get_http_client()
+
+    # Normalize username (lowercase, no @)
+    username = username.lstrip("@").lower()
+
+    # Find pending verification for this username
+    response = await client.get(
+        f"{sb.rest_url}/verification_codes",
+        headers=sb.get_headers(),
+        params={
+            "select": "id,telegram_username,type,code",
+            "telegram_username": f"eq.{username}",
+            "verified_at": "is.null",
+            "expires_at": f"gt.{datetime.utcnow().isoformat()}",
+            "order": "created_at.desc",
+            "limit": "1",
+        },
+    )
+
+    if response.status_code != 200:
+        logger.error(f"Failed to check verification: {response.status_code}")
+        return None
+
+    verifications = response.json()
+    if not verifications:
+        return None
+
+    verification = verifications[0]
+
+    # Generate code if not already generated
+    code = verification.get("code")
+    if not code:
+        code = generate_verification_code()
+
+    # Update verification with telegram_id and code
+    update_response = await client.patch(
+        f"{sb.rest_url}/verification_codes",
+        headers=sb.get_headers(for_write=True),
+        params={"id": f"eq.{verification['id']}"},
+        json={
+            "telegram_id": int(telegram_id),
+            "code": code,
+        },
+    )
+
+    if update_response.status_code not in (200, 204):
+        logger.error(f"Failed to update verification: {update_response.status_code}")
+        return None
+
+    verification["code"] = code
+    return dict(verification)
+
+
+async def handle_start_command(message: TelegramMessage) -> None:
+    """
+    Handle /start command.
+
+    1. Check for pending verification by username
+    2. If found - generate and send verification code
+    3. If not found - redirect to Cockpit for registration
+    """
+    COCKPIT_URL = "https://cockpit.genomai.com"
+
+    # Check for pending verification
+    if message.username:
+        verification = await check_pending_verification(message.username, message.user_id)
+
+        if verification:
+            # Send verification code
+            verification_type = verification.get("type", "registration")
+            type_text = "регистрации" if verification_type == "registration" else "сброса пароля"
+
+            await send_telegram_message(
+                message.chat_id,
+                f"<b>Код подтверждения для {type_text}:</b>\n\n"
+                f"<code>{verification['code']}</code>\n\n"
+                "Введите этот код на сайте для завершения процесса.\n"
+                "Код действителен 15 минут.",
+            )
+
+            logger.info(f"Sent verification code to @{message.username} for {verification_type}")
+            return
+
+    # No pending verification - show standard message
     keyboard = {
         "inline_keyboard": [
             [
                 {
-                    "text": "Начать регистрацию",
-                    "url": COCKPIT_ONBOARDING_URL,
+                    "text": "Открыть Cockpit",
+                    "url": COCKPIT_URL,
                 }
             ]
         ]
@@ -327,12 +426,12 @@ async def handle_start_command(message: TelegramMessage) -> None:
     await send_telegram_message(
         message.chat_id,
         "Добро пожаловать в GenomAI!\n\n"
-        "Для регистрации перейдите на сайт:\n"
-        f"{COCKPIT_ONBOARDING_URL}",
+        "Для регистрации или входа перейдите на сайт:\n"
+        f"{COCKPIT_URL}",
         reply_markup=keyboard,
     )
 
-    logger.info(f"Sent onboarding redirect to user: {message.user_id}")
+    logger.info(f"Sent welcome message to user: {message.user_id}")
 
 
 async def handle_help_command(message: TelegramMessage) -> None:
