@@ -128,13 +128,10 @@ gh release create "$NEW_VERSION" \
     --latest
 
 # Sync develop with main (so new feature branches start from latest)
+# Use push instead of checkout to avoid worktree conflicts
 echo ""
 echo "Syncing develop with main..."
-git checkout develop
-git pull origin develop
-git merge main --no-edit
-git push origin develop
-git checkout main
+git push origin main:develop
 
 echo ""
 echo "=== Deploy complete ==="
